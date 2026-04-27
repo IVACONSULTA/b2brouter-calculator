@@ -1,0 +1,545 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { getSession } from '../../lib/session';
+
+const session = getSession(Astro.cookies);
+if (!session || session.role !== 'admin') {
+  return Astro.redirect('/admin/login');
+}
+---
+
+<Layout title="Admin Dashboard">
+  <div class="app">
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="logo">
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+            <path d="M2 17l10 5 10-5"/>
+            <path d="M2 12l10 5 10-5"/>
+          </svg>
+          <span>Admin</span>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <a href="#" class="nav-item active">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="7" height="7"/>
+            <rect x="14" y="3" width="7" height="7"/>
+            <rect x="14" y="14" width="7" height="7"/>
+            <rect x="3" y="14" width="7" height="7"/>
+          </svg>
+          Overview
+        </a>
+        <a href="#" class="nav-item">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 12h18M3 6h18M3 18h18"/>
+          </svg>
+          Routes
+        </a>
+        <a href="#" class="nav-item">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="8" r="4"/>
+            <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+          </svg>
+          Customers
+        </a>
+        <a href="#" class="nav-item">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M12 8v4l3 3"/>
+          </svg>
+          Pricing
+        </a>
+        <a href="#" class="nav-item">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
+          </svg>
+          Settings
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="user-info">
+          <div class="avatar admin">{session.name.charAt(0)}</div>
+          <div class="user-details">
+            <span class="user-name">{session.name}</span>
+            <span class="user-role">Administrator</span>
+          </div>
+        </div>
+        <form action="/api/auth/logout" method="POST">
+          <button type="submit" class="logout-btn" title="Sign out">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+              <polyline points="16 17 21 12 16 7"/>
+              <line x1="21" y1="12" x2="9" y2="12"/>
+            </svg>
+          </button>
+        </form>
+      </div>
+    </aside>
+
+    <div class="main-content">
+      <header class="topbar">
+        <div>
+          <h1>Overview</h1>
+          <p class="breadcrumb">Admin / Dashboard</p>
+        </div>
+      </header>
+
+      <div class="content">
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-icon admin">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 12h18M3 6h18M3 18h18"/>
+              </svg>
+            </div>
+            <div class="stat-info">
+              <span class="stat-value">128</span>
+              <span class="stat-label">Active Routes</span>
+            </div>
+            <span class="stat-delta positive">+12%</span>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-icon admin">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="8" r="4"/>
+                <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+              </svg>
+            </div>
+            <div class="stat-info">
+              <span class="stat-value">54</span>
+              <span class="stat-label">Customers</span>
+            </div>
+            <span class="stat-delta positive">+5%</span>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-icon admin">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="1" x2="12" y2="23"/>
+                <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+              </svg>
+            </div>
+            <div class="stat-info">
+              <span class="stat-value">$24,580</span>
+              <span class="stat-label">Monthly Revenue</span>
+            </div>
+            <span class="stat-delta positive">+8%</span>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-icon admin">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+              </svg>
+            </div>
+            <div class="stat-info">
+              <span class="stat-value">99.8%</span>
+              <span class="stat-label">Uptime</span>
+            </div>
+            <span class="stat-delta neutral">—</span>
+          </div>
+        </div>
+
+        <div class="section-grid">
+          <div class="panel">
+            <div class="panel-header">
+              <h3>Recent Activity</h3>
+            </div>
+            <ul class="activity-list">
+              {[
+                { msg: 'Route DE→FR updated', time: '2 min ago', type: 'update' },
+                { msg: 'New customer Acme Corp onboarded', time: '1 hr ago', type: 'new' },
+                { msg: 'Pricing rule #12 modified', time: '3 hrs ago', type: 'update' },
+                { msg: 'Route US→EU deactivated', time: '5 hrs ago', type: 'remove' },
+                { msg: 'System health check passed', time: 'Yesterday', type: 'ok' },
+              ].map((item) => (
+                <li class="activity-item">
+                  <span class={`activity-dot ${item.type}`}></span>
+                  <span class="activity-msg">{item.msg}</span>
+                  <span class="activity-time">{item.time}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <h3>Top Routes</h3>
+            </div>
+            <ul class="route-list">
+              {[
+                { route: 'DE → FR', calls: '18,430', pct: 78 },
+                { route: 'US → EU', calls: '12,880', pct: 54 },
+                { route: 'UK → US', calls: '9,210', pct: 39 },
+                { route: 'ES → LATAM', calls: '6,550', pct: 28 },
+              ].map((r) => (
+                <li class="route-item">
+                  <span class="route-name">{r.route}</span>
+                  <div class="route-bar-wrap">
+                    <div class="route-bar" style={`width: ${r.pct}%`}></div>
+                  </div>
+                  <span class="route-calls">{r.calls}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</Layout>
+
+<style>
+  .app {
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* Sidebar */
+  .sidebar {
+    width: 240px;
+    flex-shrink: 0;
+    background: var(--color-surface);
+    border-right: 1px solid var(--color-border);
+    display: flex;
+    flex-direction: column;
+    padding: 1.25rem;
+  }
+
+  .sidebar-header {
+    margin-bottom: 2rem;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--color-admin);
+  }
+
+  .sidebar-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    flex: 1;
+  }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    padding: 0.6rem 0.75rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--color-text-muted);
+    transition: all 0.15s ease;
+  }
+
+  .nav-item:hover {
+    background: var(--color-surface-2);
+    color: var(--color-text);
+  }
+
+  .nav-item.active {
+    background: var(--color-admin-soft);
+    color: var(--color-admin);
+  }
+
+  .sidebar-footer {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--color-border);
+  }
+
+  .user-info {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .avatar {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  .avatar.admin {
+    background: var(--color-admin-soft);
+    color: var(--color-admin);
+  }
+
+  .user-details {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .user-name {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--color-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .user-role {
+    font-size: 0.72rem;
+    color: var(--color-text-muted);
+  }
+
+  .logout-btn {
+    background: none;
+    border: none;
+    color: var(--color-text-muted);
+    padding: 0.4rem;
+    border-radius: var(--radius-sm);
+    transition: all 0.15s ease;
+    display: flex;
+    align-items: center;
+  }
+
+  .logout-btn:hover {
+    background: var(--color-surface-2);
+    color: var(--color-text);
+  }
+
+  /* Main content */
+  .main-content {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .topbar {
+    padding: 1.5rem 2rem;
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-surface);
+  }
+
+  .topbar h1 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+
+  .breadcrumb {
+    font-size: 0.78rem;
+    color: var(--color-text-muted);
+    margin-top: 0.15rem;
+  }
+
+  .content {
+    padding: 2rem;
+    flex: 1;
+  }
+
+  /* Stats */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+
+  @media (max-width: 1100px) {
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  .stat-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    padding: 1.25rem;
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+  }
+
+  .stat-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .stat-icon.admin {
+    background: var(--color-admin-soft);
+    color: var(--color-admin);
+  }
+
+  .stat-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .stat-value {
+    font-size: 1.3rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+
+  .stat-label {
+    font-size: 0.78rem;
+    color: var(--color-text-muted);
+  }
+
+  .stat-delta {
+    font-size: 0.78rem;
+    font-weight: 600;
+    padding: 0.2rem 0.5rem;
+    border-radius: 100px;
+  }
+
+  .stat-delta.positive {
+    background: rgba(16, 185, 129, 0.1);
+    color: var(--color-customer);
+  }
+
+  .stat-delta.neutral {
+    background: var(--color-surface-2);
+    color: var(--color-text-muted);
+  }
+
+  /* Section grid */
+  .section-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+  }
+
+  @media (max-width: 900px) {
+    .section-grid { grid-template-columns: 1fr; }
+  }
+
+  .panel {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  .panel-header {
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .panel-header h3 {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--color-text);
+  }
+
+  /* Activity list */
+  .activity-list {
+    list-style: none;
+    padding: 0.5rem 0;
+  }
+
+  .activity-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.65rem 1.25rem;
+    transition: background 0.15s;
+  }
+
+  .activity-item:hover {
+    background: var(--color-surface-2);
+  }
+
+  .activity-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .activity-dot.update { background: var(--color-admin); }
+  .activity-dot.new { background: var(--color-customer); }
+  .activity-dot.remove { background: #ef4444; }
+  .activity-dot.ok { background: #94a3b8; }
+
+  .activity-msg {
+    flex: 1;
+    font-size: 0.85rem;
+    color: var(--color-text);
+  }
+
+  .activity-time {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    white-space: nowrap;
+  }
+
+  /* Route list */
+  .route-list {
+    list-style: none;
+    padding: 0.75rem 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .route-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .route-name {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--color-text);
+    width: 90px;
+    flex-shrink: 0;
+  }
+
+  .route-bar-wrap {
+    flex: 1;
+    height: 6px;
+    background: var(--color-surface-2);
+    border-radius: 100px;
+    overflow: hidden;
+  }
+
+  .route-bar {
+    height: 100%;
+    background: var(--color-admin);
+    border-radius: 100px;
+    opacity: 0.7;
+  }
+
+  .route-calls {
+    font-size: 0.78rem;
+    color: var(--color-text-muted);
+    width: 60px;
+    text-align: right;
+    flex-shrink: 0;
+  }
+</style>

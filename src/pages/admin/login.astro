@@ -1,0 +1,237 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { getSession } from '../../lib/session';
+
+const session = getSession(Astro.cookies);
+if (session?.role === 'admin') {
+  return Astro.redirect('/admin/dashboard');
+}
+---
+
+<Layout title="Admin Login">
+  <main class="login-page">
+    <div class="login-card">
+      <div class="login-header">
+        <div class="icon admin">
+          <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+            <path d="M2 17l10 5 10-5"/>
+            <path d="M2 12l10 5 10-5"/>
+          </svg>
+        </div>
+        <div>
+          <h1>Admin Portal</h1>
+          <p>Sign in to access the administration dashboard</p>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="demo-notice">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="M12 16v-4M12 8h.01"/>
+        </svg>
+        Demo mode — authentication is bypassed. Click below to enter.
+      </div>
+
+      <form action="/api/auth/dummy-login" method="POST" class="login-form">
+        <input type="hidden" name="role" value="admin" />
+
+        <div class="field">
+          <label for="email">Email address</label>
+          <input
+            type="email"
+            id="email"
+            name="email"
+            value="admin@example.com"
+            placeholder="admin@example.com"
+            readonly
+          />
+        </div>
+
+        <div class="field">
+          <label for="password">Password</label>
+          <input
+            type="password"
+            id="password"
+            name="password"
+            value="••••••••"
+            placeholder="••••••••"
+            readonly
+          />
+        </div>
+
+        <button type="submit" class="btn-primary admin">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
+            <polyline points="10 17 15 12 10 7"/>
+            <line x1="15" y1="12" x2="3" y2="12"/>
+          </svg>
+          Sign in as Admin
+        </button>
+      </form>
+
+      <div class="back-link">
+        <a href="/">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M19 12H5M12 19l-7-7 7-7"/>
+          </svg>
+          Back to portal selection
+        </a>
+      </div>
+    </div>
+  </main>
+</Layout>
+
+<style>
+  .login-page {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    background: radial-gradient(ellipse at 30% 20%, rgba(99, 102, 241, 0.1) 0%, transparent 55%);
+  }
+
+  .login-card {
+    width: 100%;
+    max-width: 440px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    padding: 2.5rem;
+  }
+
+  .login-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.75rem;
+  }
+
+  .icon {
+    width: 56px;
+    height: 56px;
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .icon.admin {
+    background: var(--color-admin-soft);
+    color: var(--color-admin);
+  }
+
+  .login-header h1 {
+    font-size: 1.35rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--color-text);
+    margin-bottom: 0.2rem;
+  }
+
+  .login-header p {
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+  }
+
+  .divider {
+    height: 1px;
+    background: var(--color-border);
+    margin-bottom: 1.5rem;
+  }
+
+  .demo-notice {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8rem;
+    color: var(--color-accent);
+    background: rgba(245, 158, 11, 0.08);
+    border: 1px solid rgba(245, 158, 11, 0.2);
+    border-radius: var(--radius-sm);
+    padding: 0.65rem 0.9rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .login-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1.1rem;
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  .field label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    letter-spacing: 0.02em;
+  }
+
+  .field input {
+    padding: 0.7rem 1rem;
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    color: var(--color-text-muted);
+    font-size: 0.9rem;
+    font-family: inherit;
+    outline: none;
+    opacity: 0.7;
+  }
+
+  .btn-primary {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.85rem 1.5rem;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-size: 0.95rem;
+    font-weight: 600;
+    transition: all 0.15s ease;
+    margin-top: 0.5rem;
+  }
+
+  .btn-primary.admin {
+    background: var(--color-admin);
+    color: #fff;
+  }
+
+  .btn-primary.admin:hover {
+    background: var(--color-admin-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 8px 24px rgba(99, 102, 241, 0.35);
+  }
+
+  .btn-primary.admin:active {
+    transform: translateY(0);
+  }
+
+  .back-link {
+    margin-top: 1.5rem;
+    text-align: center;
+  }
+
+  .back-link a {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+    transition: color 0.15s ease;
+  }
+
+  .back-link a:hover {
+    color: var(--color-text);
+  }
+</style>
