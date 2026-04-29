@@ -4,7 +4,7 @@ import { getSession } from '../../../lib/session';
 import { DUMMY_ANALYSIS_DETAIL } from '../../../lib/dummy-data';
 
 const session = getSession(Astro.cookies);
-if (!session || session.role !== 'admin') return Astro.redirect('/admin/login');
+if (!session || session.role !== 'admin') return Astro.redirect('/login');
 
 const { id } = Astro.params;
 const analysis = DUMMY_ANALYSIS_DETAIL; // use dummy regardless of id

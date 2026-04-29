@@ -1,0 +1,403 @@
+---
+import Layout from '../layouts/Layout.astro';
+import { getSession } from '../lib/session';
+
+const session = getSession(Astro.cookies);
+
+// Preserve the portal intent so we can redirect to the right place
+const from = Astro.url.searchParams.get('from') ?? ''; // 'admin' | 'customer' | ''
+
+if (session) {
+  // Already authenticated — honour the portal intent the user clicked.
+  // "Customer Portal" should land on the user dashboard even for admins.
+  // "Admin Portal" should land on /admin/dashboard only if the user is actually admin.
+  if (from === 'customer') {
+    return Astro.redirect('/dashboard');
+  }
+  if (from === 'admin' && session.role === 'admin') {
+    return Astro.redirect('/admin/dashboard');
+  }
+  // from=admin but not admin role, or no intent: fall back to role default
+  return Astro.redirect(session.role === 'admin' ? '/admin/dashboard' : '/dashboard');
+}
+
+const errorMessages: Record<string, string> = {
+  invalid_credentials: 'Incorrect email or password. Please try again.',
+  missing_fields:      'Please enter your email and password.',
+  session_expired:     'Your session has expired. Please sign in again.',
+  unauthorized:        'You do not have access to that page.',
+};
+
+const errorKey = Astro.url.searchParams.get('error') ?? '';
+const errorMsg = errorMessages[errorKey] ?? '';
+
+// Demo mode hint: shown when SUPABASE_URL is still the placeholder
+const isDemoMode = import.meta.env.SUPABASE_URL === 'https://placeholder.supabase.co' ||
+                   !import.meta.env.SUPABASE_URL;
+---
+
+<Layout title="Sign In — PA Plan Advisor">
+  <main class="login-page">
+    <div class="login-card">
+
+      <!-- Brand -->
+      <div class="brand">
+        <div class="brand-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+            <path d="M2 17l10 5 10-5"/>
+            <path d="M2 12l10 5 10-5"/>
+          </svg>
+        </div>
+        <div>
+          <h1>PA Plan Advisor</h1>
+          <p>Sign in to your account</p>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- Demo mode notice -->
+      {isDemoMode && (
+        <div class="demo-banner">
+          <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>
+          </svg>
+          <div>
+            <strong>Demo mode</strong> — Supabase is not connected yet.
+            Use one of the emails below with any password.
+          </div>
+        </div>
+      )}
+
+      <!-- Error banner -->
+      {errorMsg && (
+        <div class="error-banner">
+          <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          {errorMsg}
+        </div>
+      )}
+
+      <!-- Login form — POSTs to /api/auth/login with portal intent preserved -->
+      <form action={`/api/auth/login${from ? `?from=${from}` : ''}`} method="POST" class="login-form" id="login-form">
+        <div class="field">
+          <label for="email">Email address</label>
+          <input
+            type="email"
+            id="email"
+            name="email"
+            placeholder="you@company.com"
+            autocomplete="email"
+            required
+          />
+        </div>
+
+        <div class="field">
+          <label for="password">Password</label>
+          <input
+            type="password"
+            id="password"
+            name="password"
+            placeholder="••••••••"
+            autocomplete="current-password"
+            required
+          />
+        </div>
+
+        <button type="submit" class="btn-submit" id="btn-submit">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
+            <polyline points="10 17 15 12 10 7"/>
+            <line x1="15" y1="12" x2="3" y2="12"/>
+          </svg>
+          Sign in
+        </button>
+      </form>
+
+      <!-- Demo accounts helper (only shown in demo mode) -->
+      {isDemoMode && (
+        <div class="demo-accounts">
+          <p class="demo-accounts-title">Demo accounts</p>
+          <div class="demo-list">
+            <button class="demo-btn" onclick="fillLogin('admin@b2brouter.com')">
+              <span class="demo-dot dot-admin"></span>
+              <span class="demo-email">admin@b2brouter.com</span>
+              <span class="demo-role">Admin</span>
+            </button>
+            <button class="demo-btn" onclick="fillLogin('analyst@b2brouter.com')">
+              <span class="demo-dot dot-internal"></span>
+              <span class="demo-email">analyst@b2brouter.com</span>
+              <span class="demo-role">Internal</span>
+            </button>
+            <button class="demo-btn" onclick="fillLogin('client@acmecorp.com')">
+              <span class="demo-dot dot-client"></span>
+              <span class="demo-email">client@acmecorp.com</span>
+              <span class="demo-role">Client</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div class="back-link">
+        <a href="/">← Back to portal selection</a>
+      </div>
+    </div>
+  </main>
+</Layout>
+
+<script>
+  function fillLogin(email: string) {
+    (document.getElementById('email') as HTMLInputElement).value = email;
+    (document.getElementById('password') as HTMLInputElement).value = 'demo1234';
+    document.getElementById('login-form')?.dispatchEvent(new Event('input'));
+  }
+
+  // Show loading state on submit
+  document.getElementById('login-form')?.addEventListener('submit', () => {
+    const btn = document.getElementById('btn-submit') as HTMLButtonElement;
+    btn.textContent = 'Signing in…';
+    btn.disabled = true;
+  });
+</script>
+
+<style>
+  .login-page {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    background:
+      radial-gradient(ellipse at 30% 10%, rgba(99,102,241,.08) 0%, transparent 50%),
+      radial-gradient(ellipse at 75% 85%, rgba(16,185,129,.06) 0%, transparent 50%);
+  }
+
+  .login-card {
+    width: 100%;
+    max-width: 420px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    padding: 2.25rem 2.5rem;
+  }
+
+  /* Brand */
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .brand-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    background: var(--color-admin-soft);
+    color: var(--color-admin);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .brand h1 {
+    font-size: 1.2rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--color-text);
+    margin-bottom: 0.15rem;
+  }
+
+  .brand p {
+    font-size: 0.82rem;
+    color: var(--color-text-muted);
+  }
+
+  .divider {
+    height: 1px;
+    background: var(--color-border);
+    margin-bottom: 1.25rem;
+  }
+
+  /* Banners */
+  .demo-banner,
+  .error-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    border-radius: 8px;
+    padding: 0.7rem 0.9rem;
+    margin-bottom: 1.1rem;
+    font-size: 0.8rem;
+    line-height: 1.5;
+  }
+
+  .demo-banner {
+    background: rgba(245,158,11,.07);
+    border: 1px solid rgba(245,158,11,.2);
+    color: #fbbf24;
+  }
+
+  .error-banner {
+    background: rgba(239,68,68,.07);
+    border: 1px solid rgba(239,68,68,.2);
+    color: #f87171;
+  }
+
+  .demo-banner svg, .error-banner svg { flex-shrink: 0; margin-top: 1px; }
+
+  /* Form */
+  .login-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .field label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--color-text-muted);
+  }
+
+  .field input {
+    padding: 0.65rem 0.9rem;
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    color: var(--color-text);
+    font-size: 0.88rem;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.13s, box-shadow 0.13s;
+  }
+
+  .field input:focus {
+    border-color: var(--color-admin);
+    box-shadow: 0 0 0 2px rgba(99,102,241,.15);
+  }
+
+  .field input::placeholder { color: var(--color-text-muted); opacity: 0.6; }
+
+  .btn-submit {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.8rem 1.5rem;
+    background: var(--color-admin);
+    color: #fff;
+    border: none;
+    border-radius: 9px;
+    font-size: 0.92rem;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s ease;
+    margin-top: 0.25rem;
+  }
+
+  .btn-submit:hover:not(:disabled) {
+    background: var(--color-admin-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(99,102,241,.3);
+  }
+
+  .btn-submit:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+  }
+
+  /* Demo accounts */
+  .demo-accounts {
+    margin-top: 1.25rem;
+    padding-top: 1.1rem;
+    border-top: 1px solid var(--color-border);
+  }
+
+  .demo-accounts-title {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-text-muted);
+    margin-bottom: 0.65rem;
+  }
+
+  .demo-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .demo-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-border);
+    border-radius: 7px;
+    cursor: pointer;
+    font-family: inherit;
+    text-align: left;
+    transition: all 0.13s;
+  }
+
+  .demo-btn:hover {
+    background: var(--color-surface);
+    border-color: var(--color-admin);
+  }
+
+  .demo-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .dot-admin    { background: var(--color-admin); }
+  .dot-internal { background: #3b82f6; }
+  .dot-client   { background: var(--color-customer); }
+
+  .demo-email {
+    font-size: 0.78rem;
+    color: var(--color-text);
+    flex: 1;
+  }
+
+  .demo-role {
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  /* Back link */
+  .back-link {
+    margin-top: 1.25rem;
+    text-align: center;
+  }
+
+  .back-link a {
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
+    transition: color 0.13s;
+  }
+
+  .back-link a:hover { color: var(--color-text); }
+</style>

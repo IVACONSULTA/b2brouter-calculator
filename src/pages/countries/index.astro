@@ -5,7 +5,7 @@ import { getSession } from '../../lib/session';
 import { DUMMY_PROFILES, DUMMY_ACTIVE_PROFILES } from '../../lib/dummy-data';
 
 const session = getSession(Astro.cookies);
-if (!session) return Astro.redirect('/admin/login');
+if (!session) return Astro.redirect('/login');
 
 const isAdmin    = session.role === 'admin';
 const isInternal = session.role === 'internal';

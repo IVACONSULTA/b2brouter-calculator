@@ -4,7 +4,7 @@ import { getSession } from '../../../lib/session';
 import { DUMMY_ANALYSES } from '../../../lib/dummy-data';
 
 const session = getSession(Astro.cookies);
-if (!session || session.role !== 'admin') return Astro.redirect('/admin/login');
+if (!session || session.role !== 'admin') return Astro.redirect('/login');
 ---
 
 <AdminLayout

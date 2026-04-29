@@ -4,7 +4,7 @@ import { getSession } from '../../lib/session';
 import { DUMMY_SCENARIO_RESULT, DUMMY_SCENARIO_RESULT_2 } from '../../lib/dummy-data';
 
 const session = getSession(Astro.cookies);
-if (!session) return Astro.redirect('/admin/login');
+if (!session) return Astro.redirect('/login');
 
 const { id } = Astro.params;
 

@@ -4,6 +4,8 @@ export interface Session {
   role: 'admin' | 'internal' | 'client' | 'customer';
   email: string;
   name: string;
+  /** Present after real Supabase login. Used to authenticate backend API calls. */
+  supabaseAccessToken?: string;
   loggedInAt: string;
 }
 

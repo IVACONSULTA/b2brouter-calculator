@@ -4,7 +4,7 @@ import { getSession } from '../../../../lib/session';
 import { DUMMY_PROFILES, DUMMY_DOCUMENTS, DOCUMENT_TYPES } from '../../../../lib/dummy-data';
 
 const session = getSession(Astro.cookies);
-if (!session || session.role !== 'admin') return Astro.redirect('/admin/login');
+if (!session || session.role !== 'admin') return Astro.redirect('/login');
 
 const { id } = Astro.params;
 const profile = DUMMY_PROFILES.find(p => p.id === id) ?? DUMMY_PROFILES[0];
