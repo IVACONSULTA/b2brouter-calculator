@@ -1,14 +1,17 @@
 ---
 import AdminLayout from '../../layouts/AdminLayout.astro';
+import UserLayout from '../../layouts/UserLayout.astro';
 import { getSession } from '../../lib/session';
-import { DUMMY_PROFILES } from '../../lib/dummy-data';
+import { DUMMY_PROFILES, DUMMY_ACTIVE_PROFILES } from '../../lib/dummy-data';
 
 const session = getSession(Astro.cookies);
 if (!session) return Astro.redirect('/admin/login');
-if (session.role !== 'admin') return Astro.redirect('/admin/login');
 
-// Admin sees all statuses; client/internal would only see active
+const isAdmin    = session.role === 'admin';
+const isInternal = session.role === 'internal';
+
 const profiles = DUMMY_PROFILES;
+const activeProfiles = DUMMY_ACTIVE_PROFILES;
 
 const statusMeta: Record<string, { label: string; cls: string }> = {
   active:           { label: 'Active',           cls: 'badge-green' },
@@ -17,123 +20,217 @@ const statusMeta: Record<string, { label: string; cls: string }> = {
   archived:         { label: 'Archived',          cls: 'badge-red'   },
 };
 
-const activeCount   = profiles.filter(p => p.status === 'active').length;
-const pendingCount  = profiles.filter(p => p.status === 'pending_approval').length;
-const draftCount    = profiles.filter(p => p.status === 'draft').length;
+const activeCount  = profiles.filter(p => p.status === 'active').length;
+const pendingCount = profiles.filter(p => p.status === 'pending_approval').length;
+const draftCount   = profiles.filter(p => p.status === 'draft').length;
 ---
 
-<AdminLayout
-  title="Countries & Providers"
-  breadcrumbs={[{ label: 'Admin' }, { label: 'Countries & Providers' }]}
->
-  <!-- Filter strip -->
-  <div class="filter-bar">
-    <div class="filter-tabs" id="filter-tabs">
-      <button class="filter-tab active" data-filter="all">All <span class="count">{profiles.length}</span></button>
-      <button class="filter-tab" data-filter="active">Active <span class="count">{activeCount}</span></button>
-      <button class="filter-tab" data-filter="pending_approval">Pending <span class="count">{pendingCount}</span></button>
-      <button class="filter-tab" data-filter="draft">Draft <span class="count">{draftCount}</span></button>
+{isAdmin && (
+  <AdminLayout
+    title="Countries & Providers"
+    breadcrumbs={[{ label: 'Admin' }, { label: 'Countries & Providers' }]}
+  >
+    <!-- Filter strip -->
+    <div class="filter-bar">
+      <div class="filter-tabs" id="filter-tabs">
+        <button class="filter-tab active" data-filter="all">All <span class="count">{profiles.length}</span></button>
+        <button class="filter-tab" data-filter="active">Active <span class="count">{activeCount}</span></button>
+        <button class="filter-tab" data-filter="pending_approval">Pending <span class="count">{pendingCount}</span></button>
+        <button class="filter-tab" data-filter="draft">Draft <span class="count">{draftCount}</span></button>
+      </div>
+      <div class="filter-right">
+        <div class="search-wrap">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <input type="search" id="search-input" placeholder="Search country or provider…" class="search-input" />
+        </div>
+        <a href="/admin/countries/new" class="btn-primary">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          New Country
+        </a>
+      </div>
     </div>
-    <div class="filter-right">
-      <div class="search-wrap">
+
+    <!-- Table -->
+    <div class="table-wrap">
+      <table class="table" id="profiles-table">
+        <thead>
+          <tr>
+            <th>Country</th>
+            <th>Provider / Type</th>
+            <th>Version</th>
+            <th>Status</th>
+            <th>Active From</th>
+            <th>Rules</th>
+            <th>Plans</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {profiles.map(p => (
+            <tr data-status={p.status} data-search={`${p.country.name} ${p.provider.name}`.toLowerCase()}>
+              <td>
+                <div class="country-cell">
+                  <span class="code-pill">{p.country.code}</span>
+                  <span class="country-name">{p.country.name}</span>
+                </div>
+              </td>
+              <td>
+                <span class="provider-name">{p.provider.name}</span>
+                <span class="type-tag">{p.provider.type}</span>
+              </td>
+              <td><span class="version-pill">{p.version}</span></td>
+              <td>
+                <span class={`badge ${statusMeta[p.status].cls}`}>{statusMeta[p.status].label}</span>
+              </td>
+              <td class="muted">{p.active_from ?? '—'}</td>
+              <td class="center">{p.rules_count}</td>
+              <td class="center">{p.plans_count}</td>
+              <td>
+                <div class="action-row">
+                  {p.status === 'draft' && (
+                    <>
+                      <a href={`/admin/countries/${p.id}/setup`} class="btn-action">Setup</a>
+                      <a href={`/admin/countries/${p.id}/documents`} class="btn-action">Docs</a>
+                    </>
+                  )}
+                  {p.status === 'pending_approval' && p.analysis_id && (
+                    <a href={`/admin/analyses/${p.analysis_id}`} class="btn-action btn-amber">Review AI</a>
+                  )}
+                  {(p.status === 'active' || p.status === 'pending_approval') && (
+                    <a href={`/admin/profiles/${p.id}`} class="btn-action">Profile</a>
+                  )}
+                  {p.status === 'archived' && (
+                    <span class="muted" style="font-size:0.75rem">Archived</span>
+                  )}
+                  <button
+                    class="btn-icon"
+                    title="More actions"
+                    data-profile-id={p.id}
+                    onclick="alert('API: more actions for ' + this.dataset.profileId)"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>
+                    </svg>
+                  </button>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </AdminLayout>
+)}
+
+{!isAdmin && (
+  <UserLayout
+    title="Countries & Providers"
+    breadcrumbs={[{ label: 'Home', href: '/dashboard' }, { label: 'Countries' }]}
+  >
+    <div class="u-header">
+      <div>
+        <h2 class="u-heading">Active Profiles</h2>
+        <p class="u-sub">Select a country/provider to start a calculation. Only active profiles are available.</p>
+      </div>
+      <div class="u-search-wrap">
         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
         </svg>
-        <input type="search" id="search-input" placeholder="Search country or provider…" class="search-input" />
+        <input type="search" id="u-search" placeholder="Search country or provider…" class="u-search-input" />
       </div>
-      <a href="/admin/countries/new" class="btn-primary">
-        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-        </svg>
-        New Country
-      </a>
     </div>
-  </div>
 
-  <!-- Table -->
-  <div class="table-wrap">
-    <table class="table" id="profiles-table">
-      <thead>
-        <tr>
-          <th>Country</th>
-          <th>Provider / Type</th>
-          <th>Version</th>
-          <th>Status</th>
-          <th>Active From</th>
-          <th>Rules</th>
-          <th>Plans</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {profiles.map(p => (
-          <tr data-status={p.status} data-search={`${p.country.name} ${p.provider.name}`.toLowerCase()}>
-            <td>
-              <div class="country-cell">
-                <span class="code-pill">{p.country.code}</span>
-                <span class="country-name">{p.country.name}</span>
-              </div>
-            </td>
-            <td>
-              <span class="provider-name">{p.provider.name}</span>
-              <span class="type-tag">{p.provider.type}</span>
-            </td>
-            <td><span class="version-pill">{p.version}</span></td>
-            <td>
-              <span class={`badge ${statusMeta[p.status].cls}`}>{statusMeta[p.status].label}</span>
-            </td>
-            <td class="muted">{p.active_from ?? '—'}</td>
-            <td class="center">{p.rules_count}</td>
-            <td class="center">{p.plans_count}</td>
-            <td>
-              <div class="action-row">
-                {p.status === 'draft' && (
-                  <>
-                    <a href={`/admin/countries/${p.id}/setup`} class="btn-action">Setup</a>
-                    <a href={`/admin/countries/${p.id}/documents`} class="btn-action">Docs</a>
-                  </>
-                )}
-                {p.status === 'pending_approval' && p.analysis_id && (
-                  <a href={`/admin/analyses/${p.analysis_id}`} class="btn-action btn-amber">Review AI</a>
-                )}
-                {(p.status === 'active' || p.status === 'pending_approval') && (
-                  <a href={`/admin/profiles/${p.id}`} class="btn-action">Profile</a>
-                )}
-                {p.status === 'archived' && (
-                  <span class="muted" style="font-size:0.75rem">Archived</span>
-                )}
-                <button
-                  class="btn-icon"
-                  title="More actions"
-                  data-profile-id={p.id}
-                  onclick="alert('API: more actions for ' + this.dataset.profileId)"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>
-                  </svg>
-                </button>
-              </div>
-            </td>
+    <div class="u-stats-row">
+      <div class="u-stat">
+        <span class="u-stat-val">{activeProfiles.length}</span>
+        <span class="u-stat-label">Active Profiles</span>
+      </div>
+      <div class="u-stat">
+        <span class="u-stat-val">{[...new Set(activeProfiles.map(p => p.country.name))].length}</span>
+        <span class="u-stat-label">Countries</span>
+      </div>
+      <div class="u-stat">
+        <span class="u-stat-val">{[...new Set(activeProfiles.map(p => p.provider.name))].length}</span>
+        <span class="u-stat-label">Providers</span>
+      </div>
+    </div>
+
+    <!-- Active profiles table -->
+    <div class="u-table-wrap">
+      <table class="u-table" id="u-profiles-table">
+        <thead>
+          <tr>
+            <th>Country</th>
+            <th>Provider</th>
+            <th>Version</th>
+            <th>Rules</th>
+            <th>Plans</th>
+            <th>Active Since</th>
+            <th>Action</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
-  </div>
-</AdminLayout>
+        </thead>
+        <tbody>
+          {activeProfiles.map(p => (
+            <tr data-search={`${p.country.name} ${p.provider.name}`.toLowerCase()}>
+              <td>
+                <div class="u-country-cell">
+                  <span class="u-code-pill">{p.country.code}</span>
+                  <span class="u-country-name">{p.country.name}</span>
+                </div>
+              </td>
+              <td>
+                <span class="u-provider-name">{p.provider.name}</span>
+                <span class="u-type-tag">{p.provider.type}</span>
+              </td>
+              <td><span class="u-version-pill">{p.version}</span></td>
+              <td class="u-center">{p.rules_count}</td>
+              <td class="u-center">{p.plans_count}</td>
+              <td class="u-muted">{p.active_from ?? '—'}</td>
+              <td>
+                <!-- TODO: GET /calculator/profile/{p.id} → loads dynamic transaction rule inputs -->
+                <a href={`/calculator/${p.id}`} class="u-calc-btn">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="4" y="2" width="16" height="20" rx="2"/>
+                    <line x1="8" y1="10" x2="12" y2="10"/><line x1="12" y1="6" x2="12" y2="14"/>
+                    <line x1="8" y1="18" x2="16" y2="18"/><line x1="8" y1="14" x2="10" y2="14"/>
+                  </svg>
+                  Calculate
+                </a>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+
+    {isInternal && (
+      <div class="internal-note">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+        <span>As an internal user, you can view profiles in pending or draft state. <a href="/admin/dashboard">Switch to Admin view</a> to manage them.</span>
+      </div>
+    )}
+  </UserLayout>
+)}
 
 <script>
-  // Filter tabs
+  // Admin filter
   const tabs = document.querySelectorAll<HTMLButtonElement>('.filter-tab');
   const rows = document.querySelectorAll<HTMLTableRowElement>('#profiles-table tbody tr');
-  const search = document.getElementById('search-input') as HTMLInputElement;
+  const search = document.getElementById('search-input') as HTMLInputElement | null;
 
   let activeFilter = 'all';
   let searchQuery  = '';
 
   function applyFilters() {
     rows.forEach(row => {
-      const status = row.dataset.status ?? '';
-      const term   = row.dataset.search ?? '';
+      const status     = row.dataset.status ?? '';
+      const term       = row.dataset.search ?? '';
       const matchFilter = activeFilter === 'all' || status === activeFilter;
       const matchSearch = term.includes(searchQuery);
       row.style.display = matchFilter && matchSearch ? '' : 'none';
@@ -149,13 +246,30 @@ const draftCount    = profiles.filter(p => p.status === 'draft').length;
     });
   });
 
-  search.addEventListener('input', () => {
-    searchQuery = search.value.toLowerCase();
-    applyFilters();
-  });
+  if (search) {
+    search.addEventListener('input', () => {
+      searchQuery = search.value.toLowerCase();
+      applyFilters();
+    });
+  }
+
+  // User search
+  const uSearch = document.getElementById('u-search') as HTMLInputElement | null;
+  const uRows   = document.querySelectorAll<HTMLTableRowElement>('#u-profiles-table tbody tr');
+
+  if (uSearch) {
+    uSearch.addEventListener('input', () => {
+      const q = uSearch.value.toLowerCase();
+      uRows.forEach(row => {
+        const term = row.dataset.search ?? '';
+        row.style.display = term.includes(q) ? '' : 'none';
+      });
+    });
+  }
 </script>
 
 <style>
+  /* ── Admin styles ── */
   .filter-bar {
     display: flex;
     align-items: center;
@@ -259,7 +373,6 @@ const draftCount    = profiles.filter(p => p.status === 'draft').length;
     box-shadow: 0 4px 16px rgba(99,102,241,.35);
   }
 
-  /* ── Table ── */
   .table-wrap {
     background: var(--color-surface);
     border: 1px solid var(--color-border);
@@ -308,7 +421,6 @@ const draftCount    = profiles.filter(p => p.status === 'draft').length;
   }
 
   .country-name { font-weight: 600; }
-
   .provider-name { font-weight: 500; }
 
   .type-tag {
@@ -347,11 +459,7 @@ const draftCount    = profiles.filter(p => p.status === 'draft').length;
   .muted { color: var(--color-text-muted); font-size: 0.8rem; }
   .center { text-align: center; color: var(--color-text-muted); }
 
-  .action-row {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-  }
+  .action-row { display: flex; align-items: center; gap: 0.4rem; }
 
   .btn-action {
     font-size: 0.75rem;
@@ -365,12 +473,7 @@ const draftCount    = profiles.filter(p => p.status === 'draft').length;
   }
 
   .btn-action:hover { background: var(--color-admin-soft); }
-
-  .btn-action.btn-amber {
-    color: #f59e0b;
-    border-color: rgba(245,158,11,.3);
-  }
-
+  .btn-action.btn-amber { color: #f59e0b; border-color: rgba(245,158,11,.3); }
   .btn-action.btn-amber:hover { background: rgba(245,158,11,.08); }
 
   .btn-icon {
@@ -388,4 +491,195 @@ const draftCount    = profiles.filter(p => p.status === 'draft').length;
   }
 
   .btn-icon:hover { background: var(--color-surface-2); color: var(--color-text); }
+
+  /* ── User/Client styles ── */
+  .u-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+    flex-wrap: wrap;
+  }
+
+  .u-heading {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--color-text);
+    margin-bottom: 0.3rem;
+  }
+
+  .u-sub {
+    font-size: 0.82rem;
+    color: var(--color-text-muted);
+    line-height: 1.5;
+  }
+
+  .u-search-wrap {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    padding: 0.45rem 0.8rem;
+    color: var(--color-text-muted);
+  }
+
+  .u-search-input {
+    background: none;
+    border: none;
+    outline: none;
+    font-size: 0.82rem;
+    color: var(--color-text);
+    font-family: inherit;
+    width: 220px;
+  }
+
+  .u-search-input::placeholder { color: var(--color-text-muted); }
+
+  .u-stats-row {
+    display: flex;
+    gap: 0.85rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .u-stat {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    padding: 0.75rem 1.25rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.2rem;
+    min-width: 100px;
+  }
+
+  .u-stat-val {
+    font-size: 1.6rem;
+    font-weight: 800;
+    color: var(--color-text);
+    letter-spacing: -0.03em;
+    line-height: 1;
+  }
+
+  .u-stat-label {
+    font-size: 0.7rem;
+    color: var(--color-text-muted);
+  }
+
+  .u-table-wrap {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    margin-bottom: 1rem;
+  }
+
+  .u-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.84rem;
+  }
+
+  .u-table th {
+    text-align: left;
+    padding: 0.65rem 1rem;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-muted);
+    background: var(--color-surface-2);
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .u-table td {
+    padding: 0.85rem 1rem;
+    color: var(--color-text);
+    border-bottom: 1px solid var(--color-border);
+    vertical-align: middle;
+  }
+
+  .u-table tbody tr:last-child td { border-bottom: none; }
+  .u-table tbody tr:hover { background: rgba(16,185,129,.03); }
+
+  .u-country-cell { display: flex; align-items: center; gap: 0.55rem; }
+
+  .u-code-pill {
+    font-size: 0.66rem;
+    font-weight: 800;
+    color: var(--color-customer);
+    background: var(--color-customer-soft);
+    border-radius: 5px;
+    padding: 0.15rem 0.4rem;
+    letter-spacing: 0.04em;
+  }
+
+  .u-country-name { font-weight: 700; color: var(--color-text); }
+
+  .u-provider-name { font-weight: 500; }
+
+  .u-type-tag {
+    font-size: 0.66rem;
+    font-weight: 700;
+    color: var(--color-text-muted);
+    background: var(--color-surface-2);
+    border-radius: 4px;
+    padding: 0.1rem 0.35rem;
+    margin-left: 0.35rem;
+  }
+
+  .u-version-pill {
+    font-size: 0.75rem;
+    font-family: 'SF Mono', ui-monospace, monospace;
+    color: var(--color-text-muted);
+    background: var(--color-surface-2);
+    border-radius: 5px;
+    padding: 0.15rem 0.45rem;
+  }
+
+  .u-center { text-align: center; color: var(--color-text-muted); }
+  .u-muted  { color: var(--color-text-muted); font-size: 0.8rem; }
+
+  .u-calc-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.42rem 0.9rem;
+    background: var(--color-customer);
+    color: #fff;
+    border-radius: 7px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    transition: all 0.13s;
+    white-space: nowrap;
+  }
+
+  .u-calc-btn:hover {
+    background: var(--color-customer-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 14px rgba(16,185,129,.3);
+  }
+
+  /* Internal note */
+  .internal-note {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.65rem 0.9rem;
+    background: rgba(59,130,246,.06);
+    border: 1px solid rgba(59,130,246,.2);
+    border-radius: 8px;
+    font-size: 0.78rem;
+    color: #93c5fd;
+  }
+
+  .internal-note a {
+    color: #60a5fa;
+    font-weight: 600;
+  }
+
+  .internal-note a:hover { opacity: 0.8; }
 </style>

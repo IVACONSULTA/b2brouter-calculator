@@ -3,39 +3,56 @@ import Layout from '../../layouts/Layout.astro';
 import { getSession } from '../../lib/session';
 
 const session = getSession(Astro.cookies);
-if (session?.role === 'customer') {
-  return Astro.redirect('/customer/dashboard');
+if (session?.role === 'client' || session?.role === 'customer' || session?.role === 'internal') {
+  return Astro.redirect('/dashboard');
 }
 ---
 
-<Layout title="Customer Login">
+<Layout title="User Login — PA Plan Advisor">
   <main class="login-page">
     <div class="login-card">
       <div class="login-header">
         <div class="icon customer">
-          <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="8" r="4"/>
             <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
           </svg>
         </div>
         <div>
-          <h1>Customer Portal</h1>
-          <p>Sign in to access your account and routes</p>
+          <h1>User Portal</h1>
+          <p>Calculate PA plans and manage your scenarios</p>
         </div>
       </div>
 
       <div class="divider"></div>
 
       <div class="demo-notice">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="10"/>
-          <path d="M12 16v-4M12 8h.01"/>
+        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>
         </svg>
-        Demo mode — authentication is bypassed. Click below to enter.
+        Demo mode — select a role to sign in instantly.
       </div>
 
-      <form action="/api/auth/dummy-login" method="POST" class="login-form">
-        <input type="hidden" name="role" value="customer" />
+      <!-- Role selector -->
+      <div class="role-selector">
+        <button class="role-btn active" id="btn-client" onclick="selectRole('client', this)">
+          <div class="role-dot dot-client"></div>
+          <div class="role-info">
+            <span class="role-name">Client</span>
+            <span class="role-desc">External customer · own scenarios</span>
+          </div>
+        </button>
+        <button class="role-btn" id="btn-internal" onclick="selectRole('internal', this)">
+          <div class="role-dot dot-internal"></div>
+          <div class="role-info">
+            <span class="role-name">Internal</span>
+            <span class="role-desc">B2Brouter team · all scenarios + AI</span>
+          </div>
+        </button>
+      </div>
+
+      <form action="/api/auth/dummy-login" method="POST" class="login-form" id="login-form">
+        <input type="hidden" name="role" id="role-input" value="client" />
 
         <div class="field">
           <label for="email">Email address</label>
@@ -43,8 +60,8 @@ if (session?.role === 'customer') {
             type="email"
             id="email"
             name="email"
-            value="customer@example.com"
-            placeholder="customer@example.com"
+            value="client@acmecorp.com"
+            placeholder="email@company.com"
             readonly
           />
         </div>
@@ -61,19 +78,19 @@ if (session?.role === 'customer') {
           />
         </div>
 
-        <button type="submit" class="btn-primary customer">
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <button type="submit" class="btn-primary customer" id="btn-submit">
+          <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
             <polyline points="10 17 15 12 10 7"/>
             <line x1="15" y1="12" x2="3" y2="12"/>
           </svg>
-          Sign in as Customer
+          Sign in as Client
         </button>
       </form>
 
       <div class="back-link">
         <a href="/">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M19 12H5M12 19l-7-7 7-7"/>
           </svg>
           Back to portal selection
@@ -82,6 +99,26 @@ if (session?.role === 'customer') {
     </div>
   </main>
 </Layout>
+
+<script>
+  const ROLE_CONFIG: Record<string, { email: string; label: string }> = {
+    client:   { email: 'client@acmecorp.com',   label: 'Sign in as Client' },
+    internal: { email: 'analyst@b2brouter.com', label: 'Sign in as Internal' },
+  };
+
+  function selectRole(role: string, btn: HTMLElement) {
+    document.querySelectorAll<HTMLButtonElement>('.role-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+
+    const cfg = ROLE_CONFIG[role];
+    if (!cfg) return;
+
+    (document.getElementById('role-input') as HTMLInputElement).value = role;
+    (document.getElementById('email') as HTMLInputElement).value = cfg.email;
+    (document.getElementById('btn-submit') as HTMLButtonElement).innerHTML =
+      `<svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg> ${cfg.label}`;
+  }
+</script>
 
 <style>
   .login-page {
@@ -99,20 +136,20 @@ if (session?.role === 'customer') {
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: var(--radius);
-    padding: 2.5rem;
+    padding: 2.25rem 2.5rem;
   }
 
   .login-header {
     display: flex;
     align-items: center;
     gap: 1rem;
-    margin-bottom: 1.75rem;
+    margin-bottom: 1.5rem;
   }
 
   .icon {
-    width: 56px;
-    height: 56px;
-    border-radius: var(--radius-sm);
+    width: 52px;
+    height: 52px;
+    border-radius: 12px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -125,7 +162,7 @@ if (session?.role === 'customer') {
   }
 
   .login-header h1 {
-    font-size: 1.35rem;
+    font-size: 1.25rem;
     font-weight: 700;
     letter-spacing: -0.02em;
     color: var(--color-text);
@@ -133,55 +170,114 @@ if (session?.role === 'customer') {
   }
 
   .login-header p {
-    font-size: 0.85rem;
+    font-size: 0.82rem;
     color: var(--color-text-muted);
   }
 
   .divider {
     height: 1px;
     background: var(--color-border);
-    margin-bottom: 1.5rem;
+    margin-bottom: 1.25rem;
   }
 
   .demo-notice {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    font-size: 0.8rem;
+    font-size: 0.78rem;
     color: var(--color-accent);
-    background: rgba(245, 158, 11, 0.08);
+    background: rgba(245, 158, 11, 0.07);
     border: 1px solid rgba(245, 158, 11, 0.2);
-    border-radius: var(--radius-sm);
-    padding: 0.65rem 0.9rem;
-    margin-bottom: 1.5rem;
+    border-radius: 8px;
+    padding: 0.55rem 0.85rem;
+    margin-bottom: 1.25rem;
   }
 
+  /* Role selector */
+  .role-selector {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.6rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .role-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.7rem 0.85rem;
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-border);
+    border-radius: 9px;
+    cursor: pointer;
+    font-family: inherit;
+    text-align: left;
+    transition: all 0.13s;
+  }
+
+  .role-btn:hover {
+    border-color: var(--color-customer);
+    background: var(--color-customer-soft);
+  }
+
+  .role-btn.active {
+    border-color: var(--color-customer);
+    background: var(--color-customer-soft);
+    box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.15);
+  }
+
+  .role-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .dot-client   { background: var(--color-customer); }
+  .dot-internal { background: #3b82f6; }
+
+  .role-info { display: flex; flex-direction: column; }
+
+  .role-name {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--color-text);
+    line-height: 1.2;
+  }
+
+  .role-desc {
+    font-size: 0.65rem;
+    color: var(--color-text-muted);
+    margin-top: 0.15rem;
+    line-height: 1.3;
+  }
+
+  /* Form */
   .login-form {
     display: flex;
     flex-direction: column;
-    gap: 1.1rem;
+    gap: 1rem;
   }
 
   .field {
     display: flex;
     flex-direction: column;
-    gap: 0.4rem;
+    gap: 0.35rem;
   }
 
   .field label {
-    font-size: 0.8rem;
+    font-size: 0.78rem;
     font-weight: 600;
     color: var(--color-text-muted);
-    letter-spacing: 0.02em;
   }
 
   .field input {
-    padding: 0.7rem 1rem;
+    padding: 0.65rem 0.9rem;
     background: var(--color-surface-2);
     border: 1px solid var(--color-border);
-    border-radius: var(--radius-sm);
+    border-radius: 8px;
     color: var(--color-text-muted);
-    font-size: 0.9rem;
+    font-size: 0.87rem;
     font-family: inherit;
     outline: none;
     opacity: 0.7;
@@ -192,13 +288,15 @@ if (session?.role === 'customer') {
     align-items: center;
     justify-content: center;
     gap: 0.5rem;
-    padding: 0.85rem 1.5rem;
+    padding: 0.8rem 1.5rem;
     border: none;
-    border-radius: var(--radius-sm);
-    font-size: 0.95rem;
-    font-weight: 600;
+    border-radius: 9px;
+    font-size: 0.9rem;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
     transition: all 0.15s ease;
-    margin-top: 0.5rem;
+    margin-top: 0.25rem;
   }
 
   .btn-primary.customer {
@@ -209,15 +307,11 @@ if (session?.role === 'customer') {
   .btn-primary.customer:hover {
     background: var(--color-customer-hover);
     transform: translateY(-1px);
-    box-shadow: 0 8px 24px rgba(16, 185, 129, 0.35);
-  }
-
-  .btn-primary.customer:active {
-    transform: translateY(0);
+    box-shadow: 0 8px 24px rgba(16, 185, 129, 0.3);
   }
 
   .back-link {
-    margin-top: 1.5rem;
+    margin-top: 1.25rem;
     text-align: center;
   }
 
@@ -225,12 +319,10 @@ if (session?.role === 'customer') {
     display: inline-flex;
     align-items: center;
     gap: 0.4rem;
-    font-size: 0.85rem;
+    font-size: 0.82rem;
     color: var(--color-text-muted);
-    transition: color 0.15s ease;
+    transition: color 0.13s;
   }
 
-  .back-link a:hover {
-    color: var(--color-text);
-  }
+  .back-link a:hover { color: var(--color-text); }
 </style>

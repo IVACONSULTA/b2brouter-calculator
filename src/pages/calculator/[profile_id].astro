@@ -1,0 +1,786 @@
+---
+import UserLayout from '../../layouts/UserLayout.astro';
+import { getSession } from '../../lib/session';
+import {
+  DUMMY_PROFILES,
+  DUMMY_ACTIVE_RULES,
+  DUMMY_ACTIVE_PLANS,
+  DUMMY_SCENARIO_RESULT,
+} from '../../lib/dummy-data';
+
+const session = getSession(Astro.cookies);
+if (!session) return Astro.redirect('/admin/login');
+
+const { profile_id } = Astro.params;
+const profile = DUMMY_PROFILES.find(p => p.id === profile_id && p.status === 'active');
+if (!profile) return Astro.redirect('/countries');
+
+const rules = DUMMY_ACTIVE_RULES[profile_id!] ?? [];
+const plans = DUMMY_ACTIVE_PLANS[profile_id!] ?? [];
+
+// Use scenario-001 as the pre-calculated dummy result (matches profile-fr-b2b-1 inputs)
+const dummyResult = DUMMY_SCENARIO_RESULT;
+
+const canGenerateSummary = session.role === 'admin' || session.role === 'internal';
+// Client can generate summary only if explicitly enabled — use dummy flag
+const clientSummaryEnabled = true; // TODO: fetch from settings API
+const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clientSummaryEnabled);
+---
+
+<UserLayout
+  title="Calculator"
+  breadcrumbs={[
+    { label: 'Home', href: '/dashboard' },
+    { label: 'Countries', href: '/countries' },
+    { label: `${profile.country.name} / ${profile.provider.name}` },
+  ]}
+>
+  <!-- Profile header -->
+  <div class="profile-header">
+    <div class="ph-info">
+      <div class="ph-flag">
+        <span class="ph-code">{profile.country.code}</span>
+        <div>
+          <p class="ph-country">{profile.country.name} — {profile.provider.name}</p>
+          <p class="ph-meta">Version {profile.version} · {profile.currency} · {dummyResult.calculation_basis}</p>
+        </div>
+      </div>
+    </div>
+    <span class="active-badge">Active</span>
+  </div>
+
+  <div class="calc-layout">
+    <!-- Input form -->
+    <section class="calc-form-wrap">
+      <div class="form-header">
+        <h2 class="form-title">Transaction Volumes</h2>
+        <p class="form-sub">Enter your estimated annual transaction volumes. The calculator will apply the profile multipliers automatically.</p>
+      </div>
+
+      <!-- TODO: POST /calculator/calculate with { profile_id, client_name, inputs } to App 2 (b2brouter-calculator) -->
+      <form id="calc-form" onsubmit="handleCalculate(event)">
+        <div class="form-field">
+          <label class="field-label" for="client-name">Client Name <span class="req">*</span></label>
+          <input
+            type="text"
+            id="client-name"
+            name="client_name"
+            class="field-input"
+            placeholder="e.g. Acme Corp"
+            value="Acme Corp"
+            required
+          />
+          <p class="field-hint">Used to identify this scenario in your history.</p>
+        </div>
+
+        <div class="rules-section">
+          <h3 class="rules-heading">Transaction inputs</h3>
+          <div class="rules-grid">
+            {rules.map(rule => (
+              <div class="rule-input-card" data-key={rule.input_key}>
+                <div class="rule-card-top">
+                  <div class="rule-badges">
+                    <span class={`dir-badge ${rule.direction === 'Issued' ? 'dir-issued' : 'dir-received'}`}>
+                      {rule.direction}
+                    </span>
+                    <span class="obl-badge">{rule.obligation}</span>
+                  </div>
+                  <span class="mult-hint">×{rule.pa_transactions_per_item} PA</span>
+                </div>
+                <label class="field-label" for={`input-${rule.input_key}`}>
+                  {rule.label}
+                </label>
+                <div class="number-wrap">
+                  <input
+                    type="number"
+                    id={`input-${rule.input_key}`}
+                    name={rule.input_key}
+                    class="field-input number-input"
+                    min="0"
+                    step="100"
+                    placeholder="0"
+                    value={(dummyResult.inputs as Record<string, number>)[rule.input_key] ?? rule.placeholder}
+                  />
+                  <span class="unit-label">/ year</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <!-- TODO: POST /calculator/calculate → { profile_id, client_name, inputs } -->
+          <button type="submit" class="btn-calculate" id="btn-calc">
+            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="4" y="2" width="16" height="20" rx="2"/>
+              <line x1="8" y1="10" x2="12" y2="10"/><line x1="12" y1="6" x2="12" y2="14"/>
+              <line x1="8" y1="18" x2="16" y2="18"/><line x1="8" y1="14" x2="10" y2="14"/>
+            </svg>
+            Calculate Plan
+          </button>
+          <button type="button" class="btn-reset" onclick="document.getElementById('calc-form')?.reset()">
+            Clear
+          </button>
+        </div>
+      </form>
+    </section>
+
+    <!-- Results panel (shown by default with dummy data) -->
+    <section class="results-panel" id="results-panel">
+      <div class="results-header">
+        <h2 class="results-title">Calculation Result</h2>
+        <span class="results-client">{dummyResult.client_name}</span>
+      </div>
+
+      <!-- Transaction breakdown -->
+      <div class="result-block">
+        <h3 class="block-title">Transaction Breakdown</h3>
+        <table class="result-table">
+          <thead>
+            <tr>
+              <th>Type</th>
+              <th class="num">Volume</th>
+              <th class="num">× Multiplier</th>
+              <th class="num">PA Transactions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {dummyResult.transaction_breakdown.map(row => (
+              <tr>
+                <td>
+                  <div class="breakdown-label">
+                    <span class="breakdown-text">{row.label}</span>
+                    <div class="breakdown-tags">
+                      <span class={`dir-mini ${row.direction === 'Issued' ? 'dir-issued' : 'dir-received'}`}>{row.direction}</span>
+                      <span class="obl-mini">{row.obligation}</span>
+                    </div>
+                  </div>
+                </td>
+                <td class="num muted">{row.volume.toLocaleString()}</td>
+                <td class="num">
+                  <span class="multiplier">×{row.multiplier}</span>
+                </td>
+                <td class="num strong">{row.pa_transactions.toLocaleString()}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr class="total-row">
+              <td colspan="3" class="total-label">Total PA Transactions / year</td>
+              <td class="num total-val">{dummyResult.total_pa_transactions.toLocaleString()}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <!-- Plan comparison -->
+      <div class="result-block">
+        <h3 class="block-title">Plan Comparison</h3>
+        <table class="result-table">
+          <thead>
+            <tr>
+              <th>Plan</th>
+              <th class="num">Annual Fee</th>
+              <th class="num">Included PA</th>
+              <th class="num">Extra / PA</th>
+              <th class="num">Extra PA</th>
+              <th class="num">Total / Year</th>
+            </tr>
+          </thead>
+          <tbody>
+            {dummyResult.plan_comparison.map(plan => (
+              <tr class:list={['plan-row', { 'plan-recommended': plan.recommended }]}>
+                <td>
+                  <div class="plan-name-cell">
+                    {plan.recommended && (
+                      <span class="rec-badge">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                        Best
+                      </span>
+                    )}
+                    <span class={plan.recommended ? 'plan-name rec' : 'plan-name'}>{plan.plan_name}</span>
+                  </div>
+                </td>
+                <td class="num">€{plan.annual_fee.toLocaleString()}</td>
+                <td class="num muted">{plan.included.toLocaleString()}</td>
+                <td class="num muted">€{plan.extra_cost.toFixed(2)}</td>
+                <td class="num muted">{plan.extra_transactions > 0 ? plan.extra_transactions.toLocaleString() : '—'}</td>
+                <td class="num">
+                  <strong class={plan.recommended ? 'rec-cost' : ''}>€{plan.total_annual_cost.toLocaleString()}</strong>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Recommended summary -->
+      <div class="rec-summary">
+        <div class="rec-left">
+          <p class="rec-heading">Recommended Plan</p>
+          <p class="rec-plan-name">{dummyResult.recommended_plan.plan_name}</p>
+          <p class="rec-plan-desc">
+            €{dummyResult.recommended_plan.annual_fee.toLocaleString()} base + €{dummyResult.recommended_plan.extra_transaction_cost.toFixed(2)} per extra PA transaction
+          </p>
+        </div>
+        <div class="rec-cost-block">
+          <p class="rec-cost-label">Total annual cost</p>
+          <p class="rec-cost-val">€{dummyResult.recommended_plan.total_annual_cost.toLocaleString()}</p>
+        </div>
+      </div>
+
+      <!-- CTA buttons -->
+      <div class="result-actions">
+        <!-- TODO: POST /scenarios to save this scenario (App 2) -->
+        <button
+          class="btn-save"
+          onclick="alert('TODO: POST /scenarios\nSaves this calculation as a named scenario for later reference')"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+            <polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>
+          </svg>
+          Save Scenario
+        </button>
+
+        {showSummaryBtn && (
+          <!-- TODO: POST /scenarios/{id}/summary — calls App 4 (AI summary generator) -->
+          <button
+            class="btn-summary"
+            onclick="alert('TODO: POST /scenarios/{id}/summary\nCalls App 4 to generate an English AI summary for this scenario')"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+            </svg>
+            Generate AI Summary
+          </button>
+        )}
+
+        <!-- TODO: GET /scenarios/{id}/export?format=pdf — downloads PDF (optional MVP) -->
+        <button
+          class="btn-export"
+          onclick="alert('TODO: GET /scenarios/{id}/export?format=pdf\nDownloads a PDF export of this scenario')"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          Export PDF
+        </button>
+      </div>
+    </section>
+  </div>
+</UserLayout>
+
+<script>
+  function handleCalculate(e: SubmitEvent) {
+    e.preventDefault();
+    // TODO: POST /calculator/calculate with form data
+    // For now, results are shown as dummy data.
+    const panel = document.getElementById('results-panel');
+    if (panel) {
+      panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    alert('TODO: POST /calculator/calculate\nWould send { profile_id, client_name, inputs } to App 2 and return transaction breakdown + plan comparison');
+  }
+</script>
+
+<style>
+  /* Profile header */
+  .profile-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    padding: 1rem 1.25rem;
+    margin-bottom: 1.25rem;
+    gap: 1rem;
+  }
+
+  .ph-flag { display: flex; align-items: center; gap: 0.85rem; }
+
+  .ph-code {
+    font-size: 0.8rem;
+    font-weight: 800;
+    color: var(--color-customer);
+    background: var(--color-customer-soft);
+    border-radius: 7px;
+    padding: 0.35rem 0.6rem;
+    letter-spacing: 0.05em;
+  }
+
+  .ph-country {
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: var(--color-text);
+    margin-bottom: 0.15rem;
+  }
+
+  .ph-meta { font-size: 0.75rem; color: var(--color-text-muted); }
+
+  .active-badge {
+    font-size: 0.7rem;
+    font-weight: 700;
+    background: rgba(16,185,129,.12);
+    color: #10b981;
+    padding: 0.25rem 0.65rem;
+    border-radius: 100px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  /* Layout */
+  .calc-layout {
+    display: grid;
+    grid-template-columns: 420px 1fr;
+    gap: 1.25rem;
+    align-items: start;
+  }
+
+  @media (max-width: 1100px) {
+    .calc-layout { grid-template-columns: 1fr; }
+  }
+
+  /* Form */
+  .calc-form-wrap {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    padding: 1.25rem;
+    position: sticky;
+    top: 1rem;
+  }
+
+  .form-header { margin-bottom: 1.25rem; }
+
+  .form-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--color-text);
+    margin-bottom: 0.35rem;
+  }
+
+  .form-sub {
+    font-size: 0.78rem;
+    color: var(--color-text-muted);
+    line-height: 1.5;
+  }
+
+  .form-field { margin-bottom: 1rem; }
+
+  .field-label {
+    display: block;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--color-text);
+    margin-bottom: 0.35rem;
+  }
+
+  .req { color: #ef4444; }
+
+  .field-input {
+    width: 100%;
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-border);
+    border-radius: 7px;
+    padding: 0.55rem 0.75rem;
+    font-size: 0.85rem;
+    color: var(--color-text);
+    font-family: inherit;
+    outline: none;
+    box-sizing: border-box;
+    transition: border-color 0.13s;
+  }
+
+  .field-input:focus {
+    border-color: var(--color-customer);
+    box-shadow: 0 0 0 2px rgba(16,185,129,.15);
+  }
+
+  .field-hint {
+    font-size: 0.72rem;
+    color: var(--color-text-muted);
+    margin-top: 0.3rem;
+  }
+
+  /* Rules section */
+  .rules-section { margin-bottom: 1.25rem; }
+
+  .rules-heading {
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-text-muted);
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .rules-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+  }
+
+  .rule-input-card {
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-border);
+    border-radius: 9px;
+    padding: 0.75rem;
+  }
+
+  .rule-card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.5rem;
+  }
+
+  .rule-badges { display: flex; gap: 0.35rem; }
+
+  .dir-badge, .obl-badge, .dir-mini, .obl-mini {
+    font-size: 0.62rem;
+    font-weight: 700;
+    border-radius: 4px;
+    padding: 0.1rem 0.35rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .dir-issued   { background: rgba(59,130,246,.12); color: #3b82f6; }
+  .dir-received { background: rgba(168,85,247,.12); color: #a855f7; }
+  .obl-badge    { background: var(--color-surface); color: var(--color-text-muted); border: 1px solid var(--color-border); }
+  .dir-mini     { font-size: 0.58rem; }
+  .obl-mini     { font-size: 0.58rem; background: var(--color-surface-2); color: var(--color-text-muted); }
+
+  .mult-hint {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--color-customer);
+    background: var(--color-customer-soft);
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    font-family: 'SF Mono', ui-monospace, monospace;
+  }
+
+  .number-wrap {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .number-input { flex: 1; }
+
+  .unit-label {
+    font-size: 0.72rem;
+    color: var(--color-text-muted);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  /* Form actions */
+  .form-actions {
+    display: flex;
+    gap: 0.6rem;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .btn-calculate {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.65rem 1.25rem;
+    background: var(--color-customer);
+    color: #fff;
+    border: none;
+    border-radius: 9px;
+    font-size: 0.88rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.13s;
+    font-family: inherit;
+    flex: 1;
+    justify-content: center;
+  }
+
+  .btn-calculate:hover {
+    background: var(--color-customer-hover);
+    box-shadow: 0 4px 18px rgba(16,185,129,.35);
+    transform: translateY(-1px);
+  }
+
+  .btn-reset {
+    padding: 0.65rem 0.9rem;
+    background: none;
+    border: 1px solid var(--color-border);
+    border-radius: 9px;
+    font-size: 0.82rem;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.13s;
+  }
+
+  .btn-reset:hover { background: var(--color-surface-2); color: var(--color-text); }
+
+  /* ── Results panel ── */
+  .results-panel {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+
+  .results-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .results-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--color-text);
+  }
+
+  .results-client {
+    font-size: 0.78rem;
+    color: var(--color-text-muted);
+    background: var(--color-surface-2);
+    border-radius: 6px;
+    padding: 0.2rem 0.55rem;
+  }
+
+  /* Result blocks */
+  .result-block { }
+
+  .block-title {
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-text-muted);
+    margin-bottom: 0.65rem;
+  }
+
+  .result-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+  }
+
+  .result-table th {
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-muted);
+    background: var(--color-surface-2);
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .result-table th.num, .result-table td.num { text-align: right; }
+
+  .result-table td {
+    padding: 0.65rem 0.75rem;
+    border-bottom: 1px solid var(--color-border);
+    color: var(--color-text);
+    vertical-align: middle;
+  }
+
+  .result-table tbody tr:last-child td { border-bottom: 1px solid var(--color-border); }
+  .result-table tbody tr:hover { background: rgba(255,255,255,.015); }
+
+  .breakdown-label { display: flex; flex-direction: column; gap: 0.3rem; }
+  .breakdown-text  { font-size: 0.82rem; font-weight: 500; }
+  .breakdown-tags  { display: flex; gap: 0.3rem; }
+
+  .multiplier {
+    font-family: 'SF Mono', ui-monospace, monospace;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--color-customer);
+    background: var(--color-customer-soft);
+    padding: 0.1rem 0.35rem;
+    border-radius: 4px;
+  }
+
+  .muted  { color: var(--color-text-muted); }
+  .strong { font-weight: 700; }
+
+  .total-row td {
+    background: var(--color-surface-2);
+    padding: 0.6rem 0.75rem;
+    border-bottom: none;
+  }
+
+  .total-label {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .total-val {
+    font-size: 1rem;
+    font-weight: 800;
+    color: var(--color-text);
+    text-align: right;
+  }
+
+  /* Plan comparison */
+  .plan-row td { background: transparent; }
+  .plan-recommended td {
+    background: rgba(16,185,129,.04);
+    border-color: rgba(16,185,129,.15);
+  }
+
+  .plan-name-cell {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .rec-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.62rem;
+    font-weight: 700;
+    background: rgba(16,185,129,.12);
+    color: #10b981;
+    padding: 0.12rem 0.4rem;
+    border-radius: 4px;
+    white-space: nowrap;
+  }
+
+  .plan-name { font-weight: 500; }
+  .plan-name.rec { font-weight: 700; color: var(--color-text); }
+  .rec-cost { color: #10b981; font-size: 0.9rem; }
+
+  /* Recommended summary card */
+  .rec-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: linear-gradient(135deg, rgba(16,185,129,.1) 0%, rgba(16,185,129,.04) 100%);
+    border: 1px solid rgba(16,185,129,.25);
+    border-radius: 12px;
+    padding: 1.1rem 1.25rem;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .rec-heading {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #10b981;
+    margin-bottom: 0.3rem;
+  }
+
+  .rec-plan-name {
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: var(--color-text);
+    letter-spacing: -0.02em;
+    margin-bottom: 0.2rem;
+  }
+
+  .rec-plan-desc {
+    font-size: 0.78rem;
+    color: var(--color-text-muted);
+  }
+
+  .rec-cost-block { text-align: right; flex-shrink: 0; }
+
+  .rec-cost-label {
+    font-size: 0.72rem;
+    color: var(--color-text-muted);
+    margin-bottom: 0.2rem;
+  }
+
+  .rec-cost-val {
+    font-size: 1.75rem;
+    font-weight: 800;
+    color: #10b981;
+    letter-spacing: -0.03em;
+    line-height: 1;
+  }
+
+  /* Result action buttons */
+  .result-actions {
+    display: flex;
+    gap: 0.65rem;
+    flex-wrap: wrap;
+    padding-top: 0.25rem;
+    border-top: 1px solid var(--color-border);
+  }
+
+  .btn-save {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.55rem 1rem;
+    background: var(--color-customer);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.13s;
+  }
+
+  .btn-save:hover { background: var(--color-customer-hover); }
+
+  .btn-summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.55rem 1rem;
+    background: rgba(168,85,247,.1);
+    color: #a855f7;
+    border: 1px solid rgba(168,85,247,.25);
+    border-radius: 8px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.13s;
+  }
+
+  .btn-summary:hover { background: rgba(168,85,247,.18); }
+
+  .btn-export {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.55rem 1rem;
+    background: none;
+    color: var(--color-text-muted);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    font-size: 0.82rem;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.13s;
+  }
+
+  .btn-export:hover { background: var(--color-surface-2); color: var(--color-text); }
+</style>

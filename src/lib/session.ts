@@ -1,7 +1,7 @@
 import type { AstroCookies } from 'astro';
 
 export interface Session {
-  role: 'admin' | 'customer';
+  role: 'admin' | 'internal' | 'client' | 'customer';
   email: string;
   name: string;
   loggedInAt: string;

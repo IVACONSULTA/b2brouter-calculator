@@ -467,3 +467,143 @@ export const DUMMY_SCENARIOS = [
     has_summary: false,
   },
 ];
+
+// ─── Active profiles available to calculator ─────────────────────────────────
+
+export const DUMMY_ACTIVE_PROFILES = DUMMY_PROFILES.filter(p => p.status === 'active');
+
+// ─── Active transaction rules per profile (calculator inputs) ─────────────────
+
+export const DUMMY_ACTIVE_RULES: Record<string, {
+  id: string; input_key: string; label: string;
+  direction: string; obligation: string; pa_transactions_per_item: number;
+  placeholder: number;
+}[]> = {
+  'profile-fr-b2b-1': [
+    { id: 'rule-002', input_key: 'issued_einvoicing',    label: 'Issued e-invoicing invoices/year',        direction: 'Issued',   obligation: 'E-invoicing',         pa_transactions_per_item: 1.5, placeholder: 5000 },
+    { id: 'rule-003', input_key: 'received_einvoicing',  label: 'Received e-invoicing invoices/year',      direction: 'Received', obligation: 'E-invoicing',         pa_transactions_per_item: 1.0, placeholder: 2000 },
+    { id: 'rule-004', input_key: 'issued_ereporting',    label: 'Issued e-reporting transactions/year',    direction: 'Issued',   obligation: 'E-reporting',         pa_transactions_per_item: 0.5, placeholder: 3000 },
+    { id: 'rule-005', input_key: 'received_ereporting',  label: 'Received e-reporting transactions/year',  direction: 'Received', obligation: 'E-reporting',         pa_transactions_per_item: 0.3, placeholder: 1000 },
+    { id: 'rule-006', input_key: 'payment_ereporting',   label: 'Payment e-reporting transactions/year',   direction: 'Issued',   obligation: 'Payment e-reporting', pa_transactions_per_item: 0.2, placeholder: 2000 },
+  ],
+  'profile-de-sap-1': [
+    { id: 'rule-de-01', input_key: 'issued_einvoicing',     label: 'Issued e-invoices/year (B2B domestic)',    direction: 'Issued',   obligation: 'E-invoicing', pa_transactions_per_item: 1.0, placeholder: 10000 },
+    { id: 'rule-de-02', input_key: 'received_einvoicing',   label: 'Received e-invoices/year (B2B domestic)',  direction: 'Received', obligation: 'E-invoicing', pa_transactions_per_item: 0.8, placeholder: 5000 },
+    { id: 'rule-de-03', input_key: 'crossborder_issued',    label: 'Cross-border issued invoices/year',        direction: 'Issued',   obligation: 'E-reporting', pa_transactions_per_item: 0.5, placeholder: 2000 },
+    { id: 'rule-de-04', input_key: 'crossborder_received',  label: 'Cross-border received invoices/year',      direction: 'Received', obligation: 'E-reporting', pa_transactions_per_item: 0.4, placeholder: 1500 },
+  ],
+};
+
+export const DUMMY_ACTIVE_PLANS: Record<string, {
+  id: string; plan_name: string; annual_fee: number;
+  included_pa_transactions: number; extra_transaction_cost: number; monthly_fee: number;
+}[]> = {
+  'profile-fr-b2b-1': [
+    { id: 'plan-001', plan_name: 'Starter',      annual_fee: 480,  included_pa_transactions: 2400,  extra_transaction_cost: 0.20, monthly_fee: 40 },
+    { id: 'plan-002', plan_name: 'Professional', annual_fee: 840,  included_pa_transactions: 6000,  extra_transaction_cost: 0.18, monthly_fee: 70 },
+    { id: 'plan-003', plan_name: 'Enterprise',   annual_fee: 1200, included_pa_transactions: 12000, extra_transaction_cost: 0.15, monthly_fee: 100 },
+  ],
+  'profile-de-sap-1': [
+    { id: 'plan-de-01', plan_name: 'Basic',        annual_fee: 600,  included_pa_transactions: 3000,  extra_transaction_cost: 0.22, monthly_fee: 50 },
+    { id: 'plan-de-02', plan_name: 'Standard',     annual_fee: 1080, included_pa_transactions: 8000,  extra_transaction_cost: 0.18, monthly_fee: 90 },
+    { id: 'plan-de-03', plan_name: 'Advanced',     annual_fee: 1800, included_pa_transactions: 16000, extra_transaction_cost: 0.14, monthly_fee: 150 },
+    { id: 'plan-de-04', plan_name: 'Enterprise',   annual_fee: 3000, included_pa_transactions: 40000, extra_transaction_cost: 0.10, monthly_fee: 250 },
+  ],
+};
+
+// ─── Scenario full result (for scenario detail page) ─────────────────────────
+
+export const DUMMY_SCENARIO_RESULT = {
+  id: 'scenario-001',
+  client_name: 'Acme Corp',
+  country: 'France',
+  provider: 'B2Brouter',
+  profile_id: 'profile-fr-b2b-1',
+  profile_version: 'v1.0',
+  currency: 'EUR',
+  calculation_basis: 'PA transactions',
+  created_at: '2026-04-25T14:22:00Z',
+  created_by: 'analyst@b2brouter.com',
+  inputs: {
+    issued_einvoicing: 8000,
+    received_einvoicing: 3000,
+    issued_ereporting: 2000,
+    received_ereporting: 1500,
+    payment_ereporting: 5000,
+  },
+  transaction_breakdown: [
+    { label: 'Issued e-invoicing invoices', direction: 'Issued',   obligation: 'E-invoicing',         volume: 8000, multiplier: 1.5, pa_transactions: 12000 },
+    { label: 'Received e-invoicing invoices', direction: 'Received', obligation: 'E-invoicing',       volume: 3000, multiplier: 1.0, pa_transactions: 3000  },
+    { label: 'Issued e-reporting transactions', direction: 'Issued', obligation: 'E-reporting',       volume: 2000, multiplier: 0.5, pa_transactions: 1000  },
+    { label: 'Received e-reporting transactions', direction: 'Received', obligation: 'E-reporting',   volume: 1500, multiplier: 0.3, pa_transactions: 450   },
+    { label: 'Payment e-reporting', direction: 'Issued',           obligation: 'Payment e-reporting', volume: 5000, multiplier: 0.2, pa_transactions: 1000  },
+  ],
+  total_pa_transactions: 17450,
+  plan_comparison: [
+    { plan_name: 'Starter',      annual_fee: 480,  included: 2400,  extra_cost: 0.20, extra_transactions: 15050, total_annual_cost: 3490.0,  recommended: false },
+    { plan_name: 'Professional', annual_fee: 840,  included: 6000,  extra_cost: 0.18, extra_transactions: 11450, total_annual_cost: 2901.0,  recommended: false },
+    { plan_name: 'Enterprise',   annual_fee: 1200, included: 12000, extra_cost: 0.15, extra_transactions: 5450,  total_annual_cost: 2017.5,  recommended: true  },
+  ],
+  recommended_plan: {
+    plan_name: 'Enterprise',
+    total_annual_cost: 2017.5,
+    annual_fee: 1200,
+    included_pa_transactions: 12000,
+    extra_transaction_cost: 0.15,
+    extra_transactions: 5450,
+  },
+  assumptions: [
+    { key: 'b2c_treatment', value: 'Invoice by invoice' },
+    { key: 'cross_border_scope', value: 'EU + non-EU included in e-reporting' },
+  ],
+  ai_summary: "Based on an estimated annual volume of 17,450 PA transactions, the recommended option is the **Enterprise plan** at €1,200/year. This plan includes 12,000 PA transactions and applies an excess rate of €0.15 per additional transaction, resulting in a total annual cost of approximately €2,017.50.\n\nCompared to the Professional plan (€2,901/year) and the Starter plan (€3,490/year), the Enterprise plan offers the most cost-effective structure for this volume profile — saving €883.50/year versus Professional and €1,472.50/year versus Starter.\n\nThe majority of PA transactions originate from issued e-invoicing activities (12,000 transactions, 69% of total annual consumption), followed by received e-invoicing (3,000) and payment e-reporting (1,000). The profile is based on B2Brouter France PA mandate rules, version v1.0, approved and active since January 2025.",
+  has_summary: true,
+};
+
+// ─── Second example scenario (no AI summary yet) ─────────────────────────────
+
+export const DUMMY_SCENARIO_RESULT_2 = {
+  id: 'scenario-003',
+  client_name: 'Tech Solutions SL',
+  country: 'France',
+  provider: 'B2Brouter',
+  profile_id: 'profile-fr-b2b-1',
+  profile_version: 'v1.0',
+  currency: 'EUR',
+  calculation_basis: 'PA transactions',
+  created_at: '2026-04-18T10:05:00Z',
+  created_by: 'analyst@b2brouter.com',
+  inputs: {
+    issued_einvoicing: 1000,
+    received_einvoicing: 400,
+    issued_ereporting: 200,
+    received_ereporting: 100,
+    payment_ereporting: 300,
+  },
+  transaction_breakdown: [
+    { label: 'Issued e-invoicing invoices',      direction: 'Issued',   obligation: 'E-invoicing',         volume: 1000, multiplier: 1.5, pa_transactions: 1500 },
+    { label: 'Received e-invoicing invoices',    direction: 'Received', obligation: 'E-invoicing',         volume: 400,  multiplier: 1.0, pa_transactions: 400  },
+    { label: 'Issued e-reporting transactions',  direction: 'Issued',   obligation: 'E-reporting',         volume: 200,  multiplier: 0.5, pa_transactions: 100  },
+    { label: 'Received e-reporting transactions',direction: 'Received', obligation: 'E-reporting',         volume: 100,  multiplier: 0.3, pa_transactions: 30   },
+    { label: 'Payment e-reporting',              direction: 'Issued',   obligation: 'Payment e-reporting', volume: 300,  multiplier: 0.2, pa_transactions: 60   },
+  ],
+  total_pa_transactions: 2090,
+  plan_comparison: [
+    { plan_name: 'Starter',      annual_fee: 480,  included: 2400,  extra_cost: 0.20, extra_transactions: 0,   total_annual_cost: 480.0,  recommended: true  },
+    { plan_name: 'Professional', annual_fee: 840,  included: 6000,  extra_cost: 0.18, extra_transactions: 0,   total_annual_cost: 840.0,  recommended: false },
+    { plan_name: 'Enterprise',   annual_fee: 1200, included: 12000, extra_cost: 0.15, extra_transactions: 0,   total_annual_cost: 1200.0, recommended: false },
+  ],
+  recommended_plan: {
+    plan_name: 'Starter',
+    total_annual_cost: 480.0,
+    annual_fee: 480,
+    included_pa_transactions: 2400,
+    extra_transaction_cost: 0.20,
+    extra_transactions: 0,
+  },
+  assumptions: [
+    { key: 'b2c_treatment', value: 'Invoice by invoice' },
+  ],
+  ai_summary: null,
+  has_summary: false,
+};
