@@ -1,0 +1,391 @@
+---
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import { getSession } from '../../lib/session';
+import { DUMMY_PROFILES } from '../../lib/dummy-data';
+
+const session = getSession(Astro.cookies);
+if (!session) return Astro.redirect('/admin/login');
+if (session.role !== 'admin') return Astro.redirect('/admin/login');
+
+// Admin sees all statuses; client/internal would only see active
+const profiles = DUMMY_PROFILES;
+
+const statusMeta: Record<string, { label: string; cls: string }> = {
+  active:           { label: 'Active',           cls: 'badge-green' },
+  pending_approval: { label: 'Pending Approval',  cls: 'badge-amber' },
+  draft:            { label: 'Draft',             cls: 'badge-gray'  },
+  archived:         { label: 'Archived',          cls: 'badge-red'   },
+};
+
+const activeCount   = profiles.filter(p => p.status === 'active').length;
+const pendingCount  = profiles.filter(p => p.status === 'pending_approval').length;
+const draftCount    = profiles.filter(p => p.status === 'draft').length;
+---
+
+<AdminLayout
+  title="Countries & Providers"
+  breadcrumbs={[{ label: 'Admin' }, { label: 'Countries & Providers' }]}
+>
+  <!-- Filter strip -->
+  <div class="filter-bar">
+    <div class="filter-tabs" id="filter-tabs">
+      <button class="filter-tab active" data-filter="all">All <span class="count">{profiles.length}</span></button>
+      <button class="filter-tab" data-filter="active">Active <span class="count">{activeCount}</span></button>
+      <button class="filter-tab" data-filter="pending_approval">Pending <span class="count">{pendingCount}</span></button>
+      <button class="filter-tab" data-filter="draft">Draft <span class="count">{draftCount}</span></button>
+    </div>
+    <div class="filter-right">
+      <div class="search-wrap">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <input type="search" id="search-input" placeholder="Search country or provider…" class="search-input" />
+      </div>
+      <a href="/admin/countries/new" class="btn-primary">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        New Country
+      </a>
+    </div>
+  </div>
+
+  <!-- Table -->
+  <div class="table-wrap">
+    <table class="table" id="profiles-table">
+      <thead>
+        <tr>
+          <th>Country</th>
+          <th>Provider / Type</th>
+          <th>Version</th>
+          <th>Status</th>
+          <th>Active From</th>
+          <th>Rules</th>
+          <th>Plans</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {profiles.map(p => (
+          <tr data-status={p.status} data-search={`${p.country.name} ${p.provider.name}`.toLowerCase()}>
+            <td>
+              <div class="country-cell">
+                <span class="code-pill">{p.country.code}</span>
+                <span class="country-name">{p.country.name}</span>
+              </div>
+            </td>
+            <td>
+              <span class="provider-name">{p.provider.name}</span>
+              <span class="type-tag">{p.provider.type}</span>
+            </td>
+            <td><span class="version-pill">{p.version}</span></td>
+            <td>
+              <span class={`badge ${statusMeta[p.status].cls}`}>{statusMeta[p.status].label}</span>
+            </td>
+            <td class="muted">{p.active_from ?? '—'}</td>
+            <td class="center">{p.rules_count}</td>
+            <td class="center">{p.plans_count}</td>
+            <td>
+              <div class="action-row">
+                {p.status === 'draft' && (
+                  <>
+                    <a href={`/admin/countries/${p.id}/setup`} class="btn-action">Setup</a>
+                    <a href={`/admin/countries/${p.id}/documents`} class="btn-action">Docs</a>
+                  </>
+                )}
+                {p.status === 'pending_approval' && p.analysis_id && (
+                  <a href={`/admin/analyses/${p.analysis_id}`} class="btn-action btn-amber">Review AI</a>
+                )}
+                {(p.status === 'active' || p.status === 'pending_approval') && (
+                  <a href={`/admin/profiles/${p.id}`} class="btn-action">Profile</a>
+                )}
+                {p.status === 'archived' && (
+                  <span class="muted" style="font-size:0.75rem">Archived</span>
+                )}
+                <button
+                  class="btn-icon"
+                  title="More actions"
+                  data-profile-id={p.id}
+                  onclick="alert('API: more actions for ' + this.dataset.profileId)"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>
+                  </svg>
+                </button>
+              </div>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+</AdminLayout>
+
+<script>
+  // Filter tabs
+  const tabs = document.querySelectorAll<HTMLButtonElement>('.filter-tab');
+  const rows = document.querySelectorAll<HTMLTableRowElement>('#profiles-table tbody tr');
+  const search = document.getElementById('search-input') as HTMLInputElement;
+
+  let activeFilter = 'all';
+  let searchQuery  = '';
+
+  function applyFilters() {
+    rows.forEach(row => {
+      const status = row.dataset.status ?? '';
+      const term   = row.dataset.search ?? '';
+      const matchFilter = activeFilter === 'all' || status === activeFilter;
+      const matchSearch = term.includes(searchQuery);
+      row.style.display = matchFilter && matchSearch ? '' : 'none';
+    });
+  }
+
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      tabs.forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      activeFilter = tab.dataset.filter ?? 'all';
+      applyFilters();
+    });
+  });
+
+  search.addEventListener('input', () => {
+    searchQuery = search.value.toLowerCase();
+    applyFilters();
+  });
+</script>
+
+<style>
+  .filter-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .filter-tabs {
+    display: flex;
+    gap: 0.25rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 9px;
+    padding: 0.25rem;
+  }
+
+  .filter-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.8rem;
+    border-radius: 6px;
+    border: none;
+    background: none;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    transition: all 0.13s;
+  }
+
+  .filter-tab:hover { background: var(--color-surface-2); color: var(--color-text); }
+
+  .filter-tab.active {
+    background: var(--color-admin-soft);
+    color: var(--color-admin);
+    font-weight: 600;
+  }
+
+  .count {
+    font-size: 0.7rem;
+    background: var(--color-surface-2);
+    color: var(--color-text-muted);
+    padding: 0.05rem 0.35rem;
+    border-radius: 100px;
+  }
+
+  .filter-tab.active .count {
+    background: rgba(99,102,241,.2);
+    color: var(--color-admin);
+  }
+
+  .filter-right {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .search-wrap {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    padding: 0.4rem 0.75rem;
+    color: var(--color-text-muted);
+  }
+
+  .search-input {
+    background: none;
+    border: none;
+    outline: none;
+    font-size: 0.82rem;
+    color: var(--color-text);
+    font-family: inherit;
+    width: 200px;
+  }
+
+  .search-input::placeholder { color: var(--color-text-muted); }
+
+  .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 0.9rem;
+    background: var(--color-admin);
+    color: #fff;
+    border-radius: 7px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    transition: all 0.13s;
+    white-space: nowrap;
+  }
+
+  .btn-primary:hover {
+    background: var(--color-admin-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px rgba(99,102,241,.35);
+  }
+
+  /* ── Table ── */
+  .table-wrap {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  .table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.83rem;
+  }
+
+  .table th {
+    text-align: left;
+    padding: 0.65rem 1rem;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-muted);
+    background: var(--color-surface-2);
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .table td {
+    padding: 0.75rem 1rem;
+    color: var(--color-text);
+    border-bottom: 1px solid var(--color-border);
+    vertical-align: middle;
+  }
+
+  .table tbody tr:last-child td { border-bottom: none; }
+  .table tbody tr:hover { background: rgba(255,255,255,.02); }
+
+  .country-cell { display: flex; align-items: center; gap: 0.5rem; }
+
+  .code-pill {
+    font-size: 0.66rem;
+    font-weight: 800;
+    color: var(--color-admin);
+    background: var(--color-admin-soft);
+    border-radius: 5px;
+    padding: 0.15rem 0.4rem;
+    letter-spacing: 0.04em;
+  }
+
+  .country-name { font-weight: 600; }
+
+  .provider-name { font-weight: 500; }
+
+  .type-tag {
+    font-size: 0.66rem;
+    font-weight: 700;
+    color: var(--color-text-muted);
+    background: var(--color-surface-2);
+    border-radius: 4px;
+    padding: 0.1rem 0.35rem;
+    margin-left: 0.35rem;
+  }
+
+  .version-pill {
+    font-size: 0.75rem;
+    font-family: 'SF Mono', ui-monospace, monospace;
+    color: var(--color-text-muted);
+    background: var(--color-surface-2);
+    border-radius: 5px;
+    padding: 0.15rem 0.45rem;
+  }
+
+  .badge {
+    display: inline-block;
+    padding: 0.22rem 0.6rem;
+    border-radius: 100px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .badge-green  { background: rgba(16,185,129,.12); color: #10b981; }
+  .badge-amber  { background: rgba(245,158,11,.12);  color: #f59e0b; }
+  .badge-gray   { background: var(--color-surface-2); color: var(--color-text-muted); }
+  .badge-red    { background: rgba(239,68,68,.12);   color: #ef4444; }
+
+  .muted { color: var(--color-text-muted); font-size: 0.8rem; }
+  .center { text-align: center; color: var(--color-text-muted); }
+
+  .action-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .btn-action {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-admin);
+    padding: 0.25rem 0.6rem;
+    border-radius: 5px;
+    border: 1px solid rgba(99,102,241,.3);
+    transition: all 0.13s;
+    white-space: nowrap;
+  }
+
+  .btn-action:hover { background: var(--color-admin-soft); }
+
+  .btn-action.btn-amber {
+    color: #f59e0b;
+    border-color: rgba(245,158,11,.3);
+  }
+
+  .btn-action.btn-amber:hover { background: rgba(245,158,11,.08); }
+
+  .btn-icon {
+    width: 26px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--color-border);
+    border-radius: 5px;
+    background: none;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    transition: all 0.13s;
+  }
+
+  .btn-icon:hover { background: var(--color-surface-2); color: var(--color-text); }
+</style>

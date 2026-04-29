@@ -1,0 +1,426 @@
+---
+import AdminLayout from '../../../../layouts/AdminLayout.astro';
+import { getSession } from '../../../../lib/session';
+import { DUMMY_PROFILES } from '../../../../lib/dummy-data';
+
+const session = getSession(Astro.cookies);
+if (!session || session.role !== 'admin') return Astro.redirect('/admin/login');
+
+const { id } = Astro.params;
+const profile = DUMMY_PROFILES.find(p => p.id === id) ?? DUMMY_PROFILES[2]; // fallback to draft
+---
+
+<AdminLayout
+  title={`Setup — ${profile.country.name} / ${profile.provider.name}`}
+  breadcrumbs={[
+    { label: 'Countries', href: '/countries' },
+    { label: `${profile.country.name} / ${profile.provider.name}` },
+    { label: 'Setup' },
+  ]}
+>
+  <!-- Step tabs -->
+  <div class="step-bar">
+    <a href={`/admin/countries/${profile.id}/setup`} class="step-tab active">
+      <span class="step-num">1</span> Profile Setup
+    </a>
+    <div class="step-connector"></div>
+    <a href={`/admin/countries/${profile.id}/documents`} class="step-tab">
+      <span class="step-num">2</span> Documents
+    </a>
+    <div class="step-connector"></div>
+    <span class="step-tab disabled">
+      <span class="step-num">3</span> AI Analysis
+    </span>
+    <div class="step-connector"></div>
+    <span class="step-tab disabled">
+      <span class="step-num">4</span> Activate
+    </span>
+  </div>
+
+  <div class="form-layout">
+    <div class="form-card">
+      <div class="card-header">
+        <div class="header-left">
+          <div class="country-badge">
+            <span class="code">{profile.country.code}</span>
+            <span class="cname">{profile.country.name}</span>
+          </div>
+          <span class="provider-tag">{profile.provider.name} · {profile.provider.type}</span>
+        </div>
+        <span class={`status-badge status-${profile.status}`}>{profile.status.replace('_', ' ')}</span>
+      </div>
+
+      <!-- TODO: PATCH /admin/profiles/{id} via App 2 API -->
+      <form id="setup-form" class="form" action="#" method="POST">
+        <div class="form-grid">
+          <div class="field">
+            <label for="country">Country</label>
+            <input type="text" id="country" name="country" value={profile.country.name} readonly class="readonly" />
+          </div>
+
+          <div class="field">
+            <label for="provider_name">Provider</label>
+            <input type="text" id="provider_name" name="provider_name" value={profile.provider.name} readonly class="readonly" />
+          </div>
+
+          <div class="field">
+            <label for="provider_type">Provider Type</label>
+            <input type="text" id="provider_type" name="provider_type" value={profile.provider.type} readonly class="readonly" />
+          </div>
+
+          <div class="field">
+            <label for="currency">Currency <span class="required">*</span></label>
+            <select id="currency" name="currency" required>
+              {['EUR', 'GBP', 'PLN', 'RON'].map(c => (
+                <option value={c} selected={c === profile.currency}>{c}</option>
+              ))}
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="version">Version</label>
+            <input type="text" id="version" name="version" value={profile.version} />
+          </div>
+
+          <div class="field">
+            <label for="calculation_basis">Calculation Basis</label>
+            <input type="text" id="calculation_basis" name="calculation_basis" value="PA transactions" />
+          </div>
+
+          <div class="field full-width">
+            <label for="notes">Notes</label>
+            <textarea id="notes" name="notes" rows="3" placeholder="Any relevant context about this profile…"></textarea>
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <a href="/countries" class="btn-secondary">Back to Countries</a>
+          <button type="submit" name="action" value="save" class="btn-ghost">
+            Save draft
+          </button>
+          <a href={`/admin/countries/${profile.id}/documents`} class="btn-primary">
+            Next: Upload Documents
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M5 12h14M12 5l7 7-7 7"/>
+            </svg>
+          </a>
+        </div>
+      </form>
+    </div>
+
+    <!-- Info panel -->
+    <aside class="side-info">
+      <div class="info-card">
+        <h3>Profile status</h3>
+        <div class="status-timeline">
+          {[
+            { key: 'draft',             label: 'Draft',            desc: 'Profile created, no documents yet' },
+            { key: 'pending_approval',  label: 'Pending Approval', desc: 'Analysis done, rules pending review' },
+            { key: 'active',            label: 'Active',           desc: 'Available to customers' },
+            { key: 'archived',          label: 'Archived',         desc: 'Superseded by newer version' },
+          ].map((s, i) => (
+            <div class={`timeline-item ${s.key === profile.status ? 'current' : ''}`}>
+              <div class="timeline-dot"></div>
+              <div>
+                <p class="timeline-label">{s.label}</p>
+                <p class="timeline-desc">{s.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </aside>
+  </div>
+</AdminLayout>
+
+<style>
+  /* Step bar */
+  .step-bar {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    padding: 0.85rem 1.25rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .step-tab {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: var(--color-text-muted);
+    transition: color 0.13s;
+    white-space: nowrap;
+  }
+
+  .step-tab:not(.disabled):hover { color: var(--color-text); }
+
+  .step-tab.active {
+    color: var(--color-admin);
+    font-weight: 700;
+  }
+
+  .step-tab.disabled { opacity: 0.35; cursor: default; pointer-events: none; }
+
+  .step-num {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.68rem;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  .step-tab.active .step-num {
+    background: var(--color-admin);
+    border-color: var(--color-admin);
+    color: #fff;
+  }
+
+  .step-connector {
+    flex: 1;
+    height: 1px;
+    background: var(--color-border);
+    margin: 0 0.75rem;
+    min-width: 24px;
+  }
+
+  /* Layout */
+  .form-layout {
+    display: grid;
+    grid-template-columns: 1fr 260px;
+    gap: 1.25rem;
+    align-items: start;
+  }
+
+  @media (max-width: 900px) { .form-layout { grid-template-columns: 1fr; } }
+
+  .form-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.1rem 1.5rem;
+    border-bottom: 1px solid var(--color-border);
+    gap: 1rem;
+  }
+
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .country-badge {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .code {
+    font-size: 0.68rem;
+    font-weight: 800;
+    color: var(--color-admin);
+    background: var(--color-admin-soft);
+    border-radius: 5px;
+    padding: 0.2rem 0.45rem;
+    letter-spacing: 0.04em;
+  }
+
+  .cname { font-size: 0.95rem; font-weight: 700; color: var(--color-text); }
+
+  .provider-tag {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    background: var(--color-surface-2);
+    padding: 0.2rem 0.55rem;
+    border-radius: 5px;
+  }
+
+  .status-badge {
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 0.22rem 0.6rem;
+    border-radius: 100px;
+    text-transform: capitalize;
+    white-space: nowrap;
+  }
+
+  .status-draft             { background: var(--color-surface-2); color: var(--color-text-muted); }
+  .status-active            { background: rgba(16,185,129,.12);   color: #10b981; }
+  .status-pending_approval  { background: rgba(245,158,11,.12);   color: #f59e0b; }
+  .status-archived          { background: rgba(239,68,68,.12);    color: #ef4444; }
+
+  .form { padding: 1.5rem; }
+
+  .form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem 1.25rem;
+    margin-bottom: 1.5rem;
+  }
+
+  @media (max-width: 680px) { .form-grid { grid-template-columns: 1fr; } }
+
+  .field { display: flex; flex-direction: column; gap: 0.4rem; }
+  .full-width { grid-column: 1 / -1; }
+
+  label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--color-text);
+  }
+
+  .required { color: #ef4444; }
+
+  input, select, textarea {
+    padding: 0.6rem 0.85rem;
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    color: var(--color-text);
+    font-size: 0.85rem;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.13s;
+    width: 100%;
+  }
+
+  input:focus, select:focus, textarea:focus {
+    border-color: var(--color-admin);
+    box-shadow: 0 0 0 3px rgba(99,102,241,.1);
+  }
+
+  input.readonly {
+    opacity: 0.6;
+    cursor: default;
+    background: var(--color-bg);
+  }
+
+  textarea { resize: vertical; }
+  select { cursor: pointer; }
+
+  .form-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--color-border);
+    flex-wrap: wrap;
+  }
+
+  .btn-secondary {
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    font-size: 0.83rem;
+    color: var(--color-text-muted);
+    background: none;
+    border: 1px solid var(--color-border);
+    transition: all 0.13s;
+  }
+  .btn-secondary:hover { background: var(--color-surface-2); color: var(--color-text); }
+
+  .btn-ghost {
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    font-size: 0.83rem;
+    color: var(--color-text-muted);
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-border);
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.13s;
+  }
+  .btn-ghost:hover { color: var(--color-text); }
+
+  .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.5rem 1rem;
+    background: var(--color-admin);
+    color: #fff;
+    border-radius: 8px;
+    font-size: 0.83rem;
+    font-weight: 600;
+    transition: all 0.13s;
+  }
+  .btn-primary:hover { background: var(--color-admin-hover); transform: translateY(-1px); box-shadow: 0 4px 16px rgba(99,102,241,.35); }
+
+  /* Side info */
+  .side-info { display: flex; flex-direction: column; gap: 0.85rem; }
+
+  .info-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    padding: 1.1rem;
+  }
+
+  .info-card h3 {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--color-text);
+    margin-bottom: 1rem;
+  }
+
+  .status-timeline {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+  }
+
+  .timeline-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.65rem;
+    opacity: 0.4;
+  }
+
+  .timeline-item.current { opacity: 1; }
+
+  .timeline-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--color-surface-2);
+    border: 2px solid var(--color-border);
+    flex-shrink: 0;
+    margin-top: 0.25rem;
+  }
+
+  .timeline-item.current .timeline-dot {
+    background: var(--color-admin);
+    border-color: var(--color-admin);
+    box-shadow: 0 0 0 3px rgba(99,102,241,.2);
+  }
+
+  .timeline-label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--color-text);
+    line-height: 1.2;
+  }
+
+  .timeline-desc {
+    font-size: 0.7rem;
+    color: var(--color-text-muted);
+    margin-top: 0.15rem;
+  }
+</style>

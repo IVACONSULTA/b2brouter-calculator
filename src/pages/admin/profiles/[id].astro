@@ -1,0 +1,641 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { getSession } from '../../../lib/session';
+import { DUMMY_PROFILES, DUMMY_ANALYSIS_DETAIL } from '../../../lib/dummy-data';
+
+const session = getSession(Astro.cookies);
+if (!session || session.role !== 'admin') return Astro.redirect('/admin/login');
+
+const { id } = Astro.params;
+const profile = DUMMY_PROFILES.find(p => p.id === id) ?? DUMMY_PROFILES[0];
+const analysis = DUMMY_ANALYSIS_DETAIL;
+
+const approvedRules = analysis.rules.filter(r => r.status === 'approved');
+const approvedPlans = analysis.plans.filter(p => p.status === 'approved');
+const approvedAssumptions = analysis.assumptions.filter(a => a.status === 'approved');
+const pendingItems = analysis.rules.filter(r => r.status !== 'approved' && r.status !== 'rejected').length
+  + analysis.plans.filter(p => p.status !== 'approved' && p.status !== 'rejected').length;
+
+const canActivate = approvedRules.length >= 1 && approvedPlans.length >= 1 && analysis.conflicts.length === 0;
+
+const isAlreadyActive = profile.status === 'active';
+---
+
+<AdminLayout
+  title={`Profile — ${profile.country.name} / ${profile.provider.name}`}
+  breadcrumbs={[
+    { label: 'Countries', href: '/countries' },
+    { label: `${profile.country.name} / ${profile.provider.name}` },
+    { label: `Profile ${profile.version}` },
+  ]}
+>
+  <!-- Profile header card -->
+  <div class="profile-header">
+    <div class="ph-left">
+      <div class="ph-badge">
+        <span class="ph-code">{profile.country.code}</span>
+        <div>
+          <p class="ph-title">{profile.country.name} · {profile.provider.name} <span class="ph-type">{profile.provider.type}</span></p>
+          <p class="ph-version">Version {profile.version} · {profile.currency}</p>
+        </div>
+      </div>
+    </div>
+    <div class="ph-right">
+      <span class={`status-badge s-${profile.status}`}>{profile.status.replace('_', ' ')}</span>
+      {isAlreadyActive
+        ? (
+          <!-- TODO: POST /admin/profiles/{profile.id}/archive via App 2 API -->
+          <button class="btn-archive" onclick="handleArchive()">Archive version</button>
+        )
+        : (
+          <!-- TODO: POST /admin/profiles/{profile.id}/activate via App 2 API -->
+          <button
+            class={`btn-activate ${canActivate ? '' : 'disabled'}`}
+            onclick="handleActivate()"
+            disabled={!canActivate}
+            title={canActivate ? 'Activate this profile' : 'Complete all required steps before activating'}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+            Activate version
+          </button>
+        )
+      }
+    </div>
+  </div>
+
+  <!-- Activation checklist -->
+  <div class="checklist-card">
+    <h2 class="checklist-title">Activation Requirements</h2>
+    <div class="checklist-grid">
+      <div class={`check-item ${approvedRules.length >= 1 ? 'ok' : 'fail'}`}>
+        <div class="check-icon">
+          {approvedRules.length >= 1
+            ? <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            : <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          }
+        </div>
+        <div>
+          <p class="check-label">At least 1 approved rule</p>
+          <p class="check-value">{approvedRules.length} approved · {analysis.rules.length} total</p>
+        </div>
+      </div>
+
+      <div class={`check-item ${approvedPlans.length >= 1 ? 'ok' : 'fail'}`}>
+        <div class="check-icon">
+          {approvedPlans.length >= 1
+            ? <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            : <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          }
+        </div>
+        <div>
+          <p class="check-label">At least 1 approved plan</p>
+          <p class="check-value">{approvedPlans.length} approved · {analysis.plans.length} total</p>
+        </div>
+      </div>
+
+      <div class={`check-item ${analysis.conflicts.length === 0 ? 'ok' : 'fail'}`}>
+        <div class="check-icon">
+          {analysis.conflicts.length === 0
+            ? <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            : <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          }
+        </div>
+        <div>
+          <p class="check-label">No critical conflicts</p>
+          <p class="check-value">{analysis.conflicts.length} conflicts detected</p>
+        </div>
+      </div>
+
+      <div class={`check-item ${pendingItems === 0 ? 'ok' : 'warn'}`}>
+        <div class="check-icon">
+          {pendingItems === 0
+            ? <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            : <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          }
+        </div>
+        <div>
+          <p class="check-label">All items reviewed (optional)</p>
+          <p class="check-value">{pendingItems} item(s) still pending review</p>
+        </div>
+      </div>
+    </div>
+
+    {!canActivate && (
+      <div class="cant-activate-notice">
+        Complete the requirements above before activating. Go to
+        <a href={`/admin/analyses/${profile.analysis_id}`} class="notice-link">Analysis Review →</a>
+      </div>
+    )}
+  </div>
+
+  <div class="two-col">
+    <!-- Approved Rules -->
+    <section class="section panel">
+      <h2 class="section-title">Approved Transaction Rules <span class="count-pill">{approvedRules.length}</span></h2>
+      {approvedRules.length === 0
+        ? <p class="empty-state">No rules approved yet. Go to <a href={`/admin/analyses/${profile.analysis_id}`} class="inline-link">Analysis Review</a>.</p>
+        : (
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Label</th>
+                <th>Direction</th>
+                <th>Obligation</th>
+                <th>×</th>
+              </tr>
+            </thead>
+            <tbody>
+              {approvedRules.map(r => (
+                <tr>
+                  <td><span class="rule-key">{r.input_key}</span><br /><span class="rule-label">{r.label}</span></td>
+                  <td><span class="pill">{r.direction}</span></td>
+                  <td><span class="pill">{r.obligation}</span></td>
+                  <td class="multiplier">{r.pa_transactions_per_item}×</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )
+      }
+    </section>
+
+    <!-- Approved Plans -->
+    <section class="section panel">
+      <h2 class="section-title">Approved Plans <span class="count-pill">{approvedPlans.length}</span></h2>
+      {approvedPlans.length === 0
+        ? <p class="empty-state">No plans approved yet.</p>
+        : (
+          <div class="plans-list">
+            {approvedPlans.map(p => (
+              <div class="plan-item">
+                <div class="plan-name">{p.plan_name}</div>
+                <div class="plan-detail">
+                  <span>€{p.annual_fee.toLocaleString()}/yr</span>
+                  <span class="sep">·</span>
+                  <span>{p.included_pa_transactions.toLocaleString()} transactions included</span>
+                  <span class="sep">·</span>
+                  <span>€{p.extra_transaction_cost}/extra</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )
+      }
+    </section>
+  </div>
+
+  <!-- Approved assumptions -->
+  {approvedAssumptions.length > 0 && (
+    <section class="section panel">
+      <h2 class="section-title">Approved Business Assumptions <span class="count-pill">{approvedAssumptions.length}</span></h2>
+      <div class="assumptions-grid">
+        {approvedAssumptions.map(a => (
+          <div class="assumption-item">
+            <code class="ak">{a.key}</code>
+            <span class="av">{a.value}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  )}
+
+  <!-- Confirmation modal (hidden, shown via JS) -->
+  <div id="activate-modal" class="modal-overlay" style="display:none">
+    <div class="modal">
+      <h3 class="modal-title">Activate Profile</h3>
+      <p class="modal-body">
+        You are about to activate <strong>{profile.country.name} / {profile.provider.name} {profile.version}</strong>.
+        <br /><br />
+        This will make the calculator available for all users with active countries permission.
+        {profile.status === 'active'
+          ? ' The current active version will be archived.'
+          : ''
+        }
+      </p>
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+        <!-- TODO: POST /admin/profiles/{profile.id}/activate via App 2 API -->
+        <button class="btn-confirm" onclick="confirmActivate()">
+          Confirm Activation
+        </button>
+      </div>
+    </div>
+  </div>
+</AdminLayout>
+
+<script>
+  function handleActivate() {
+    const modal = document.getElementById('activate-modal')!;
+    modal.style.display = 'flex';
+  }
+
+  function closeModal() {
+    const modal = document.getElementById('activate-modal')!;
+    modal.style.display = 'none';
+  }
+
+  function confirmActivate() {
+    // TODO: POST to API_BASE_URL/admin/profiles/{id}/activate
+    alert('TODO: POST API_BASE_URL/admin/profiles/{id}/activate\nOn success: redirect to /countries');
+    closeModal();
+  }
+
+  function handleArchive() {
+    if (confirm('Archive this version? It will no longer be active.')) {
+      // TODO: POST to API_BASE_URL/admin/profiles/{id}/archive
+      alert('TODO: POST API_BASE_URL/admin/profiles/{id}/archive');
+    }
+  }
+
+  Object.assign(window, { handleActivate, closeModal, confirmActivate, handleArchive });
+</script>
+
+<style>
+  .profile-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    padding: 1.1rem 1.4rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .ph-left { flex: 1; }
+
+  .ph-badge { display: flex; align-items: center; gap: 0.75rem; }
+
+  .ph-code {
+    font-size: 0.72rem;
+    font-weight: 800;
+    color: var(--color-admin);
+    background: var(--color-admin-soft);
+    border-radius: 6px;
+    padding: 0.3rem 0.55rem;
+    letter-spacing: 0.04em;
+  }
+
+  .ph-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--color-text);
+  }
+
+  .ph-type {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--color-text-muted);
+    background: var(--color-surface-2);
+    border-radius: 4px;
+    padding: 0.1rem 0.35rem;
+    margin-left: 0.3rem;
+    vertical-align: middle;
+  }
+
+  .ph-version { font-size: 0.78rem; color: var(--color-text-muted); margin-top: 0.2rem; }
+
+  .ph-right { display: flex; align-items: center; gap: 0.75rem; }
+
+  .status-badge {
+    display: inline-block;
+    padding: 0.25rem 0.7rem;
+    border-radius: 100px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: capitalize;
+  }
+
+  .s-active           { background: rgba(16,185,129,.12); color: #10b981; }
+  .s-pending_approval { background: rgba(245,158,11,.12); color: #f59e0b; }
+  .s-draft            { background: var(--color-surface-2); color: var(--color-text-muted); }
+  .s-archived         { background: rgba(239,68,68,.12);  color: #ef4444; }
+
+  .btn-activate {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.55rem 1.1rem;
+    background: #10b981;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.13s;
+  }
+
+  .btn-activate:hover:not(.disabled) { background: #059669; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(16,185,129,.35); }
+
+  .btn-activate.disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .btn-archive {
+    padding: 0.45rem 0.9rem;
+    border: 1px solid rgba(239,68,68,.3);
+    background: rgba(239,68,68,.06);
+    color: #ef4444;
+    border-radius: 7px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.13s;
+  }
+
+  .btn-archive:hover { background: rgba(239,68,68,.12); }
+
+  /* Checklist */
+  .checklist-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    padding: 1.1rem 1.4rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .checklist-title {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--color-text);
+    margin-bottom: 0.9rem;
+  }
+
+  .checklist-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.75rem;
+  }
+
+  @media (max-width: 1000px) { .checklist-grid { grid-template-columns: repeat(2, 1fr); } }
+
+  .check-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    padding: 0.75rem;
+    border-radius: 8px;
+    border: 1px solid var(--color-border);
+  }
+
+  .check-item.ok   { background: rgba(16,185,129,.04); border-color: rgba(16,185,129,.2); }
+  .check-item.fail { background: rgba(239,68,68,.04);  border-color: rgba(239,68,68,.2); }
+  .check-item.warn { background: rgba(245,158,11,.04); border-color: rgba(245,158,11,.2); }
+
+  .check-icon {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    margin-top: 0.1rem;
+  }
+
+  .check-item.ok   .check-icon { background: rgba(16,185,129,.15); color: #10b981; }
+  .check-item.fail .check-icon { background: rgba(239,68,68,.15);  color: #ef4444; }
+  .check-item.warn .check-icon { background: rgba(245,158,11,.15); color: #f59e0b; }
+
+  .check-label { font-size: 0.78rem; font-weight: 600; color: var(--color-text); line-height: 1.3; }
+  .check-value { font-size: 0.7rem; color: var(--color-text-muted); margin-top: 0.2rem; }
+
+  .cant-activate-notice {
+    font-size: 0.78rem;
+    color: var(--color-text-muted);
+    background: var(--color-surface-2);
+    border-radius: 7px;
+    padding: 0.6rem 0.9rem;
+    margin-top: 0.85rem;
+  }
+
+  .notice-link { color: var(--color-admin); font-weight: 600; }
+  .notice-link:hover { opacity: 0.8; }
+
+  /* Layout */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    align-items: start;
+  }
+
+  @media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
+
+  .section { }
+
+  .section-title {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: var(--color-text);
+    margin-bottom: 0.85rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .count-pill {
+    font-size: 0.7rem;
+    font-weight: 700;
+    background: var(--color-admin-soft);
+    color: var(--color-admin);
+    padding: 0.1rem 0.4rem;
+    border-radius: 100px;
+  }
+
+  .panel {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    padding: 1.1rem 1.25rem;
+  }
+
+  .empty-state { font-size: 0.8rem; color: var(--color-text-muted); }
+
+  .inline-link { color: var(--color-admin); font-weight: 500; }
+
+  /* Table */
+  .table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+    margin: 0 -1.25rem;
+    width: calc(100% + 2.5rem);
+  }
+
+  .table th {
+    text-align: left;
+    padding: 0.45rem 1rem;
+    font-size: 0.67rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-muted);
+    background: var(--color-surface-2);
+    border-top: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .table td {
+    padding: 0.6rem 1rem;
+    border-bottom: 1px solid var(--color-border);
+    vertical-align: middle;
+  }
+
+  .table tbody tr:last-child td { border-bottom: none; }
+
+  .rule-key {
+    font-size: 0.7rem;
+    font-family: 'SF Mono', ui-monospace, monospace;
+    color: var(--color-admin);
+    background: var(--color-admin-soft);
+    border-radius: 4px;
+    padding: 0.1rem 0.35rem;
+    display: inline-block;
+    margin-bottom: 0.2rem;
+  }
+
+  .rule-label { font-size: 0.78rem; color: var(--color-text); }
+
+  .pill {
+    font-size: 0.68rem;
+    background: var(--color-surface-2);
+    color: var(--color-text-muted);
+    border-radius: 4px;
+    padding: 0.15rem 0.4rem;
+  }
+
+  .multiplier {
+    font-size: 1rem;
+    font-weight: 800;
+    color: var(--color-admin);
+    letter-spacing: -0.02em;
+  }
+
+  /* Plans list */
+  .plans-list { display: flex; flex-direction: column; gap: 0.5rem; }
+
+  .plan-item {
+    padding: 0.7rem 0.85rem;
+    background: var(--color-surface-2);
+    border-radius: 8px;
+    border: 1px solid var(--color-border);
+  }
+
+  .plan-name { font-size: 0.85rem; font-weight: 700; color: var(--color-text); margin-bottom: 0.25rem; }
+
+  .plan-detail { font-size: 0.75rem; color: var(--color-text-muted); display: flex; flex-wrap: wrap; gap: 0.3rem; align-items: center; }
+
+  .sep { opacity: 0.4; }
+
+  /* Assumptions */
+  .assumptions-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.65rem;
+  }
+
+  @media (max-width: 900px) { .assumptions-grid { grid-template-columns: repeat(2, 1fr); } }
+
+  .assumption-item {
+    padding: 0.65rem 0.85rem;
+    background: var(--color-surface-2);
+    border-radius: 8px;
+    border: 1px solid var(--color-border);
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+
+  .ak {
+    font-size: 0.68rem;
+    font-family: 'SF Mono', ui-monospace, monospace;
+    color: var(--color-admin);
+    background: var(--color-admin-soft);
+    border-radius: 4px;
+    padding: 0.1rem 0.35rem;
+    width: fit-content;
+  }
+
+  .av { font-size: 0.8rem; font-weight: 600; color: var(--color-text); }
+
+  /* Modal */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.7);
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+  }
+
+  .modal {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 14px;
+    padding: 1.75rem;
+    max-width: 440px;
+    width: 100%;
+    box-shadow: 0 24px 60px rgba(0,0,0,.5);
+  }
+
+  .modal-title {
+    font-size: 1.05rem;
+    font-weight: 800;
+    color: var(--color-text);
+    margin-bottom: 0.75rem;
+  }
+
+  .modal-body {
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+    line-height: 1.6;
+    margin-bottom: 1.5rem;
+  }
+
+  .modal-body strong { color: var(--color-text); }
+
+  .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+  }
+
+  .btn-cancel {
+    padding: 0.5rem 1rem;
+    border: 1px solid var(--color-border);
+    background: none;
+    color: var(--color-text-muted);
+    border-radius: 8px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.13s;
+  }
+  .btn-cancel:hover { background: var(--color-surface-2); }
+
+  .btn-confirm {
+    padding: 0.5rem 1.1rem;
+    background: #10b981;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.13s;
+  }
+  .btn-confirm:hover { background: #059669; transform: translateY(-1px); }
+</style>

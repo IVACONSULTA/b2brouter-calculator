@@ -1,440 +1,319 @@
 ---
-import Layout from '../../layouts/Layout.astro';
+import AdminLayout from '../../layouts/AdminLayout.astro';
 import { getSession } from '../../lib/session';
+import { DUMMY_PROFILES, DUMMY_ANALYSES, DUMMY_SCENARIOS, DUMMY_DOCUMENTS } from '../../lib/dummy-data';
 
 const session = getSession(Astro.cookies);
-if (!session || session.role !== 'admin') {
-  return Astro.redirect('/admin/login');
-}
+if (!session || session.role !== 'admin') return Astro.redirect('/admin/login');
+
+const activeProfiles    = DUMMY_PROFILES.filter(p => p.status === 'active');
+const draftProfiles     = DUMMY_PROFILES.filter(p => p.status === 'draft');
+const pendingProfiles   = DUMMY_PROFILES.filter(p => p.status === 'pending_approval');
+const pendingAnalyses   = DUMMY_ANALYSES.filter(a => a.status === 'pending_review');
+const recentDocs        = DUMMY_DOCUMENTS.slice(0, 3);
+const recentScenarios   = DUMMY_SCENARIOS.slice(0, 4);
+
+const statusColor: Record<string, string> = {
+  active: 'green', draft: 'gray', pending_approval: 'amber', archived: 'red',
+};
 ---
 
-<Layout title="Admin Dashboard">
-  <div class="app">
-    <aside class="sidebar">
-      <div class="sidebar-header">
-        <div class="logo">
-          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 2L2 7l10 5 10-5-10-5z"/>
-            <path d="M2 17l10 5 10-5"/>
-            <path d="M2 12l10 5 10-5"/>
-          </svg>
-          <span>Admin</span>
-        </div>
+<AdminLayout title="Dashboard">
+  <!-- KPI row -->
+  <div class="kpi-grid">
+    <div class="kpi">
+      <div class="kpi-icon green">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/>
+          <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+        </svg>
       </div>
-
-      <nav class="sidebar-nav">
-        <a href="#" class="nav-item active">
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="3" width="7" height="7"/>
-            <rect x="14" y="3" width="7" height="7"/>
-            <rect x="14" y="14" width="7" height="7"/>
-            <rect x="3" y="14" width="7" height="7"/>
-          </svg>
-          Overview
-        </a>
-        <a href="#" class="nav-item">
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3 12h18M3 6h18M3 18h18"/>
-          </svg>
-          Routes
-        </a>
-        <a href="#" class="nav-item">
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="8" r="4"/>
-            <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
-          </svg>
-          Customers
-        </a>
-        <a href="#" class="nav-item">
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"/>
-            <path d="M12 8v4l3 3"/>
-          </svg>
-          Pricing
-        </a>
-        <a href="#" class="nav-item">
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="3"/>
-            <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
-          </svg>
-          Settings
-        </a>
-      </nav>
-
-      <div class="sidebar-footer">
-        <div class="user-info">
-          <div class="avatar admin">{session.name.charAt(0)}</div>
-          <div class="user-details">
-            <span class="user-name">{session.name}</span>
-            <span class="user-role">Administrator</span>
-          </div>
-        </div>
-        <form action="/api/auth/logout" method="POST">
-          <button type="submit" class="logout-btn" title="Sign out">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-              <polyline points="16 17 21 12 16 7"/>
-              <line x1="21" y1="12" x2="9" y2="12"/>
-            </svg>
-          </button>
-        </form>
+      <div>
+        <p class="kpi-value">{activeProfiles.length}</p>
+        <p class="kpi-label">Active Profiles</p>
       </div>
-    </aside>
+    </div>
 
-    <div class="main-content">
-      <header class="topbar">
-        <div>
-          <h1>Overview</h1>
-          <p class="breadcrumb">Admin / Dashboard</p>
-        </div>
-      </header>
+    <div class="kpi">
+      <div class="kpi-icon amber">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+      </div>
+      <div>
+        <p class="kpi-value">{pendingProfiles.length + draftProfiles.length}</p>
+        <p class="kpi-label">Profiles in Progress</p>
+      </div>
+    </div>
 
-      <div class="content">
-        <div class="stats-grid">
-          <div class="stat-card">
-            <div class="stat-icon admin">
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M3 12h18M3 6h18M3 18h18"/>
-              </svg>
-            </div>
-            <div class="stat-info">
-              <span class="stat-value">128</span>
-              <span class="stat-label">Active Routes</span>
-            </div>
-            <span class="stat-delta positive">+12%</span>
-          </div>
+    <div class="kpi">
+      <div class="kpi-icon indigo">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18"/>
+        </svg>
+      </div>
+      <div>
+        <p class="kpi-value">{pendingAnalyses.length}</p>
+        <p class="kpi-label">Analyses to Review</p>
+      </div>
+    </div>
 
-          <div class="stat-card">
-            <div class="stat-icon admin">
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="8" r="4"/>
-                <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
-              </svg>
-            </div>
-            <div class="stat-info">
-              <span class="stat-value">54</span>
-              <span class="stat-label">Customers</span>
-            </div>
-            <span class="stat-delta positive">+5%</span>
-          </div>
-
-          <div class="stat-card">
-            <div class="stat-icon admin">
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="12" y1="1" x2="12" y2="23"/>
-                <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
-              </svg>
-            </div>
-            <div class="stat-info">
-              <span class="stat-value">$24,580</span>
-              <span class="stat-label">Monthly Revenue</span>
-            </div>
-            <span class="stat-delta positive">+8%</span>
-          </div>
-
-          <div class="stat-card">
-            <div class="stat-icon admin">
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-              </svg>
-            </div>
-            <div class="stat-info">
-              <span class="stat-value">99.8%</span>
-              <span class="stat-label">Uptime</span>
-            </div>
-            <span class="stat-delta neutral">—</span>
-          </div>
-        </div>
-
-        <div class="section-grid">
-          <div class="panel">
-            <div class="panel-header">
-              <h3>Recent Activity</h3>
-            </div>
-            <ul class="activity-list">
-              {[
-                { msg: 'Route DE→FR updated', time: '2 min ago', type: 'update' },
-                { msg: 'New customer Acme Corp onboarded', time: '1 hr ago', type: 'new' },
-                { msg: 'Pricing rule #12 modified', time: '3 hrs ago', type: 'update' },
-                { msg: 'Route US→EU deactivated', time: '5 hrs ago', type: 'remove' },
-                { msg: 'System health check passed', time: 'Yesterday', type: 'ok' },
-              ].map((item) => (
-                <li class="activity-item">
-                  <span class={`activity-dot ${item.type}`}></span>
-                  <span class="activity-msg">{item.msg}</span>
-                  <span class="activity-time">{item.time}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <div class="panel">
-            <div class="panel-header">
-              <h3>Top Routes</h3>
-            </div>
-            <ul class="route-list">
-              {[
-                { route: 'DE → FR', calls: '18,430', pct: 78 },
-                { route: 'US → EU', calls: '12,880', pct: 54 },
-                { route: 'UK → US', calls: '9,210', pct: 39 },
-                { route: 'ES → LATAM', calls: '6,550', pct: 28 },
-              ].map((r) => (
-                <li class="route-item">
-                  <span class="route-name">{r.route}</span>
-                  <div class="route-bar-wrap">
-                    <div class="route-bar" style={`width: ${r.pct}%`}></div>
-                  </div>
-                  <span class="route-calls">{r.calls}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
+    <div class="kpi">
+      <div class="kpi-icon blue">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+        </svg>
+      </div>
+      <div>
+        <p class="kpi-value">{recentScenarios.length}</p>
+        <p class="kpi-label">Recent Scenarios</p>
       </div>
     </div>
   </div>
-</Layout>
+
+  <!-- Quick Actions -->
+  <section class="section">
+    <h2 class="section-title">Quick Actions</h2>
+    <div class="actions-grid">
+      <a href="/admin/countries/new" class="action-card admin">
+        <div class="action-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+        </div>
+        <div>
+          <p class="action-title">New Country / Provider</p>
+          <p class="action-desc">Create a new country–provider profile</p>
+        </div>
+      </a>
+
+      <a href="/admin/analyses/analysis-fr-001" class="action-card amber">
+        <div class="action-icon amber">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="9 11 12 14 22 4"/>
+            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+          </svg>
+        </div>
+        <div>
+          <p class="action-title">Review Pending Analysis</p>
+          <p class="action-desc">{pendingAnalyses.length} analysis waiting for approval</p>
+        </div>
+      </a>
+
+      <a href="/countries" class="action-card gray">
+        <div class="action-icon gray">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/>
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+          </svg>
+        </div>
+        <div>
+          <p class="action-title">All Countries</p>
+          <p class="action-desc">View and manage all configured profiles</p>
+        </div>
+      </a>
+
+      <a href="/admin/settings" class="action-card gray">
+        <div class="action-icon gray">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+          </svg>
+        </div>
+        <div>
+          <p class="action-title">Manage Users</p>
+          <p class="action-desc">Add or update user accounts and roles</p>
+        </div>
+      </a>
+    </div>
+  </section>
+
+  <div class="two-col">
+    <!-- All countries -->
+    <section class="section panel">
+      <div class="panel-head">
+        <h2 class="section-title" style="margin-bottom:0">Countries & Providers</h2>
+        <a href="/countries" class="link-more">View all →</a>
+      </div>
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Country</th>
+            <th>Provider</th>
+            <th>Version</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {DUMMY_PROFILES.map(p => (
+            <tr>
+              <td><span class="flag-code">{p.country.code}</span> {p.country.name}</td>
+              <td>{p.provider.name} <span class="tag">{p.provider.type}</span></td>
+              <td class="mono">{p.version}</td>
+              <td><span class={`badge badge-${statusColor[p.status]}`}>{p.status.replace('_', ' ')}</span></td>
+              <td>
+                {p.status === 'draft'
+                  ? <a href={`/admin/countries/${p.id}/setup`} class="tbl-link">Continue setup</a>
+                  : p.status === 'pending_approval' && p.analysis_id
+                  ? <a href={`/admin/analyses/${p.analysis_id}`} class="tbl-link">Review analysis</a>
+                  : <a href={`/countries`} class="tbl-link">View</a>
+                }
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+
+    <!-- Recent uploaded documents -->
+    <div class="right-col">
+      <section class="section panel">
+        <div class="panel-head">
+          <h2 class="section-title" style="margin-bottom:0">Recent Documents</h2>
+          <a href="/countries" class="link-more">View all →</a>
+        </div>
+        <ul class="doc-list">
+          {recentDocs.map(doc => (
+            <li class="doc-item">
+              <div class={`doc-icon doc-${doc.copyright_status}`}>
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                </svg>
+              </div>
+              <div class="doc-info">
+                <p class="doc-name">{doc.filename}</p>
+                <p class="doc-meta">{doc.uploaded_at} · <span class={`doc-copyright doc-${doc.copyright_status}`}>{doc.copyright_status}</span></p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <!-- AI Analyses pending -->
+      <section class="section panel" style="margin-top: 0">
+        <div class="panel-head">
+          <h2 class="section-title" style="margin-bottom:0">AI Analyses</h2>
+          <a href="/admin/analyses" class="link-more">View all →</a>
+        </div>
+        <ul class="analysis-list">
+          {DUMMY_ANALYSES.map(a => (
+            <li class="analysis-item">
+              <div class="analysis-info">
+                <p class="analysis-name">{a.country} / {a.provider}</p>
+                <p class="analysis-meta">{a.rules_proposed} rules · {a.plans_proposed} plans · {a.created_at}</p>
+              </div>
+              <div class="analysis-right">
+                {a.status === 'pending_review'
+                  ? <a href={`/admin/analyses/${a.id}`} class="badge badge-amber" style="cursor:pointer">Review</a>
+                  : <span class="badge badge-green">Done</span>
+                }
+              </div>
+            </li>
+          ))}
+        </ul>
+      </section>
+    </div>
+  </div>
+
+  <!-- Recent Scenarios -->
+  <section class="section panel">
+    <div class="panel-head">
+      <h2 class="section-title" style="margin-bottom:0">Recent Scenarios</h2>
+      <a href="/scenarios" class="link-more">View all →</a>
+    </div>
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Client</th>
+          <th>Country / Provider</th>
+          <th>Recommended Plan</th>
+          <th>Total Cost</th>
+          <th>AI Summary</th>
+          <th>Date</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {recentScenarios.map(s => (
+          <tr>
+            <td class="bold">{s.client_name}</td>
+            <td>{s.country} / {s.provider}</td>
+            <td>{s.recommended_plan}</td>
+            <td class="mono">€{s.total_cost.toLocaleString()}</td>
+            <td>{s.has_summary ? <span class="badge badge-green">Generated</span> : <span class="badge badge-gray">—</span>}</td>
+            <td class="muted">{s.created_at}</td>
+            <td><a href={`/scenarios/${s.id}`} class="tbl-link">View</a></td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </section>
+</AdminLayout>
 
 <style>
-  .app {
-    display: flex;
-    height: 100vh;
-    overflow: hidden;
-  }
-
-  /* Sidebar */
-  .sidebar {
-    width: 240px;
-    flex-shrink: 0;
-    background: var(--color-surface);
-    border-right: 1px solid var(--color-border);
-    display: flex;
-    flex-direction: column;
-    padding: 1.25rem;
-  }
-
-  .sidebar-header {
-    margin-bottom: 2rem;
-  }
-
-  .logo {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    font-size: 1rem;
-    font-weight: 700;
-    color: var(--color-admin);
-  }
-
-  .sidebar-nav {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    flex: 1;
-  }
-
-  .nav-item {
-    display: flex;
-    align-items: center;
-    gap: 0.7rem;
-    padding: 0.6rem 0.75rem;
-    border-radius: var(--radius-sm);
-    font-size: 0.875rem;
-    font-weight: 500;
-    color: var(--color-text-muted);
-    transition: all 0.15s ease;
-  }
-
-  .nav-item:hover {
-    background: var(--color-surface-2);
-    color: var(--color-text);
-  }
-
-  .nav-item.active {
-    background: var(--color-admin-soft);
-    color: var(--color-admin);
-  }
-
-  .sidebar-footer {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding-top: 1rem;
-    border-top: 1px solid var(--color-border);
-  }
-
-  .user-info {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    flex: 1;
-    min-width: 0;
-  }
-
-  .avatar {
-    width: 34px;
-    height: 34px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.85rem;
-    font-weight: 700;
-    flex-shrink: 0;
-  }
-
-  .avatar.admin {
-    background: var(--color-admin-soft);
-    color: var(--color-admin);
-  }
-
-  .user-details {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-  }
-
-  .user-name {
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: var(--color-text);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .user-role {
-    font-size: 0.72rem;
-    color: var(--color-text-muted);
-  }
-
-  .logout-btn {
-    background: none;
-    border: none;
-    color: var(--color-text-muted);
-    padding: 0.4rem;
-    border-radius: var(--radius-sm);
-    transition: all 0.15s ease;
-    display: flex;
-    align-items: center;
-  }
-
-  .logout-btn:hover {
-    background: var(--color-surface-2);
-    color: var(--color-text);
-  }
-
-  /* Main content */
-  .main-content {
-    flex: 1;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-  }
-
-  .topbar {
-    padding: 1.5rem 2rem;
-    border-bottom: 1px solid var(--color-border);
-    background: var(--color-surface);
-  }
-
-  .topbar h1 {
-    font-size: 1.25rem;
-    font-weight: 700;
-    letter-spacing: -0.02em;
-  }
-
-  .breadcrumb {
-    font-size: 0.78rem;
-    color: var(--color-text-muted);
-    margin-top: 0.15rem;
-  }
-
-  .content {
-    padding: 2rem;
-    flex: 1;
-  }
-
-  /* Stats */
-  .stats-grid {
+  /* ── KPI grid ── */
+  .kpi-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: 1rem;
     margin-bottom: 1.5rem;
   }
 
-  @media (max-width: 1100px) {
-    .stats-grid { grid-template-columns: repeat(2, 1fr); }
-  }
+  @media (max-width: 1100px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
 
-  .stat-card {
+  .kpi {
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: var(--radius);
-    padding: 1.25rem;
+    padding: 1.1rem 1.25rem;
     display: flex;
     align-items: center;
     gap: 0.9rem;
   }
 
-  .stat-icon {
-    width: 42px;
-    height: 42px;
-    border-radius: var(--radius-sm);
+  .kpi-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 9px;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
   }
 
-  .stat-icon.admin {
-    background: var(--color-admin-soft);
-    color: var(--color-admin);
+  .kpi-icon.green   { background: rgba(16,185,129,.12); color: #10b981; }
+  .kpi-icon.amber   { background: rgba(245,158,11,.12); color: #f59e0b; }
+  .kpi-icon.indigo  { background: var(--color-admin-soft); color: var(--color-admin); }
+  .kpi-icon.blue    { background: rgba(59,130,246,.12); color: #3b82f6; }
+
+  .kpi-value {
+    font-size: 1.6rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1;
   }
 
-  .stat-info {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
+  .kpi-label {
+    font-size: 0.78rem;
+    color: var(--color-text-muted);
+    margin-top: 0.2rem;
   }
 
-  .stat-value {
-    font-size: 1.3rem;
+  /* ── Sections ── */
+  .section {
+    margin-bottom: 1.25rem;
+  }
+
+  .section-title {
+    font-size: 0.875rem;
     font-weight: 700;
-    letter-spacing: -0.02em;
-  }
-
-  .stat-label {
-    font-size: 0.78rem;
-    color: var(--color-text-muted);
-  }
-
-  .stat-delta {
-    font-size: 0.78rem;
-    font-weight: 600;
-    padding: 0.2rem 0.5rem;
-    border-radius: 100px;
-  }
-
-  .stat-delta.positive {
-    background: rgba(16, 185, 129, 0.1);
-    color: var(--color-customer);
-  }
-
-  .stat-delta.neutral {
-    background: var(--color-surface-2);
-    color: var(--color-text-muted);
-  }
-
-  /* Section grid */
-  .section-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1rem;
-  }
-
-  @media (max-width: 900px) {
-    .section-grid { grid-template-columns: 1fr; }
+    color: var(--color-text);
+    margin-bottom: 0.85rem;
+    letter-spacing: -0.01em;
   }
 
   .panel {
@@ -442,104 +321,258 @@ if (!session || session.role !== 'admin') {
     border: 1px solid var(--color-border);
     border-radius: var(--radius);
     overflow: hidden;
+    padding: 1.1rem 1.25rem;
   }
 
-  .panel-header {
-    padding: 1rem 1.25rem;
-    border-bottom: 1px solid var(--color-border);
+  .panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
   }
 
-  .panel-header h3 {
-    font-size: 0.9rem;
-    font-weight: 600;
-    color: var(--color-text);
+  .link-more {
+    font-size: 0.78rem;
+    color: var(--color-admin);
+    font-weight: 500;
+    transition: opacity 0.13s;
   }
 
-  /* Activity list */
-  .activity-list {
-    list-style: none;
-    padding: 0.5rem 0;
+  .link-more:hover { opacity: 0.75; }
+
+  /* ── Quick Actions ── */
+  .actions-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.75rem;
   }
 
-  .activity-item {
+  @media (max-width: 1100px) { .actions-grid { grid-template-columns: repeat(2, 1fr); } }
+
+  .action-card {
     display: flex;
     align-items: center;
     gap: 0.75rem;
-    padding: 0.65rem 1.25rem;
-    transition: background 0.15s;
+    padding: 1rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    transition: all 0.15s ease;
   }
 
-  .activity-item:hover {
-    background: var(--color-surface-2);
+  .action-card:hover {
+    border-color: var(--color-admin);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0,0,0,.3);
   }
 
-  .activity-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
+  .action-card.amber:hover { border-color: #f59e0b; }
+  .action-card.gray:hover  { border-color: var(--color-text-muted); }
+
+  .action-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     flex-shrink: 0;
+    background: var(--color-admin-soft);
+    color: var(--color-admin);
   }
 
-  .activity-dot.update { background: var(--color-admin); }
-  .activity-dot.new { background: var(--color-customer); }
-  .activity-dot.remove { background: #ef4444; }
-  .activity-dot.ok { background: #94a3b8; }
+  .action-icon.amber { background: rgba(245,158,11,.12); color: #f59e0b; }
+  .action-icon.gray  { background: var(--color-surface-2); color: var(--color-text-muted); }
 
-  .activity-msg {
-    flex: 1;
-    font-size: 0.85rem;
-    color: var(--color-text);
-  }
-
-  .activity-time {
-    font-size: 0.75rem;
-    color: var(--color-text-muted);
-    white-space: nowrap;
-  }
-
-  /* Route list */
-  .route-list {
-    list-style: none;
-    padding: 0.75rem 1.25rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-  }
-
-  .route-item {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-  }
-
-  .route-name {
+  .action-title {
     font-size: 0.82rem;
     font-weight: 600;
     color: var(--color-text);
-    width: 90px;
-    flex-shrink: 0;
+    margin-bottom: 0.15rem;
   }
 
-  .route-bar-wrap {
-    flex: 1;
-    height: 6px;
-    background: var(--color-surface-2);
-    border-radius: 100px;
-    overflow: hidden;
-  }
-
-  .route-bar {
-    height: 100%;
-    background: var(--color-admin);
-    border-radius: 100px;
-    opacity: 0.7;
-  }
-
-  .route-calls {
-    font-size: 0.78rem;
+  .action-desc {
+    font-size: 0.73rem;
     color: var(--color-text-muted);
-    width: 60px;
-    text-align: right;
+    line-height: 1.4;
+  }
+
+  /* ── Two column layout ── */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+    align-items: start;
+  }
+
+  @media (max-width: 1100px) { .two-col { grid-template-columns: 1fr; } }
+
+  .right-col {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  /* ── Table ── */
+  .table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.83rem;
+  }
+
+  .table th {
+    text-align: left;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-muted);
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .table td {
+    padding: 0.65rem 0.75rem;
+    color: var(--color-text);
+    border-bottom: 1px solid var(--color-border);
+    vertical-align: middle;
+  }
+
+  .table tbody tr:last-child td { border-bottom: none; }
+
+  .table tbody tr:hover { background: var(--color-surface-2); }
+
+  .tbl-link {
+    font-size: 0.78rem;
+    color: var(--color-admin);
+    font-weight: 500;
+    white-space: nowrap;
+    transition: opacity 0.13s;
+  }
+
+  .tbl-link:hover { opacity: 0.75; }
+
+  .mono { font-family: 'SF Mono', ui-monospace, monospace; font-size: 0.8rem; }
+  .bold { font-weight: 600; }
+  .muted { color: var(--color-text-muted); }
+
+  /* ── Badges ── */
+  .badge {
+    display: inline-block;
+    padding: 0.2rem 0.55rem;
+    border-radius: 100px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: capitalize;
+    white-space: nowrap;
+  }
+
+  .badge-green  { background: rgba(16,185,129,.12); color: #10b981; }
+  .badge-amber  { background: rgba(245,158,11,.12);  color: #f59e0b; }
+  .badge-gray   { background: var(--color-surface-2); color: var(--color-text-muted); }
+  .badge-red    { background: rgba(239,68,68,.12);   color: #ef4444; }
+
+  /* ── Flag/Tag ── */
+  .flag-code {
+    display: inline-block;
+    width: 26px;
+    text-align: center;
+    font-size: 0.7rem;
+    font-weight: 800;
+    color: var(--color-admin);
+    background: var(--color-admin-soft);
+    border-radius: 4px;
+    padding: 0.1rem 0.2rem;
+    letter-spacing: 0.02em;
+    margin-right: 0.3rem;
+  }
+
+  .tag {
+    font-size: 0.66rem;
+    font-weight: 700;
+    color: var(--color-text-muted);
+    background: var(--color-surface-2);
+    border-radius: 4px;
+    padding: 0.1rem 0.35rem;
+    letter-spacing: 0.04em;
+    margin-left: 0.25rem;
+  }
+
+  /* ── Doc list ── */
+  .doc-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .doc-item {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .doc-item:last-child { border-bottom: none; }
+
+  .doc-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 7px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     flex-shrink: 0;
+  }
+
+  .doc-clear      { background: rgba(16,185,129,.12);  color: #10b981; }
+  .doc-restricted { background: rgba(245,158,11,.12);  color: #f59e0b; }
+  .doc-blocked    { background: rgba(239,68,68,.12);   color: #ef4444; }
+  .doc-pending    { background: var(--color-surface-2); color: var(--color-text-muted); }
+
+  .doc-name {
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--color-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 200px;
+  }
+
+  .doc-meta {
+    font-size: 0.7rem;
+    color: var(--color-text-muted);
+    margin-top: 0.1rem;
+  }
+
+  .doc-copyright { font-weight: 600; }
+
+  /* ── Analysis list ── */
+  .analysis-list { list-style: none; }
+
+  .analysis-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.6rem 0;
+    border-bottom: 1px solid var(--color-border);
+    gap: 0.75rem;
+  }
+
+  .analysis-item:last-child { border-bottom: none; }
+
+  .analysis-name {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--color-text);
+  }
+
+  .analysis-meta {
+    font-size: 0.72rem;
+    color: var(--color-text-muted);
+    margin-top: 0.1rem;
   }
 </style>

@@ -1,0 +1,75 @@
+name: Security Audit
+
+on:
+    push:
+        branches: [main, develop]
+    pull_request:
+        branches: [main, develop]
+    schedule:
+        # Run security audit every Monday at 9 AM UTC
+        - cron: '0 9 * * 1'
+
+jobs:
+    security-audit:
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: '22'
+                  cache: 'npm'
+
+            - name: Install dependencies
+              run: npm ci
+
+            - name: Run dependency audit
+              run: npm audit --audit-level=moderate
+
+            - name: Run security audit script
+              run: npm run security:audit
+
+            - name: Check for security headers
+              run: |
+                  echo "Checking for security headers configuration..."
+                  if grep -r "Content-Security-Policy\|X-Frame-Options\|X-Content-Type-Options" src/ astro.config.mjs netlify.toml; then
+                    echo "✅ Security headers found"
+                  else
+                    echo "⚠️ No security headers configuration found"
+                  fi
+
+            - name: Check for hardcoded secrets
+              run: |
+                  echo "Checking for potential hardcoded secrets..."
+                  if grep -r -i "password\s*=\s*['\"][^'\"]*['\"]\|secret\s*=\s*['\"][^'\"]*['\"]\|key\s*=\s*['\"][^'\"]*['\"]\|token\s*=\s*['\"][^'\"]*['\"]" src/ --exclude-dir=node_modules 2>/dev/null | grep -v "//\|/\*\|import\|export\|process\.env\|import\.meta\.env"; then
+                    echo "❌ Potential hardcoded secrets found"
+                    exit 1
+                  else
+                    echo "✅ No hardcoded secrets found"
+                  fi
+
+            - name: Check for dangerous functions
+              run: |
+                  echo "Checking for dangerous functions..."
+                  if grep -r "eval\s*(\|dangerouslySetInnerHTML\|innerHTML\s*=" src/ --exclude-dir=node_modules 2>/dev/null; then
+                    echo "⚠️ Dangerous functions found - review required"
+                  else
+                    echo "✅ No dangerous functions found"
+                  fi
+
+            - name: Check for outdated dependencies
+              run: |
+                  echo "Checking for outdated dependencies..."
+                  npm outdated || echo "⚠️ Some dependencies are outdated - consider updating"
+
+            - name: Upload security report
+              if: always()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: security-audit-report
+                  path: |
+                      security-report.json
+                  retention-days: 30
