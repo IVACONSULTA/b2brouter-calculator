@@ -1,10 +1,11 @@
 ---
 import UserLayout from '../../layouts/UserLayout.astro';
-import { getSession } from '../../lib/session';
+import { getSession, isAdminRole } from '../../lib/session';
 import { DUMMY_SCENARIO_RESULT, DUMMY_SCENARIO_RESULT_2 } from '../../lib/dummy-data';
 
 const session = getSession(Astro.cookies);
-if (!session) return Astro.redirect('/login');
+if (!session) return Astro.redirect('/customer/login');
+if (isAdminRole(session.role)) return Astro.redirect('/admin/dashboard');
 
 const { id } = Astro.params;
 
@@ -12,9 +13,8 @@ const { id } = Astro.params;
 const allScenarios = [DUMMY_SCENARIO_RESULT, DUMMY_SCENARIO_RESULT_2];
 const scenario = allScenarios.find(s => s.id === id) ?? DUMMY_SCENARIO_RESULT;
 
-const isAdmin    = session.role === 'admin';
 const isInternal = session.role === 'internal';
-const canGenerateSummary = isAdmin || isInternal;
+const canGenerateSummary = isInternal;
 const clientSummaryEnabled = true; // TODO: fetch from /settings/companies/{company_id}
 const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clientSummaryEnabled);
 
@@ -99,7 +99,7 @@ const date = new Date(scenario.created_at).toLocaleDateString('en-GB', {
       Export PDF
     </button>
 
-    {(isAdmin || isInternal) && (
+    {isInternal && (
       <!-- TODO: DELETE /scenarios/{id} -->
       <button
         class="btn-delete"

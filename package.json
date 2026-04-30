@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "astro dev",
+    "seed:users": "node --env-file=.env scripts/seed-local-users.mjs",
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro"

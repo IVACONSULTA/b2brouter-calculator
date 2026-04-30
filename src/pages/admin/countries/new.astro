@@ -1,9 +1,10 @@
 ---
 import AdminLayout from '../../../layouts/AdminLayout.astro';
-import { getSession } from '../../../lib/session';
+import { getSession, isAdminRole } from '../../../lib/session';
 
 const session = getSession(Astro.cookies);
-if (!session || session.role !== 'admin') return Astro.redirect('/login');
+if (!session) return Astro.redirect('/admin/login');
+if (!isAdminRole(session.role)) return Astro.redirect('/dashboard');
 
 const countries = [
   { code: 'FR', name: 'France' },

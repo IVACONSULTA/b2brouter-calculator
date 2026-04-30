@@ -1,6 +1,6 @@
 ---
 import UserLayout from '../../layouts/UserLayout.astro';
-import { getSession } from '../../lib/session';
+import { getSession, isAdminRole } from '../../lib/session';
 import {
   DUMMY_PROFILES,
   DUMMY_ACTIVE_RULES,
@@ -9,7 +9,8 @@ import {
 } from '../../lib/dummy-data';
 
 const session = getSession(Astro.cookies);
-if (!session) return Astro.redirect('/login');
+if (!session) return Astro.redirect('/customer/login');
+if (isAdminRole(session.role)) return Astro.redirect('/admin/dashboard');
 
 const { profile_id } = Astro.params;
 const profile = DUMMY_PROFILES.find(p => p.id === profile_id && p.status === 'active');
@@ -21,7 +22,7 @@ const plans = DUMMY_ACTIVE_PLANS[profile_id!] ?? [];
 // Use scenario-001 as the pre-calculated dummy result (matches profile-fr-b2b-1 inputs)
 const dummyResult = DUMMY_SCENARIO_RESULT;
 
-const canGenerateSummary = session.role === 'admin' || session.role === 'internal';
+const canGenerateSummary = session.role === 'internal';
 // Client can generate summary only if explicitly enabled — use dummy flag
 const clientSummaryEnabled = true; // TODO: fetch from settings API
 const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clientSummaryEnabled);

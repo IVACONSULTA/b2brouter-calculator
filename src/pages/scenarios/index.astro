@@ -1,12 +1,13 @@
 ---
 import UserLayout from '../../layouts/UserLayout.astro';
-import { getSession } from '../../lib/session';
+import { getSession, isAdminRole } from '../../lib/session';
 import { DUMMY_SCENARIOS } from '../../lib/dummy-data';
 
 const session = getSession(Astro.cookies);
-if (!session) return Astro.redirect('/login');
+if (!session) return Astro.redirect('/customer/login');
+if (isAdminRole(session.role)) return Astro.redirect('/admin/dashboard');
 
-const isInternal = session.role === 'internal' || session.role === 'admin';
+const isInternal = session.role === 'internal';
 
 // Client sees only "own" scenarios; internal sees all
 const scenarios = isInternal

@@ -1,9 +1,9 @@
 ---
 import Layout from '../../layouts/Layout.astro';
-import { getSession } from '../../lib/session';
+import { getSession, canAccessUserPortal } from '../../lib/session';
 
 const session = getSession(Astro.cookies);
-if (!session || session.role !== 'customer') {
+if (!session || !canAccessUserPortal(session.role)) {
   return Astro.redirect('/customer/login');
 }
 ---

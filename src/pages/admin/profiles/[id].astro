@@ -1,10 +1,11 @@
 ---
 import AdminLayout from '../../../layouts/AdminLayout.astro';
-import { getSession } from '../../../lib/session';
+import { getSession, isAdminRole } from '../../../lib/session';
 import { DUMMY_PROFILES, DUMMY_ANALYSIS_DETAIL } from '../../../lib/dummy-data';
 
 const session = getSession(Astro.cookies);
-if (!session || session.role !== 'admin') return Astro.redirect('/login');
+if (!session) return Astro.redirect('/admin/login');
+if (!isAdminRole(session.role)) return Astro.redirect('/dashboard');
 
 const { id } = Astro.params;
 const profile = DUMMY_PROFILES.find(p => p.id === id) ?? DUMMY_PROFILES[0];

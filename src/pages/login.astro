@@ -1,31 +1,29 @@
 ---
 import Layout from '../layouts/Layout.astro';
-import { getSession } from '../lib/session';
+import { getSession, isAdminRole, canAccessUserPortal } from '../lib/session';
 
 const session = getSession(Astro.cookies);
-
-// Preserve the portal intent so we can redirect to the right place
-const from = Astro.url.searchParams.get('from') ?? ''; // 'admin' | 'customer' | ''
+const from = Astro.url.searchParams.get('from') ?? '';
 
 if (session) {
-  // Already authenticated — honour the portal intent the user clicked.
-  // "Customer Portal" should land on the user dashboard even for admins.
-  // "Admin Portal" should land on /admin/dashboard only if the user is actually admin.
-  if (from === 'customer') {
+  if (from === 'admin') {
+    if (isAdminRole(session.role)) return Astro.redirect('/admin/dashboard');
     return Astro.redirect('/dashboard');
   }
-  if (from === 'admin' && session.role === 'admin') {
+  if (from === 'customer') {
+    if (canAccessUserPortal(session.role)) return Astro.redirect('/dashboard');
     return Astro.redirect('/admin/dashboard');
   }
-  // from=admin but not admin role, or no intent: fall back to role default
-  return Astro.redirect(session.role === 'admin' ? '/admin/dashboard' : '/dashboard');
+  return Astro.redirect(isAdminRole(session.role) ? '/admin/dashboard' : '/dashboard');
 }
 
 const errorMessages: Record<string, string> = {
   invalid_credentials: 'Incorrect email or password. Please try again.',
-  missing_fields:      'Please enter your email and password.',
-  session_expired:     'Your session has expired. Please sign in again.',
-  unauthorized:        'You do not have access to that page.',
+  missing_fields: 'Please enter your email and password.',
+  session_expired: 'Your session has expired. Please sign in again.',
+  unauthorized: 'You do not have access to that page.',
+  wrong_portal:
+    'This account does not match the portal you chose. Go back to the home page and open Admin or Customer portal as appropriate.',
 };
 
 const errorKey = Astro.url.searchParams.get('error') ?? '';

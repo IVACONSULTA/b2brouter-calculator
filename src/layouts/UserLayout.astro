@@ -1,7 +1,6 @@
 ---
 import Layout from './Layout.astro';
 import { getSession } from '../lib/session';
-import type { Session } from '../lib/session';
 
 interface Props {
   title: string;
@@ -13,7 +12,7 @@ const session = getSession(Astro.cookies);
 const path = Astro.url.pathname;
 
 const role = session?.role ?? 'client';
-const isInternal = role === 'internal' || role === 'admin';
+const isInternal = role === 'internal';
 
 function isActive(href: string, exact = false) {
   return exact ? path === href : path.startsWith(href);
@@ -78,16 +77,6 @@ function isActive(href: string, exact = false) {
           </a>
         </div>
 
-        {isInternal && (
-          <div class="admin-link-wrap">
-            <a href="/admin/dashboard" class="admin-link">
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
-              </svg>
-              Switch to Admin view
-            </a>
-          </div>
-        )}
       </div>
 
       <div class="sidebar-bottom">
@@ -301,29 +290,6 @@ function isActive(href: string, exact = false) {
   [data-role="internal"] .cta-btn:hover { background: #2563eb; }
   [data-role="admin"] .cta-btn { background: var(--color-admin); }
   [data-role="admin"] .cta-btn:hover { background: var(--color-admin-hover); }
-
-  /* Admin link */
-  .admin-link-wrap {
-    margin-top: 0.75rem;
-    text-align: center;
-  }
-
-  .admin-link {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    font-size: 0.72rem;
-    color: var(--color-text-muted);
-    padding: 0.3rem 0.6rem;
-    border-radius: 6px;
-    border: 1px solid var(--color-border);
-    transition: all 0.13s;
-  }
-
-  .admin-link:hover {
-    background: var(--color-surface-2);
-    color: var(--color-text);
-  }
 
   /* ── Sidebar bottom ── */
   .sidebar-bottom {
