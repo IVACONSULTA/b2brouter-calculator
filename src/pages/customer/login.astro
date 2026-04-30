@@ -104,12 +104,13 @@ const isDemoMode =
 
 <style>
   .login-page {
-    min-height: 100vh;
+    flex: 1;
+    min-height: 0;
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 2rem;
-    background: radial-gradient(ellipse at 70% 20%, rgba(16, 185, 129, 0.1) 0%, transparent 55%);
+    background: radial-gradient(ellipse at 70% 20%, var(--color-customer-soft) 0%, transparent 55%);
   }
   .login-card {
     width: 100%;
@@ -198,7 +199,7 @@ const isDemoMode =
   }
   .field input:focus {
     border-color: var(--color-customer);
-    box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.15);
+    box-shadow: 0 0 0 2px rgba(51, 70, 90, 0.18);
   }
   .btn-submit {
     padding: 0.8rem 1.5rem;
@@ -252,7 +253,7 @@ const isDemoMode =
     flex-shrink: 0;
   }
   .dot-internal {
-    background: #3b82f6;
+    background: var(--color-admin);
   }
   .dot-client {
     background: var(--color-customer);

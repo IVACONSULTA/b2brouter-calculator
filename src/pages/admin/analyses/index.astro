@@ -94,7 +94,7 @@ if (!isAdminRole(session.role)) return Astro.redirect('/dashboard');
 
   .bold  { font-weight: 600; }
   .muted { color: var(--color-text-muted); }
-  .green { color: #10b981; font-weight: 600; }
+  .green { color: var(--color-success); font-weight: 600; }
 
   .badge {
     display: inline-block;
@@ -105,7 +105,7 @@ if (!isAdminRole(session.role)) return Astro.redirect('/dashboard');
     white-space: nowrap;
   }
 
-  .badge-green { background: rgba(16,185,129,.12); color: #10b981; }
+  .badge-green { background: var(--color-success-soft); color: var(--color-success); }
   .badge-amber { background: rgba(245,158,11,.12);  color: #f59e0b; }
 
   .btn-action {
@@ -114,7 +114,7 @@ if (!isAdminRole(session.role)) return Astro.redirect('/dashboard');
     color: var(--color-admin);
     padding: 0.25rem 0.6rem;
     border-radius: 5px;
-    border: 1px solid rgba(99,102,241,.3);
+    border: 1px solid rgba(88,119,152,.3);
     transition: all 0.13s;
   }
 

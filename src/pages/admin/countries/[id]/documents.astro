@@ -312,7 +312,7 @@ const blockedDocs  = documents.filter(d => d.copyright_status === 'blocked');
   }
 
   .step-tab.active .step-num { background: var(--color-admin); border-color: var(--color-admin); color: #fff; }
-  .step-num.done { background: #10b981; border-color: #10b981; color: #fff; font-size: 0.6rem; }
+  .step-num.done { background: var(--color-success); border-color: var(--color-success); color: #fff; font-size: 0.6rem; }
 
   .step-connector { flex: 1; height: 1px; background: var(--color-border); margin: 0 0.75rem; min-width: 24px; }
 
@@ -365,7 +365,7 @@ const blockedDocs  = documents.filter(d => d.copyright_status === 'blocked');
     font-family: inherit;
   }
 
-  .btn-analyze:hover { background: var(--color-admin-hover); transform: translateY(-1px); box-shadow: 0 4px 16px rgba(99,102,241,.35); }
+  .btn-analyze:hover { background: var(--color-admin-hover); transform: translateY(-1px); box-shadow: 0 4px 16px rgba(88,119,152,.35); }
 
   .guardrail-banner {
     display: flex;
@@ -426,7 +426,7 @@ const blockedDocs  = documents.filter(d => d.copyright_status === 'blocked');
     flex-shrink: 0;
   }
 
-  .fi-clear      { background: rgba(16,185,129,.12); color: #10b981; }
+  .fi-clear      { background: var(--color-success-soft); color: var(--color-success); }
   .fi-restricted { background: rgba(245,158,11,.12); color: #f59e0b; }
   .fi-blocked    { background: rgba(239,68,68,.12);  color: #ef4444; }
   .fi-pending    { background: var(--color-surface-2); color: var(--color-text-muted); }
@@ -447,7 +447,7 @@ const blockedDocs  = documents.filter(d => d.copyright_status === 'blocked');
     width: fit-content;
   }
 
-  .c-clear      { background: rgba(16,185,129,.12); color: #10b981; }
+  .c-clear      { background: var(--color-success-soft); color: var(--color-success); }
   .c-restricted { background: rgba(245,158,11,.12); color: #f59e0b; }
   .c-blocked    { background: rgba(239,68,68,.12);  color: #ef4444; }
   .c-pending    { background: var(--color-surface-2); color: var(--color-text-muted); }

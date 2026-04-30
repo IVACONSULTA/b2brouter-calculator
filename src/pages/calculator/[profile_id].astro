@@ -481,8 +481,8 @@ const showSummaryBtn =
   .active-badge {
     font-size: 0.7rem;
     font-weight: 700;
-    background: rgba(16,185,129,.12);
-    color: #10b981;
+    background: var(--color-success-soft);
+    color: var(--color-success);
     padding: 0.25rem 0.65rem;
     border-radius: 100px;
     white-space: nowrap;
@@ -552,7 +552,7 @@ const showSummaryBtn =
 
   .field-input:focus {
     border-color: var(--color-customer);
-    box-shadow: 0 0 0 2px rgba(16,185,129,.15);
+    box-shadow: 0 0 0 2px var(--color-success-soft);
   }
 
   .field-hint {
@@ -605,7 +605,7 @@ const showSummaryBtn =
     letter-spacing: 0.04em;
   }
 
-  .dir-issued   { background: rgba(59,130,246,.12); color: #3b82f6; }
+  .dir-issued   { background: rgba(88,119,152,.12); color: var(--color-admin); }
   .dir-received { background: rgba(168,85,247,.12); color: #a855f7; }
   .obl-badge    { background: var(--color-surface); color: var(--color-text-muted); border: 1px solid var(--color-border); }
   .dir-mini     { font-size: 0.58rem; }
@@ -663,7 +663,7 @@ const showSummaryBtn =
 
   .btn-calculate:hover {
     background: var(--color-customer-hover);
-    box-shadow: 0 4px 18px rgba(16,185,129,.35);
+    box-shadow: 0 4px 18px rgba(29,111,92,.35);
     transform: translateY(-1px);
   }
 
@@ -792,8 +792,8 @@ const showSummaryBtn =
 
   .plan-row td { background: transparent; }
   .plan-recommended td {
-    background: rgba(16,185,129,.04);
-    border-color: rgba(16,185,129,.15);
+    background: rgba(29,111,92,.04);
+    border-color: var(--color-success-soft);
   }
 
   .plan-name-cell {
@@ -808,8 +808,8 @@ const showSummaryBtn =
     gap: 0.25rem;
     font-size: 0.62rem;
     font-weight: 700;
-    background: rgba(16,185,129,.12);
-    color: #10b981;
+    background: var(--color-success-soft);
+    color: var(--color-success);
     padding: 0.12rem 0.4rem;
     border-radius: 4px;
     white-space: nowrap;
@@ -817,5 +817,5 @@ const showSummaryBtn =
 
   .plan-name { font-weight: 500; }
   .plan-name.rec { font-weight: 700; color: var(--color-text); }
-  .rec-cost { color: #10b981; font-size: 0.9rem; }
+  .rec-cost { color: var(--color-success); font-size: 0.9rem; }
 </style>

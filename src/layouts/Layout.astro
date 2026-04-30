@@ -3,9 +3,12 @@ import '../styles/global.css';
 
 interface Props {
   title: string;
+  /** Dark IVA-style header + footer banding. */
+  siteChrome?: boolean;
 }
 
-const { title } = Astro.props;
+const { title, siteChrome = true } = Astro.props;
+const year = new Date().getFullYear();
 ---
 
 <!doctype html>
@@ -14,39 +17,222 @@ const { title } = Astro.props;
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <title>{title} — B2B Router Calculator</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Open+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap"
+      rel="stylesheet"
+    />
+    <title>{title} — PA Plan Advisor</title>
     <style is:global>
-      *, *::before, *::after {
+      *,
+      *::before,
+      *::after {
         box-sizing: border-box;
         margin: 0;
         padding: 0;
       }
 
+      /* nexdevconsulting.com / Blocksy — theme-palette + typography */
       :root {
-        --color-bg: #0f1117;
-        --color-surface: #1a1d27;
-        --color-surface-2: #242736;
-        --color-border: #2e3347;
-        --color-text: #e2e8f0;
-        --color-text-muted: #8892a4;
-        --color-admin: #6366f1;
-        --color-admin-hover: #4f52d9;
-        --color-admin-soft: rgba(99, 102, 241, 0.12);
-        --color-customer: #10b981;
-        --color-customer-hover: #059669;
-        --color-customer-soft: rgba(16, 185, 129, 0.12);
+        --iva-1: #587798;
+        --iva-2: #4b637d;
+        --iva-3: #3a4f66;
+        --iva-4: #33465a;
+        --iva-5: #253647;
+        --iva-6: #192a3d;
+        --iva-7: #fafbfc;
+        --iva-8: #ffffff;
+        --iva-9: #5d7fa3;
+        --iva-12: #89b3e0;
+
+        --site-header-bg: linear-gradient(180deg, #1e3248 0%, #192a3d 100%);
+        --site-footer-bg: linear-gradient(180deg, #152028 0%, #0f1720 100%);
+        --site-chrome-text: rgba(255, 255, 255, 0.92);
+        --site-chrome-muted: rgba(255, 255, 255, 0.62);
+        --site-chrome-faint: rgba(255, 255, 255, 0.38);
+        --site-chrome-border: rgba(255, 255, 255, 0.08);
+        --site-chrome-hover: rgba(255, 255, 255, 0.12);
+
+        --color-bg: var(--iva-7);
+        --color-surface: var(--iva-8);
+        --color-surface-2: #f3f0f0;
+        --color-border: #e0e5eb;
+        --color-text: var(--iva-3);
+        --color-text-muted: var(--iva-9);
+        --color-admin: var(--iva-1);
+        --color-admin-hover: var(--iva-2);
+        --color-admin-soft: rgba(88, 119, 152, 0.14);
+        --color-customer: var(--iva-4);
+        --color-customer-hover: var(--iva-5);
+        --color-customer-soft: rgba(93, 127, 163, 0.14);
         --color-accent: #f59e0b;
+        --color-success: #1d6f5c;
+        --color-success-hover: #14523f;
+        --color-success-soft: rgba(29, 111, 92, 0.12);
+        --shadow-header: 0 10px 15px rgba(64, 104, 148, 0.12);
+        --shadow-card: 0 12px 18px -6px rgba(34, 56, 101, 0.06);
         --radius: 12px;
         --radius-sm: 8px;
       }
 
-      html, body {
-        height: 100%;
-        font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      html,
+      body {
+        min-height: 100%;
+        font-family: 'Open Sans', system-ui, -apple-system, sans-serif;
         background: var(--color-bg);
         color: var(--color-text);
-        line-height: 1.6;
+        line-height: 1.65;
         -webkit-font-smoothing: antialiased;
+      }
+
+      body.site-body {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .site-header {
+        flex-shrink: 0;
+        background: var(--site-header-bg);
+        color: var(--site-chrome-text);
+        border-bottom: 1px solid var(--site-chrome-border);
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.18);
+      }
+
+      .site-header-inner {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 0.65rem 1.25rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+      }
+
+      .site-brand {
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
+        font-weight: 700;
+        font-size: 0.95rem;
+        letter-spacing: -0.02em;
+        color: var(--site-chrome-text);
+      }
+
+      .site-brand-mark {
+        width: 32px;
+        height: 32px;
+        border-radius: 8px;
+        background: rgba(88, 119, 152, 0.35);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--iva-12);
+        flex-shrink: 0;
+      }
+
+      .site-brand-mark svg {
+        width: 18px;
+        height: 18px;
+      }
+
+      .site-nav {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.15rem 0.35rem;
+        justify-content: flex-end;
+      }
+
+      .site-nav a {
+        padding: 0.4rem 0.75rem;
+        border-radius: 6px;
+        font-size: 0.78rem;
+        font-weight: 600;
+        color: var(--site-chrome-muted);
+        transition: color 0.15s, background 0.15s;
+      }
+
+      .site-nav a:hover {
+        color: var(--site-chrome-text);
+        background: var(--site-chrome-hover);
+      }
+
+      .site-main {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        background: var(--color-bg);
+      }
+
+      .site-footer {
+        flex-shrink: 0;
+        background: var(--site-footer-bg);
+        color: var(--site-chrome-muted);
+        border-top: 1px solid var(--site-chrome-border);
+        font-size: 0.78rem;
+      }
+
+      .site-footer-inner {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 1.35rem 1.25rem 1.5rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+      }
+
+      @media (min-width: 640px) {
+        .site-footer-inner {
+          flex-direction: row;
+          flex-wrap: wrap;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 1.25rem;
+        }
+      }
+
+      .site-footer-block {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+      }
+
+      .site-footer strong {
+        color: var(--site-chrome-text);
+        font-weight: 600;
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+
+      .site-footer a {
+        color: var(--site-chrome-muted);
+        transition: color 0.15s;
+      }
+
+      .site-footer a:hover {
+        color: var(--site-chrome-text);
+      }
+
+      .site-footer-meta {
+        font-size: 0.74rem;
+        color: var(--site-chrome-faint);
+        line-height: 1.5;
+      }
+
+      .site-footer-copy {
+        margin-top: 0.15rem;
+        padding-top: 1rem;
+        border-top: 1px solid var(--site-chrome-border);
+        width: 100%;
+        flex-basis: 100%;
+        text-align: center;
+        font-size: 0.72rem;
+        color: var(--site-chrome-faint);
       }
 
       a {
@@ -60,7 +246,51 @@ const { title } = Astro.props;
       }
     </style>
   </head>
-  <body>
-    <slot />
+  <body class:list={{ 'site-body': siteChrome }}>
+    {
+      siteChrome && (
+        <header class="site-header">
+          <div class="site-header-inner">
+            <a href="/" class="site-brand">
+              <span class="site-brand-mark" aria-hidden="true">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                  <path d="M2 17l10 5 10-5" />
+                  <path d="M2 12l10 5 10-5" />
+                </svg>
+              </span>
+              <span>PA Plan Advisor</span>
+            </a>
+            <nav class="site-nav" aria-label="Site">
+              <a href="/">Home</a>
+              <a href="/admin/login">Admin</a>
+              <a href="/customer/login">Customer</a>
+              <a href="/login">Sign in</a>
+            </nav>
+          </div>
+        </header>
+      )
+    }
+    <div class="site-main">
+      <slot />
+    </div>
+    {
+      siteChrome && (
+        <footer class="site-footer">
+          <div class="site-footer-inner">
+            <div class="site-footer-block">
+              <strong>PA Plan Advisor</strong>
+              <span class="site-footer-meta">B2B routing and plan tooling for operators and clients.</span>
+            </div>
+            <div class="site-footer-block">
+              <strong>Portals</strong>
+              <a href="/admin/login">Admin portal</a>
+              <a href="/customer/login">Customer portal</a>
+            </div>
+            <div class="site-footer-copy">Copyright © {year} PA Plan Advisor. All rights reserved.</div>
+          </div>
+        </footer>
+      )
+    }
   </body>
 </html>

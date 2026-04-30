@@ -562,16 +562,16 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
   .sh-right { flex-shrink: 0; text-align: right; }
 
   .sh-total-block {
-    background: rgba(16,185,129,.06);
-    border: 1px solid rgba(16,185,129,.2);
+    background: rgba(29,111,92,.06);
+    border: 1px solid rgba(29,111,92,.2);
     border-radius: 10px;
     padding: 0.9rem 1.1rem;
     min-width: 180px;
   }
 
-  .sh-total-label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em; color: #10b981; margin-bottom: 0.25rem; font-weight: 700; }
+  .sh-total-label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-success); margin-bottom: 0.25rem; font-weight: 700; }
   .sh-plan-name   { font-size: 1.05rem; font-weight: 800; color: var(--color-text); margin-bottom: 0.1rem; }
-  .sh-total-cost  { font-size: 0.82rem; color: #10b981; font-weight: 700; }
+  .sh-total-cost  { font-size: 0.82rem; color: var(--color-success); font-weight: 700; }
 
   /* Action buttons */
   .scenario-actions {
@@ -749,7 +749,7 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
     white-space: nowrap;
   }
 
-  .dir-issued   { background: rgba(59,130,246,.12); color: #3b82f6; }
+  .dir-issued   { background: rgba(88,119,152,.12); color: var(--color-admin); }
   .dir-received { background: rgba(168,85,247,.12); color: #a855f7; }
 
   .obl-tag {
@@ -786,23 +786,23 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
 
   /* Plan comparison */
   .plan-row td { background: transparent; }
-  .plan-rec td { background: rgba(16,185,129,.04); }
+  .plan-rec td { background: rgba(29,111,92,.04); }
 
   .plan-cell { display: flex; align-items: center; gap: 0.45rem; }
-  .rec-star  { color: #10b981; display: flex; }
+  .rec-star  { color: var(--color-success); display: flex; }
   .plan-name { font-weight: 500; }
   .plan-name-rec { font-weight: 700; }
 
   .rec-label {
     font-size: 0.62rem;
     font-weight: 700;
-    background: rgba(16,185,129,.12);
-    color: #10b981;
+    background: var(--color-success-soft);
+    color: var(--color-success);
     padding: 0.1rem 0.4rem;
     border-radius: 4px;
   }
 
-  .rec-cost { color: #10b981; }
+  .rec-cost { color: var(--color-success); }
 
   /* Assumptions */
   .assumptions-list { list-style: none; display: flex; flex-direction: column; gap: 0.45rem; }
@@ -834,8 +834,8 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
 
   /* Recommended card */
   .rec-card {
-    background: linear-gradient(135deg, rgba(16,185,129,.1) 0%, rgba(16,185,129,.03) 100%);
-    border: 1px solid rgba(16,185,129,.25);
+    background: linear-gradient(135deg, var(--color-success-soft) 0%, rgba(29,111,92,.03) 100%);
+    border: 1px solid rgba(29,111,92,.25);
     border-radius: var(--radius);
     padding: 1.1rem 1.2rem;
   }
@@ -848,7 +848,7 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: #10b981;
+    color: var(--color-success);
     margin-bottom: 0.75rem;
   }
 
@@ -863,7 +863,7 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
   .rec-total {
     font-size: 1.7rem;
     font-weight: 800;
-    color: #10b981;
+    color: var(--color-success);
     letter-spacing: -0.03em;
     line-height: 1;
     margin-bottom: 1rem;
@@ -871,7 +871,7 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
 
   .rec-per { font-size: 0.85rem; font-weight: 500; color: var(--color-text-muted); margin-left: 0.2rem; }
 
-  .rec-breakdown { border-top: 1px solid rgba(16,185,129,.15); padding-top: 0.75rem; margin-bottom: 1rem; }
+  .rec-breakdown { border-top: 1px solid var(--color-success-soft); padding-top: 0.75rem; margin-bottom: 1rem; }
 
   .rec-row {
     display: flex;
@@ -883,7 +883,7 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
   }
 
   .rec-row strong { font-weight: 700; color: var(--color-text); font-size: 0.82rem; }
-  .rec-total-row  { border-top: 1px solid rgba(16,185,129,.15); padding-top: 0.4rem; margin-top: 0.25rem; }
+  .rec-total-row  { border-top: 1px solid var(--color-success-soft); padding-top: 0.4rem; margin-top: 0.25rem; }
 
   /* PA usage bar */
   .rec-pa-bar-wrap { }
@@ -899,7 +899,7 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
 
   .rec-pa-track {
     height: 6px;
-    background: rgba(16,185,129,.15);
+    background: var(--color-success-soft);
     border-radius: 100px;
     overflow: hidden;
   }
@@ -938,8 +938,8 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
   .summary-ready-badge {
     font-size: 0.62rem;
     font-weight: 700;
-    background: rgba(16,185,129,.12);
-    color: #10b981;
+    background: var(--color-success-soft);
+    color: var(--color-success);
     padding: 0.1rem 0.4rem;
     border-radius: 4px;
   }

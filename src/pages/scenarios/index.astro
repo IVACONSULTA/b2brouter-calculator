@@ -437,7 +437,7 @@ for (const s of scenarios) {
     color: var(--color-text);
   }
 
-  .stat-val.green { color: #10b981; }
+  .stat-val.green { color: var(--color-success); }
   .stat-val.amber { color: #f59e0b; }
 
   .stat-label { font-size: 0.72rem; color: var(--color-text-muted); }
@@ -494,7 +494,7 @@ for (const s of scenarios) {
   }
 
   .ftab.active .ftab-count {
-    background: rgba(16,185,129,.2);
+    background: rgba(29,111,92,.2);
     color: var(--color-customer);
   }
 
@@ -613,7 +613,7 @@ for (const s of scenarios) {
     border-radius: 100px;
   }
 
-  .summary-badge.yes { background: rgba(16,185,129,.12); color: #10b981; }
+  .summary-badge.yes { background: var(--color-success-soft); color: var(--color-success); }
   .summary-badge.no  { background: var(--color-surface-2); color: var(--color-text-muted); }
 
   .action-row { display: flex; align-items: center; gap: 0.4rem; }
@@ -624,7 +624,7 @@ for (const s of scenarios) {
     color: var(--color-customer);
     padding: 0.25rem 0.6rem;
     border-radius: 5px;
-    border: 1px solid rgba(16,185,129,.3);
+    border: 1px solid rgba(29,111,92,.3);
     transition: all 0.13s;
     white-space: nowrap;
   }

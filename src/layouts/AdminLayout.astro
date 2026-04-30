@@ -144,7 +144,8 @@ function isActive(href: string, exact = false) {
 <style>
   .admin-app {
     display: flex;
-    height: 100vh;
+    flex: 1;
+    min-height: 0;
     overflow: hidden;
     background: var(--color-bg);
   }
@@ -411,7 +412,7 @@ function isActive(href: string, exact = false) {
   .btn-new:hover {
     background: var(--color-admin-hover);
     transform: translateY(-1px);
-    box-shadow: 0 4px 16px rgba(99, 102, 241, 0.35);
+    box-shadow: 0 4px 16px rgba(88, 119, 152, 0.35);
   }
 
   /* ── Page content ── */

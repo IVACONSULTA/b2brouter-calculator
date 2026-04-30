@@ -182,7 +182,8 @@ if (!session || !canAccessUserPortal(session.role)) {
 <style>
   .app {
     display: flex;
-    height: 100vh;
+    flex: 1;
+    min-height: 0;
     overflow: hidden;
   }
 
@@ -453,7 +454,7 @@ if (!session || !canAccessUserPortal(session.role)) {
   }
 
   .route-status.active {
-    background: rgba(16, 185, 129, 0.1);
+    background: var(--color-success-soft);
     color: var(--color-customer);
   }
 
@@ -507,7 +508,7 @@ if (!session || !canAccessUserPortal(session.role)) {
   }
 
   .invoice-status.paid {
-    background: rgba(16, 185, 129, 0.1);
+    background: var(--color-success-soft);
     color: var(--color-customer);
   }
 

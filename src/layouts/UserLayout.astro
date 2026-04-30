@@ -152,7 +152,8 @@ function isActive(href: string, exact = false) {
 <style>
   .user-app {
     display: flex;
-    height: 100vh;
+    flex: 1;
+    min-height: 0;
     overflow: hidden;
     background: var(--color-bg);
   }
@@ -197,8 +198,8 @@ function isActive(href: string, exact = false) {
   }
 
   [data-role="internal"] .brand-icon {
-    background: rgba(59,130,246,.12);
-    color: #3b82f6;
+    background: rgba(88,119,152,.12);
+    color: var(--color-admin);
   }
 
   [data-role="admin"] .brand-icon {
@@ -227,7 +228,7 @@ function isActive(href: string, exact = false) {
   }
 
   .role-client   { color: var(--color-customer); }
-  .role-internal { color: #3b82f6; }
+  .role-internal { color: var(--color-admin); }
   .role-admin    { color: var(--color-admin); }
 
   .pa-banner {
@@ -272,8 +273,8 @@ function isActive(href: string, exact = false) {
   }
 
   [data-role="internal"] .nav-item.active {
-    background: rgba(59,130,246,.12);
-    color: #3b82f6;
+    background: rgba(88,119,152,.12);
+    color: var(--color-admin);
   }
 
   [data-role="admin"] .nav-item.active {
@@ -311,8 +312,8 @@ function isActive(href: string, exact = false) {
 
   .cta-btn:hover { background: var(--color-customer-hover); }
 
-  [data-role="internal"] .cta-btn { background: #3b82f6; }
-  [data-role="internal"] .cta-btn:hover { background: #2563eb; }
+  [data-role="internal"] .cta-btn { background: var(--color-admin); }
+  [data-role="internal"] .cta-btn:hover { background: var(--color-admin-hover); }
   [data-role="admin"] .cta-btn { background: var(--color-admin); }
   [data-role="admin"] .cta-btn:hover { background: var(--color-admin-hover); }
 
@@ -343,7 +344,7 @@ function isActive(href: string, exact = false) {
     color: var(--color-customer);
   }
 
-  .ua-internal { background: rgba(59,130,246,.12); color: #3b82f6; }
+  .ua-internal { background: rgba(88,119,152,.12); color: var(--color-admin); }
   .ua-admin    { background: var(--color-admin-soft); color: var(--color-admin); }
 
   .user-info {
@@ -454,11 +455,11 @@ function isActive(href: string, exact = false) {
   .btn-calc:hover {
     background: var(--color-customer-hover);
     transform: translateY(-1px);
-    box-shadow: 0 4px 16px rgba(16,185,129,.3);
+    box-shadow: 0 4px 16px rgba(51, 70, 90, 0.22);
   }
 
-  [data-role="internal"] .btn-calc { background: #3b82f6; }
-  [data-role="internal"] .btn-calc:hover { background: #2563eb; box-shadow: 0 4px 16px rgba(59,130,246,.3); }
+  [data-role="internal"] .btn-calc { background: var(--color-admin); }
+  [data-role="internal"] .btn-calc:hover { background: var(--color-admin-hover); box-shadow: 0 4px 16px rgba(88,119,152,.3); }
 
   .page-content {
     flex: 1;

@@ -286,10 +286,10 @@ const statusColor: Record<string, string> = {
     flex-shrink: 0;
   }
 
-  .kpi-icon.green   { background: rgba(16,185,129,.12); color: #10b981; }
+  .kpi-icon.green   { background: var(--color-success-soft); color: var(--color-success); }
   .kpi-icon.amber   { background: rgba(245,158,11,.12); color: #f59e0b; }
   .kpi-icon.indigo  { background: var(--color-admin-soft); color: var(--color-admin); }
-  .kpi-icon.blue    { background: rgba(59,130,246,.12); color: #3b82f6; }
+  .kpi-icon.blue    { background: rgba(88,119,152,.12); color: var(--color-admin); }
 
   .kpi-value {
     font-size: 1.6rem;
@@ -469,7 +469,7 @@ const statusColor: Record<string, string> = {
     white-space: nowrap;
   }
 
-  .badge-green  { background: rgba(16,185,129,.12); color: #10b981; }
+  .badge-green  { background: var(--color-success-soft); color: var(--color-success); }
   .badge-amber  { background: rgba(245,158,11,.12);  color: #f59e0b; }
   .badge-gray   { background: var(--color-surface-2); color: var(--color-text-muted); }
   .badge-red    { background: rgba(239,68,68,.12);   color: #ef4444; }
@@ -528,7 +528,7 @@ const statusColor: Record<string, string> = {
     flex-shrink: 0;
   }
 
-  .doc-clear      { background: rgba(16,185,129,.12);  color: #10b981; }
+  .doc-clear      { background: var(--color-success-soft);  color: var(--color-success); }
   .doc-restricted { background: rgba(245,158,11,.12);  color: #f59e0b; }
   .doc-blocked    { background: rgba(239,68,68,.12);   color: #ef4444; }
   .doc-pending    { background: var(--color-surface-2); color: var(--color-text-muted); }

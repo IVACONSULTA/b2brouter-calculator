@@ -383,7 +383,7 @@ const roleMeta: Record<string, { label: string; cls: string }> = {
   }
 
   .ua-admin    { background: var(--color-admin-soft); color: var(--color-admin); }
-  .ua-internal { background: rgba(59,130,246,.12); color: #3b82f6; }
+  .ua-internal { background: rgba(88,119,152,.12); color: var(--color-admin); }
   .ua-client   { background: var(--color-customer-soft); color: var(--color-customer); }
 
   .user-name  { font-size: 0.8rem; font-weight: 600; color: var(--color-text); }
@@ -398,7 +398,7 @@ const roleMeta: Record<string, { label: string; cls: string }> = {
   }
 
   .r-admin    { background: var(--color-admin-soft); color: var(--color-admin); }
-  .r-internal { background: rgba(59,130,246,.12);    color: #3b82f6; }
+  .r-internal { background: rgba(88,119,152,.12);    color: var(--color-admin); }
   .r-client   { background: var(--color-customer-soft); color: var(--color-customer); }
 
   .company-name { font-size: 0.78rem; font-weight: 500; color: var(--color-text); }
@@ -411,7 +411,7 @@ const roleMeta: Record<string, { label: string; cls: string }> = {
     margin-left: 0.3rem;
   }
 
-  .ct-internal { background: rgba(59,130,246,.1); color: #3b82f6; }
+  .ct-internal { background: rgba(88,119,152,.1); color: var(--color-admin); }
   .ct-client   { background: var(--color-customer-soft); color: var(--color-customer); }
 
   .ai-unlimited { font-size: 0.75rem; color: var(--color-text-muted); }
@@ -449,9 +449,9 @@ const roleMeta: Record<string, { label: string; cls: string }> = {
     border-radius: 50%;
   }
 
-  .status-dot.active::before { background: #10b981; }
+  .status-dot.active::before { background: var(--color-success); }
   .status-dot.inactive::before { background: #ef4444; }
-  .status-dot.active  { color: #10b981; }
+  .status-dot.active  { color: var(--color-success); }
   .status-dot.inactive { color: #ef4444; }
 
   .muted { color: var(--color-text-muted); font-size: 0.75rem; }
@@ -474,7 +474,7 @@ const roleMeta: Record<string, { label: string; cls: string }> = {
 
   .btn-icon:hover { background: var(--color-surface-2); color: var(--color-text); }
   .btn-warn:hover  { background: rgba(245,158,11,.1); color: #f59e0b; border-color: rgba(245,158,11,.3); }
-  .btn-ok:hover    { background: rgba(16,185,129,.1); color: #10b981; border-color: rgba(16,185,129,.3); }
+  .btn-ok:hover    { background: var(--color-success-soft); color: var(--color-success); border-color: rgba(29,111,92,.3); }
 
   /* New user form */
   .form-grid {
@@ -615,7 +615,7 @@ const roleMeta: Record<string, { label: string; cls: string }> = {
     transition: all 0.13s;
   }
 
-  .toggle-btn.on  { background: rgba(16,185,129,.12); color: #10b981; }
+  .toggle-btn.on  { background: var(--color-success-soft); color: var(--color-success); }
   .toggle-btn.off { background: var(--color-surface);  color: var(--color-text-muted); border: 1px solid var(--color-border); }
   .toggle-btn:hover { opacity: 0.8; }
 

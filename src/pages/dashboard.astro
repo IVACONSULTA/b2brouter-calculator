@@ -385,8 +385,8 @@ const greetingWord = greetingDisplay.split(/\s+/)[0];
     align-items: center;
     justify-content: space-between;
     gap: 1.25rem;
-    background: linear-gradient(135deg, rgba(16,185,129,.08) 0%, rgba(16,185,129,.02) 100%);
-    border: 1px solid rgba(16,185,129,.2);
+    background: linear-gradient(135deg, rgba(29,111,92,.08) 0%, rgba(29,111,92,.02) 100%);
+    border: 1px solid rgba(29,111,92,.2);
     border-radius: var(--radius);
     padding: 1.25rem 1.5rem;
     margin-bottom: 1.25rem;
@@ -425,7 +425,7 @@ const greetingWord = greetingDisplay.split(/\s+/)[0];
   .banner-cta:hover {
     background: var(--color-customer-hover);
     transform: translateY(-1px);
-    box-shadow: 0 6px 20px rgba(16,185,129,.3);
+    box-shadow: 0 6px 20px rgba(29,111,92,.3);
   }
 
   /* KPIs */
@@ -456,8 +456,8 @@ const greetingWord = greetingDisplay.split(/\s+/)[0];
     flex-shrink: 0;
   }
 
-  .kpi-icon.green  { background: rgba(16,185,129,.12); color: #10b981; }
-  .kpi-icon.blue   { background: rgba(59,130,246,.12); color: #3b82f6; }
+  .kpi-icon.green  { background: var(--color-success-soft); color: var(--color-success); }
+  .kpi-icon.blue   { background: rgba(88,119,152,.12); color: var(--color-admin); }
   .kpi-icon.amber  { background: rgba(245,158,11,.12); color: #f59e0b; }
   .kpi-icon.purple { background: rgba(168,85,247,.12); color: #a855f7; }
 
@@ -533,7 +533,7 @@ const greetingWord = greetingDisplay.split(/\s+/)[0];
   }
 
   .profile-card:hover {
-    border-color: rgba(16,185,129,.3);
+    border-color: rgba(29,111,92,.3);
     box-shadow: 0 4px 16px rgba(0,0,0,.2);
     transform: translateY(-2px);
   }
@@ -562,8 +562,8 @@ const greetingWord = greetingDisplay.split(/\s+/)[0];
   .status-pill {
     font-size: 0.62rem;
     font-weight: 700;
-    background: rgba(16,185,129,.12);
-    color: #10b981;
+    background: var(--color-success-soft);
+    color: var(--color-success);
     border-radius: 100px;
     padding: 0.12rem 0.45rem;
     white-space: nowrap;
@@ -632,7 +632,7 @@ const greetingWord = greetingDisplay.split(/\s+/)[0];
   .scenario-cost { font-size: 0.7rem; color: var(--color-text-muted); text-align: right; }
 
   .summary-dot { display: flex; }
-  .summary-yes { color: #10b981; }
+  .summary-yes { color: var(--color-success); }
   .summary-no  { color: var(--color-surface-2); }
 
   .scenario-link {
@@ -684,8 +684,8 @@ const greetingWord = greetingDisplay.split(/\s+/)[0];
     border-radius: 100px;
   }
 
-  .cap-tag.green  { background: rgba(16,185,129,.1); color: #10b981; }
-  .cap-tag.blue   { background: rgba(59,130,246,.1); color: #3b82f6; }
+  .cap-tag.green  { background: var(--color-success-soft); color: var(--color-success); }
+  .cap-tag.blue   { background: rgba(88,119,152,.1); color: var(--color-admin); }
   .cap-tag.amber  { background: rgba(245,158,11,.1); color: #f59e0b; }
   .cap-tag.gray   { background: var(--color-surface-2); color: var(--color-text-muted); }
 </style>
