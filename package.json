@@ -26,6 +26,8 @@
     "@astrojs/netlify": "^7.0.8",
     "@astrojs/node": "^10.0.6",
     "@supabase/supabase-js": "^2.104.1",
-    "astro": "^6.1.9"
+    "@tailwindcss/vite": "^4.2.4",
+    "astro": "^6.1.9",
+    "tailwindcss": "^4.2.4"
   }
 }
