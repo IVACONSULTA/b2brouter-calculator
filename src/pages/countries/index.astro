@@ -2,6 +2,7 @@
 import AdminLayout from '../../layouts/AdminLayout.astro';
 import UserLayout from '../../layouts/UserLayout.astro';
 import { getSession, isAdminRole } from '../../lib/session';
+import { canUsePlanAdvisorApi, paFetchJson } from '../../lib/pa-api';
 import { DUMMY_PROFILES, DUMMY_ACTIVE_PROFILES } from '../../lib/dummy-data';
 
 const session = getSession(Astro.cookies);
@@ -10,8 +11,26 @@ if (!session) return Astro.redirect('/');
 const isAdmin    = session.role === 'admin';
 const isInternal = session.role === 'internal';
 
+type PaViewer = { displayName: string; subtitle: string };
+let paViewer: PaViewer | null = null;
+let paNotice: string | null = null;
+
+type AvailRow = {
+  profile_id: string;
+  country_code?: string | null;
+  country_name?: string | null;
+  provider_name?: string | null;
+  provider_type?: string | null;
+  version?: string | null;
+  currency?: string | null;
+  active_from?: string | null;
+  rules_count?: number | null;
+  plans_count?: number | null;
+};
+
+let activeProfiles = DUMMY_ACTIVE_PROFILES;
+
 const profiles = DUMMY_PROFILES;
-const activeProfiles = DUMMY_ACTIVE_PROFILES;
 
 const statusMeta: Record<string, { label: string; cls: string }> = {
   active:           { label: 'Active',           cls: 'badge-green' },
@@ -23,6 +42,54 @@ const statusMeta: Record<string, { label: string; cls: string }> = {
 const activeCount  = profiles.filter(p => p.status === 'active').length;
 const pendingCount = profiles.filter(p => p.status === 'pending_approval').length;
 const draftCount   = profiles.filter(p => p.status === 'draft').length;
+
+if (!isAdmin) {
+  if (!session.supabaseAccessToken) {
+    paNotice =
+      'Demo session (no JWT). Sign in with Supabase + set API_BASE_URL for live profiles.';
+  } else if (!(import.meta.env.API_BASE_URL ?? '').trim()) {
+    paNotice = 'Set API_BASE_URL to load active profiles from Plan Advisor.';
+  } else if (canUsePlanAdvisorApi(session) && session.supabaseAccessToken) {
+    const tok = session.supabaseAccessToken;
+    const me = await paFetchJson<{ full_name?: string | null; email?: string; company_name?: string | null }>(
+      '/me',
+      tok,
+    );
+    if (me.ok) {
+      paViewer = {
+        displayName:
+          (me.data.full_name?.trim() || me.data.email || session.name)?.trim() || session.name,
+        subtitle: [me.data.email, me.data.company_name].filter(Boolean).join(' · '),
+      };
+    }
+
+    const ac = await paFetchJson<AvailRow[]>('/calculator/available-countries', tok);
+    if (ac.ok) {
+      activeProfiles = ac.data.map((p) => ({
+        id: p.profile_id,
+        country: {
+          code: p.country_code ?? '—',
+          name: p.country_name ?? '',
+        },
+        provider: {
+          name: p.provider_name ?? '',
+          type: p.provider_type ?? '',
+        },
+        version: String(p.version ?? ''),
+        currency: String(p.currency ?? 'EUR'),
+        status: 'active' as const,
+        active_from:
+          typeof p.active_from === 'string' && p.active_from.length ? p.active_from : null,
+        created_at: '',
+        rules_count: Number(p.rules_count ?? 0),
+        plans_count: Number(p.plans_count ?? 0),
+        analysis_id: null,
+      }));
+    } else {
+      paNotice = `Plan Advisor unavailable (HTTP ${ac.status}). Showing demo profiles.`;
+    }
+  }
+}
 ---
 
 {isAdmin && (
@@ -130,6 +197,8 @@ const draftCount   = profiles.filter(p => p.status === 'draft').length;
   <UserLayout
     title="Countries & Providers"
     breadcrumbs={[{ label: 'Home', href: '/dashboard' }, { label: 'Countries' }]}
+    paViewer={paViewer}
+    paNotice={paNotice}
   >
     <div class="u-header">
       <div>

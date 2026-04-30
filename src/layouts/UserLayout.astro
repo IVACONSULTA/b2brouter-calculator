@@ -5,14 +5,23 @@ import { getSession } from '../lib/session';
 interface Props {
   title: string;
   breadcrumbs?: { label: string; href?: string }[];
+  /** Optional hydrated from `GET /api/me` — shown in sidebar instead of stale session-only values. */
+  paViewer?: { displayName: string; subtitle: string } | null;
+  /** Short banner under nav when live API unavailable (dummy login, missing env, errors). */
+  paNotice?: string | null;
 }
 
-const { title, breadcrumbs = [] } = Astro.props;
+const { title, breadcrumbs = [], paViewer = null, paNotice = null } = Astro.props;
 const session = getSession(Astro.cookies);
 const path = Astro.url.pathname;
 
 const role = session?.role ?? 'client';
 const isInternal = role === 'internal';
+
+const displayName =
+  paViewer?.displayName?.trim() || session?.name?.trim() || 'User';
+const subtitle =
+  paViewer?.subtitle?.trim() || session?.email || '—';
 
 function isActive(href: string, exact = false) {
   return exact ? path === href : path.startsWith(href);
@@ -39,6 +48,11 @@ function isActive(href: string, exact = false) {
         </div>
 
         <nav class="nav">
+          {paNotice && (
+            <div class="pa-banner" role="status">
+              {paNotice}
+            </div>
+          )}
           <a href="/dashboard" class:list={['nav-item', { active: isActive('/dashboard', true) }]}>
             <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
               <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
@@ -81,10 +95,10 @@ function isActive(href: string, exact = false) {
 
       <div class="sidebar-bottom">
         <div class="user-card">
-          <div class={`user-avatar ua-${role}`}>{session?.name?.charAt(0) ?? 'U'}</div>
+          <div class={`user-avatar ua-${role}`}>{displayName.charAt(0).toUpperCase()}</div>
           <div class="user-info">
-            <span class="user-name">{session?.name ?? 'User'}</span>
-            <span class="user-email">{session?.email ?? 'user@example.com'}</span>
+            <span class="user-name">{displayName}</span>
+            <span class="user-email">{subtitle}</span>
           </div>
           <form action="/api/auth/logout" method="POST">
             <button type="submit" class="logout-btn" title="Sign out">
@@ -215,6 +229,17 @@ function isActive(href: string, exact = false) {
   .role-client   { color: var(--color-customer); }
   .role-internal { color: #3b82f6; }
   .role-admin    { color: var(--color-admin); }
+
+  .pa-banner {
+    font-size: 0.68rem;
+    line-height: 1.4;
+    color: var(--color-text-muted);
+    background: var(--color-surface-2);
+    border: 1px dashed var(--color-border);
+    border-radius: 7px;
+    padding: 0.45rem 0.55rem;
+    margin-bottom: 0.65rem;
+  }
 
   .nav {
     display: flex;

@@ -1,6 +1,10 @@
 ---
 import UserLayout from '../layouts/UserLayout.astro';
 import { getSession, isAdminRole } from '../lib/session';
+import {
+  canUsePlanAdvisorApi,
+  paFetchJson,
+} from '../lib/pa-api';
 import { DUMMY_ACTIVE_PROFILES, DUMMY_SCENARIOS } from '../lib/dummy-data';
 
 const session = getSession(Astro.cookies);
@@ -9,19 +13,186 @@ if (isAdminRole(session.role)) return Astro.redirect('/admin/dashboard');
 
 const isInternal = session.role === 'internal';
 
-// Scenarios: internal sees all; client sees only own
-const myScenarios = isInternal
-  ? DUMMY_SCENARIOS.slice(0, 4)
-  : DUMMY_SCENARIOS.filter((_, i) => i % 2 === 0).slice(0, 3); // simulate "own" scenarios
+const apiReady = canUsePlanAdvisorApi(session);
 
-const activeProfiles = DUMMY_ACTIVE_PROFILES;
+type PaViewer = { displayName: string; subtitle: string };
+
+type PaMe = {
+  full_name?: string | null;
+  email?: string;
+  company_name?: string | null;
+};
+type DashApi = {
+  active_profiles: Array<{
+    profile_id: string;
+    country_code?: string | null;
+    country_name?: string | null;
+    provider_name?: string | null;
+    provider_type?: string | null;
+    version?: string | null;
+    currency?: string | null;
+    active_from?: string | null;
+    rules_count?: number | null;
+    plans_count?: number | null;
+  }>;
+  recent_scenarios: Array<{
+    id: string;
+    client_name?: string | null;
+    created_at: string;
+    has_summary?: boolean;
+    recommended_plan?: string | null;
+    total_annual_cost?: number | string | null;
+    country_name?: string | null;
+    provider_name?: string | null;
+    created_by_email?: string | null;
+  }>;
+  ai_calls_this_month: number | null;
+  scenario_stats: { total: number; with_summary: number };
+};
+
+type ProfileTile = {
+  id: string;
+  country: { code: string; name: string };
+  provider: { name: string; type: string };
+  version: string;
+  currency: string;
+  active_from: string | null;
+  rules_count: number;
+  plans_count: number;
+};
+
+type ScenarioLite = {
+  id: string;
+  client_name: string;
+  country: string;
+  provider: string;
+  recommended_plan: string;
+  total_cost: number;
+  has_summary: boolean;
+  created_at: string;
+  created_by?: string;
+};
+
+function mapProfilesFromDummy(): ProfileTile[] {
+  return DUMMY_ACTIVE_PROFILES.map((p) => ({
+    id: p.id,
+    country: p.country,
+    provider: p.provider,
+    version: p.version,
+    currency: p.currency,
+    active_from: p.active_from ?? null,
+    rules_count: p.rules_count,
+    plans_count: p.plans_count,
+  }));
+}
+
+function mapScenariosFromDummy(): ScenarioLite[] {
+  const slice = isInternal
+    ? DUMMY_SCENARIOS.slice(0, 4)
+    : DUMMY_SCENARIOS.filter((_, i) => i % 2 === 0).slice(0, 3);
+  return slice.map((s) => ({
+    id: s.id,
+    client_name: s.client_name,
+    country: s.country,
+    provider: s.provider,
+    recommended_plan: s.recommended_plan,
+    total_cost: s.total_cost,
+    has_summary: s.has_summary,
+    created_at: s.created_at,
+    created_by: s.created_by,
+  }));
+}
+
+let paNotice: string | null = null;
+let paViewer: PaViewer | null = null;
+
+let activeProfiles: ProfileTile[] = mapProfilesFromDummy();
+let myScenarios: ScenarioLite[] = mapScenariosFromDummy();
+let scenarioStats = {
+  total: myScenarios.length,
+  with_summary: myScenarios.filter((x) => x.has_summary).length,
+};
+let aiCallsThisMonth: number | null = isInternal ? 12 : null;
+
+if (!session.supabaseAccessToken) {
+  paNotice =
+    'Demo session (no JWT). Configure Supabase sign-in + API_BASE_URL for live calculator data.';
+} else if (!(import.meta.env.API_BASE_URL ?? '').trim()) {
+  paNotice = 'Set API_BASE_URL to reach Plan Advisor from this app.';
+}
+
+if (
+  apiReady &&
+  session.supabaseAccessToken &&
+  (import.meta.env.API_BASE_URL ?? '').trim().length > 0
+) {
+  const tok = session.supabaseAccessToken;
+  const me = await paFetchJson<PaMe>('/me', tok);
+  if (me.ok) {
+    paViewer = {
+      displayName: (me.data.full_name?.trim() || me.data.email || session.name)?.trim() || session.name,
+      subtitle: [me.data.email, me.data.company_name].filter(Boolean).join(' · '),
+    };
+  }
+
+  const dash = await paFetchJson<DashApi>('/user/dashboard', tok);
+  if (dash.ok) {
+    activeProfiles = dash.data.active_profiles.map((p) => ({
+      id: p.profile_id,
+      country: {
+        code: p.country_code ?? '—',
+        name: p.country_name ?? '',
+      },
+      provider: {
+        name: p.provider_name ?? '',
+        type: p.provider_type ?? '',
+      },
+      version: String(p.version ?? ''),
+      currency: String(p.currency ?? ''),
+      active_from:
+        typeof p.active_from === 'string' && p.active_from.length ? p.active_from : null,
+      rules_count: Number(p.rules_count ?? 0),
+      plans_count: Number(p.plans_count ?? 0),
+    }));
+
+    myScenarios = dash.data.recent_scenarios.map((s) => ({
+      id: s.id,
+      client_name: s.client_name ?? '—',
+      country: s.country_name ?? '',
+      provider: s.provider_name ?? '',
+      recommended_plan:
+        typeof s.recommended_plan === 'string' && s.recommended_plan ? s.recommended_plan : '—',
+      total_cost:
+        typeof s.total_annual_cost === 'number'
+          ? s.total_annual_cost
+          : Number(s.total_annual_cost ?? 0),
+      has_summary: Boolean(s.has_summary),
+      created_at: typeof s.created_at === 'string' ? s.created_at : '',
+      created_by: s.created_by_email ?? undefined,
+    }));
+
+    scenarioStats = dash.data.scenario_stats;
+    aiCallsThisMonth =
+      dash.data.ai_calls_this_month !== null &&
+      dash.data.ai_calls_this_month !== undefined
+        ? Number(dash.data.ai_calls_this_month)
+        : null;
+  } else {
+    const suffix = ` Plan Advisor unreachable (HTTP ${dash.status}). Showing demo placeholders.`;
+    paNotice = (paNotice ? paNotice.trim() + suffix : suffix.trim());
+  }
+}
+
+const greetingDisplay = paViewer?.displayName ?? session.name;
+const greetingWord = greetingDisplay.split(/\s+/)[0];
+
 ---
 
-<UserLayout title="Dashboard">
+<UserLayout title="Dashboard" paViewer={paViewer} paNotice={paNotice}>
   <!-- Welcome banner -->
   <div class="welcome-banner">
     <div class="welcome-text">
-      <h2>Welcome back, {session.name.split(' ')[0]} 👋</h2>
+      <h2>Welcome back, {greetingWord} 👋</h2>
       <p>
         {isInternal
           ? 'Run calculations for any active country/provider profile and generate AI-powered summaries for clients.'
@@ -60,7 +231,7 @@ const activeProfiles = DUMMY_ACTIVE_PROFILES;
         </svg>
       </div>
       <div>
-        <p class="kpi-value">{myScenarios.length}</p>
+        <p class="kpi-value">{scenarioStats.total}</p>
         <p class="kpi-label">{isInternal ? 'Total Scenarios' : 'My Scenarios'}</p>
       </div>
     </div>
@@ -72,7 +243,7 @@ const activeProfiles = DUMMY_ACTIVE_PROFILES;
         </svg>
       </div>
       <div>
-        <p class="kpi-value">{myScenarios.filter(s => s.has_summary).length}</p>
+        <p class="kpi-value">{scenarioStats.with_summary}</p>
         <p class="kpi-label">With AI Summary</p>
       </div>
     </div>
@@ -85,7 +256,7 @@ const activeProfiles = DUMMY_ACTIVE_PROFILES;
           </svg>
         </div>
         <div>
-          <p class="kpi-value">12</p>
+          <p class="kpi-value">{aiCallsThisMonth ?? '—'}</p>
           <p class="kpi-label">AI Calls This Month</p>
         </div>
       </div>
@@ -163,7 +334,15 @@ const activeProfiles = DUMMY_ACTIVE_PROFILES;
               <li class="scenario-item">
                 <div class="scenario-left">
                   <p class="scenario-client">{s.client_name}</p>
-                  <p class="scenario-meta">{s.country} / {s.provider} · {s.created_at}</p>
+                  <p class="scenario-meta">{s.country} / {s.provider} · {
+                    typeof s.created_at === 'string' && s.created_at
+                      ? new Date(s.created_at).toLocaleString('en-GB', {
+                          day: '2-digit',
+                          month: 'short',
+                          year: 'numeric',
+                        })
+                      : '—'
+                  }</p>
                 </div>
                 <div class="scenario-right">
                   <div>

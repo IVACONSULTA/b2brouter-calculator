@@ -1,10 +1,10 @@
 ---
 import UserLayout from '../../layouts/UserLayout.astro';
 import { getSession, isAdminRole } from '../../lib/session';
+import { canUsePlanAdvisorApi, paFetchJson } from '../../lib/pa-api';
 import {
   DUMMY_PROFILES,
   DUMMY_ACTIVE_RULES,
-  DUMMY_ACTIVE_PLANS,
   DUMMY_SCENARIO_RESULT,
 } from '../../lib/dummy-data';
 
@@ -13,37 +13,160 @@ if (!session) return Astro.redirect('/customer/login');
 if (isAdminRole(session.role)) return Astro.redirect('/admin/dashboard');
 
 const { profile_id } = Astro.params;
-const profile = DUMMY_PROFILES.find(p => p.id === profile_id && p.status === 'active');
-if (!profile) return Astro.redirect('/countries');
 
-const rules = DUMMY_ACTIVE_RULES[profile_id!] ?? [];
-const plans = DUMMY_ACTIVE_PLANS[profile_id!] ?? [];
+type PaViewer = { displayName: string; subtitle: string };
+let paViewer: PaViewer | null = null;
+let paNotice: string | null = null;
 
-// Use scenario-001 as the pre-calculated dummy result (matches profile-fr-b2b-1 inputs)
-const dummyResult = DUMMY_SCENARIO_RESULT;
+type ApiProfile = {
+  profile_id: string;
+  country_name?: string;
+  provider_name?: string;
+  version?: string;
+  currency?: string;
+  calculation_basis?: string;
+  inputs: Array<{
+    key: string;
+    label: string;
+    direction?: string;
+    obligation?: string;
+    operation_group?: string;
+    pa_transactions_per_item: number;
+  }>;
+};
+
+const liveApi = canUsePlanAdvisorApi(session) && !!session.supabaseAccessToken;
+
+let profile:
+  | {
+      id: string;
+      country: { code: string; name: string };
+      provider: { name: string; type: string };
+      version: string;
+      currency: string;
+    }
+  | undefined;
+
+let calculationBasis = 'PA transactions';
+let rules: Array<{
+  input_key: string;
+  label: string;
+  direction: string;
+  obligation: string;
+  pa_transactions_per_item: number;
+  placeholder: number;
+}> = [];
+
+let dummyResult = DUMMY_SCENARIO_RESULT;
+let showDummyResults = true;
+let useProxyCalculate = false;
+/** Client-visible AI summary toggle from Plan Advisor `/api/me` (ignored for internal users). */
+let clientSummaryFromApi = true;
+
+if (liveApi && session.supabaseAccessToken && profile_id) {
+  const tok = session.supabaseAccessToken;
+
+  const me = await paFetchJson<{
+    full_name?: string | null;
+    email?: string;
+    company_name?: string | null;
+    client_summary_enabled?: boolean;
+  }>('/me', tok);
+  if (me.ok) {
+    paViewer = {
+      displayName:
+        (me.data.full_name?.trim() || me.data.email || session.name)?.trim() || session.name,
+      subtitle: [me.data.email, me.data.company_name].filter(Boolean).join(' · '),
+    };
+    if (me.data.client_summary_enabled === false) {
+      clientSummaryFromApi = false;
+    }
+  }
+
+  const loaded = await paFetchJson<ApiProfile>(`/calculator/profile/${profile_id}`, tok);
+  if (loaded.ok && loaded.data) {
+    useProxyCalculate = true;
+    showDummyResults = false;
+    const d = loaded.data;
+    profile = {
+      id: d.profile_id,
+      country: {
+        code: (d.country_name ?? '').slice(0, 2).toUpperCase() || '—',
+        name: d.country_name ?? '',
+      },
+      provider: {
+        name: d.provider_name ?? '',
+        type: 'PA',
+      },
+      version: String(d.version ?? ''),
+      currency: String(d.currency ?? ''),
+    };
+    calculationBasis = d.calculation_basis ?? 'PA transactions';
+    rules = (d.inputs ?? []).map((inp) => ({
+      input_key: inp.key,
+      label: inp.label,
+      direction: inp.direction ?? '—',
+      obligation: inp.obligation ?? '—',
+      pa_transactions_per_item: Number(inp.pa_transactions_per_item ?? 0),
+      placeholder: 0,
+    }));
+  } else {
+    paNotice = loaded.status
+      ? `Could not load calculator profile (HTTP ${loaded.status}). Try Countries again.`
+      : 'Could not load calculator profile.';
+  }
+}
+
+if (!profile) {
+  const d = DUMMY_PROFILES.find((p) => p.id === profile_id && p.status === 'active');
+  if (d) {
+    profile = {
+      id: d.id,
+      country: d.country,
+      provider: d.provider,
+      version: d.version,
+      currency: d.currency,
+    };
+    calculationBasis = dummyResult.calculation_basis;
+    rules = (DUMMY_ACTIVE_RULES[profile_id!] ?? []).map((r) => ({
+      input_key: r.input_key,
+      label: r.label,
+      direction: r.direction,
+      obligation: r.obligation,
+      pa_transactions_per_item: r.pa_transactions_per_item,
+      placeholder: Number(
+        (dummyResult.inputs as Record<string, number>)[r.input_key] ?? r.placeholder ?? 0,
+      ),
+    }));
+  }
+}
+
+if (!profile) {
+  return Astro.redirect('/countries');
+}
 
 const canGenerateSummary = session.role === 'internal';
-// Client can generate summary only if explicitly enabled — use dummy flag
-const clientSummaryEnabled = true; // TODO: fetch from settings API
-const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clientSummaryEnabled);
+const showSummaryBtn =
+  canGenerateSummary || (session.role === 'client' && clientSummaryFromApi);
 ---
 
 <UserLayout
   title="Calculator"
+  paViewer={paViewer}
+  paNotice={paNotice}
   breadcrumbs={[
     { label: 'Home', href: '/dashboard' },
     { label: 'Countries', href: '/countries' },
     { label: `${profile.country.name} / ${profile.provider.name}` },
   ]}
 >
-  <!-- Profile header -->
   <div class="profile-header">
     <div class="ph-info">
       <div class="ph-flag">
         <span class="ph-code">{profile.country.code}</span>
         <div>
           <p class="ph-country">{profile.country.name} — {profile.provider.name}</p>
-          <p class="ph-meta">Version {profile.version} · {profile.currency} · {dummyResult.calculation_basis}</p>
+          <p class="ph-meta">Version {profile.version} · {profile.currency} · {calculationBasis}</p>
         </div>
       </div>
     </div>
@@ -51,15 +174,16 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
   </div>
 
   <div class="calc-layout">
-    <!-- Input form -->
     <section class="calc-form-wrap">
       <div class="form-header">
         <h2 class="form-title">Transaction Volumes</h2>
-        <p class="form-sub">Enter your estimated annual transaction volumes. The calculator will apply the profile multipliers automatically.</p>
+        <p class="form-sub">
+          Enter your estimated annual transaction volumes. The calculator applies approved profile
+          multipliers and saves the result as a scenario.
+        </p>
       </div>
 
-      <!-- TODO: POST /calculator/calculate with { profile_id, client_name, inputs } to App 2 (b2brouter-calculator) -->
-      <form id="calc-form" onsubmit="handleCalculate(event)">
+      <form id="calc-form" data-profile-id={profile.id} data-use-proxy={useProxyCalculate ? '1' : '0'}>
         <div class="form-field">
           <label class="field-label" for="client-name">Client Name <span class="req">*</span></label>
           <input
@@ -77,7 +201,7 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
         <div class="rules-section">
           <h3 class="rules-heading">Transaction inputs</h3>
           <div class="rules-grid">
-            {rules.map(rule => (
+            {rules.map((rule) => (
               <div class="rule-input-card" data-key={rule.input_key}>
                 <div class="rule-card-top">
                   <div class="rule-badges">
@@ -100,7 +224,7 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
                     min="0"
                     step="100"
                     placeholder="0"
-                    value={(dummyResult.inputs as Record<string, number>)[rule.input_key] ?? rule.placeholder}
+                    value={rule.placeholder}
                   />
                   <span class="unit-label">/ year</span>
                 </div>
@@ -110,7 +234,6 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
         </div>
 
         <div class="form-actions">
-          <!-- TODO: POST /calculator/calculate → { profile_id, client_name, inputs } -->
           <button type="submit" class="btn-calculate" id="btn-calc">
             <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <rect x="4" y="2" width="16" height="20" rx="2"/>
@@ -126,167 +249,201 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
       </form>
     </section>
 
-    <!-- Results panel (shown by default with dummy data) -->
-    <section class="results-panel" id="results-panel">
-      <div class="results-header">
-        <h2 class="results-title">Calculation Result</h2>
-        <span class="results-client">{dummyResult.client_name}</span>
-      </div>
+    {showDummyResults ? (
+      <section class="results-panel" id="results-panel">
+        <div class="results-header">
+          <h2 class="results-title">Demo result (offline)</h2>
+          <span class="results-client">{dummyResult.client_name}</span>
+        </div>
 
-      <!-- Transaction breakdown -->
-      <div class="result-block">
-        <h3 class="block-title">Transaction Breakdown</h3>
-        <table class="result-table">
-          <thead>
-            <tr>
-              <th>Type</th>
-              <th class="num">Volume</th>
-              <th class="num">× Multiplier</th>
-              <th class="num">PA Transactions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {dummyResult.transaction_breakdown.map(row => (
+        <div class="result-block">
+          <h3 class="block-title">Transaction Breakdown</h3>
+          <table class="result-table">
+            <thead>
               <tr>
-                <td>
-                  <div class="breakdown-label">
-                    <span class="breakdown-text">{row.label}</span>
-                    <div class="breakdown-tags">
-                      <span class={`dir-mini ${row.direction === 'Issued' ? 'dir-issued' : 'dir-received'}`}>{row.direction}</span>
-                      <span class="obl-mini">{row.obligation}</span>
+                <th>Type</th>
+                <th class="num">Volume</th>
+                <th class="num">× Multiplier</th>
+                <th class="num">PA Transactions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {dummyResult.transaction_breakdown.map((row) => (
+                <tr>
+                  <td>
+                    <div class="breakdown-label">
+                      <span class="breakdown-text">{row.label}</span>
+                      <div class="breakdown-tags">
+                        <span class={`dir-mini ${row.direction === 'Issued' ? 'dir-issued' : 'dir-received'}`}>{row.direction}</span>
+                        <span class="obl-mini">{row.obligation}</span>
+                      </div>
                     </div>
-                  </div>
-                </td>
-                <td class="num muted">{row.volume.toLocaleString()}</td>
-                <td class="num">
-                  <span class="multiplier">×{row.multiplier}</span>
-                </td>
-                <td class="num strong">{row.pa_transactions.toLocaleString()}</td>
+                  </td>
+                  <td class="num muted">{row.volume.toLocaleString()}</td>
+                  <td class="num">
+                    <span class="multiplier">×{row.multiplier}</span>
+                  </td>
+                  <td class="num strong">{row.pa_transactions.toLocaleString()}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr class="total-row">
+                <td colspan="3" class="total-label">Total PA Transactions / year</td>
+                <td class="num total-val">{dummyResult.total_pa_transactions.toLocaleString()}</td>
               </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr class="total-row">
-              <td colspan="3" class="total-label">Total PA Transactions / year</td>
-              <td class="num total-val">{dummyResult.total_pa_transactions.toLocaleString()}</td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
+            </tfoot>
+          </table>
+        </div>
 
-      <!-- Plan comparison -->
-      <div class="result-block">
-        <h3 class="block-title">Plan Comparison</h3>
-        <table class="result-table">
-          <thead>
-            <tr>
-              <th>Plan</th>
-              <th class="num">Annual Fee</th>
-              <th class="num">Included PA</th>
-              <th class="num">Extra / PA</th>
-              <th class="num">Extra PA</th>
-              <th class="num">Total / Year</th>
-            </tr>
-          </thead>
-          <tbody>
-            {dummyResult.plan_comparison.map(plan => (
-              <tr class:list={['plan-row', { 'plan-recommended': plan.recommended }]}>
-                <td>
-                  <div class="plan-name-cell">
-                    {plan.recommended && (
-                      <span class="rec-badge">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-                        Best
-                      </span>
-                    )}
-                    <span class={plan.recommended ? 'plan-name rec' : 'plan-name'}>{plan.plan_name}</span>
-                  </div>
-                </td>
-                <td class="num">€{plan.annual_fee.toLocaleString()}</td>
-                <td class="num muted">{plan.included.toLocaleString()}</td>
-                <td class="num muted">€{plan.extra_cost.toFixed(2)}</td>
-                <td class="num muted">{plan.extra_transactions > 0 ? plan.extra_transactions.toLocaleString() : '—'}</td>
-                <td class="num">
-                  <strong class={plan.recommended ? 'rec-cost' : ''}>€{plan.total_annual_cost.toLocaleString()}</strong>
-                </td>
+        <div class="result-block">
+          <h3 class="block-title">Plan Comparison</h3>
+          <table class="result-table">
+            <thead>
+              <tr>
+                <th>Plan</th>
+                <th class="num">Annual Fee</th>
+                <th class="num">Included PA</th>
+                <th class="num">Extra / PA</th>
+                <th class="num">Extra PA</th>
+                <th class="num">Total / Year</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      <!-- Recommended summary -->
-      <div class="rec-summary">
-        <div class="rec-left">
-          <p class="rec-heading">Recommended Plan</p>
-          <p class="rec-plan-name">{dummyResult.recommended_plan.plan_name}</p>
-          <p class="rec-plan-desc">
-            €{dummyResult.recommended_plan.annual_fee.toLocaleString()} base + €{dummyResult.recommended_plan.extra_transaction_cost.toFixed(2)} per extra PA transaction
-          </p>
+            </thead>
+            <tbody>
+              {dummyResult.plan_comparison.map((plan) => (
+                <tr class:list={['plan-row', { 'plan-recommended': plan.recommended }]}>
+                  <td>
+                    <div class="plan-name-cell">
+                      {plan.recommended && (
+                        <span class="rec-badge">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                          Best
+                        </span>
+                      )}
+                      <span class={plan.recommended ? 'plan-name rec' : 'plan-name'}>{plan.plan_name}</span>
+                    </div>
+                  </td>
+                  <td class="num">€{plan.annual_fee.toLocaleString()}</td>
+                  <td class="num muted">{plan.included.toLocaleString()}</td>
+                  <td class="num muted">€{plan.extra_cost.toFixed(2)}</td>
+                  <td class="num muted">{plan.extra_transactions > 0 ? plan.extra_transactions.toLocaleString() : '—'}</td>
+                  <td class="num">
+                    <strong class={plan.recommended ? 'rec-cost' : ''}>€{plan.total_annual_cost.toLocaleString()}</strong>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-        <div class="rec-cost-block">
-          <p class="rec-cost-label">Total annual cost</p>
-          <p class="rec-cost-val">€{dummyResult.recommended_plan.total_annual_cost.toLocaleString()}</p>
-        </div>
-      </div>
 
-      <!-- CTA buttons -->
-      <div class="result-actions">
-        <!-- TODO: POST /scenarios to save this scenario (App 2) -->
-        <button
-          class="btn-save"
-          onclick="alert('TODO: POST /scenarios\nSaves this calculation as a named scenario for later reference')"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-            <polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>
-          </svg>
-          Save Scenario
-        </button>
-
-        {showSummaryBtn && (
-          <!-- TODO: POST /scenarios/{id}/summary — calls App 4 (AI summary generator) -->
-          <button
-            class="btn-summary"
-            onclick="alert('TODO: POST /scenarios/{id}/summary\nCalls App 4 to generate an English AI summary for this scenario')"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-            </svg>
-            Generate AI Summary
-          </button>
+        <p class="live-hint">With Supabase + API configured, submitting the form saves a real scenario and opens the breakdown page.</p>
+      </section>
+    ) : (
+      <section class="results-panel results-placeholder">
+        <h2 class="results-title">Results</h2>
+        <p class="live-copy">
+          Submit <strong>Calculate Plan</strong> to run the deterministic engine on Plan Advisor. You will be
+          redirected to the scenario with full breakdown and optional English AI summary.
+        </p>
+        {!showSummaryBtn && (
+          <p class="live-muted">AI summaries are disabled for your account.</p>
         )}
-
-        <!-- TODO: GET /scenarios/{id}/export?format=pdf — downloads PDF (optional MVP) -->
-        <button
-          class="btn-export"
-          onclick="alert('TODO: GET /scenarios/{id}/export?format=pdf\nDownloads a PDF export of this scenario')"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-            <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-          </svg>
-          Export PDF
-        </button>
-      </div>
-    </section>
+      </section>
+    )}
   </div>
 </UserLayout>
 
 <script>
-  function handleCalculate(e: SubmitEvent) {
-    e.preventDefault();
-    // TODO: POST /calculator/calculate with form data
-    // For now, results are shown as dummy data.
-    const panel = document.getElementById('results-panel');
-    if (panel) {
-      panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-    alert('TODO: POST /calculator/calculate\nWould send { profile_id, client_name, inputs } to App 2 and return transaction breakdown + plan comparison');
-  }
+  document.addEventListener('DOMContentLoaded', () => {
+    const form = document.getElementById('calc-form') as HTMLFormElement | null;
+    if (!form) return;
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const useProxy = form.getAttribute('data-use-proxy') === '1';
+      if (!useProxy) {
+        const panel = document.getElementById('results-panel');
+        if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        alert(
+          'Demo profile only. Configure SUPABASE_URL, sign in with a real user, and set API_BASE_URL to call Plan Advisor.',
+        );
+        return;
+      }
+
+      const profileId = form.getAttribute('data-profile-id');
+      if (!profileId) return;
+
+      const fd = new FormData(form);
+      const client_name = String(fd.get('client_name') ?? '').trim();
+      const inputs: Record<string, number> = {};
+      for (const [k, v] of fd.entries()) {
+        if (k === 'client_name') continue;
+        inputs[k] = Number(v) || 0;
+      }
+
+      const btn = document.getElementById('btn-calc') as HTMLButtonElement | null;
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Calculating…';
+      }
+
+      try {
+        const res = await fetch('/api/pa/calculate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ profile_id: profileId, client_name, inputs }),
+        });
+        const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+        if (!res.ok) {
+          const msg =
+            typeof data.error === 'string' ? data.error : typeof data.message === 'string' ? data.message : JSON.stringify(data);
+          alert(`Calculation failed (${res.status}): ${msg}`);
+          if (btn) {
+            btn.disabled = false;
+            btn.innerHTML =
+              `<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="10" x2="12" y2="10"/><line x1="12" y1="6" x2="12" y2="14"/><line x1="8" y1="18" x2="16" y2="18"/><line x1="8" y1="14" x2="10" y2="14"/></svg> Calculate Plan`;
+          }
+          return;
+        }
+        const sid = typeof data.scenario_id === 'string' ? data.scenario_id : null;
+        if (sid) {
+          window.location.href = `/scenarios/${sid}`;
+          return;
+        }
+        alert('Unexpected response — no scenario_id returned.');
+      } catch {
+        alert('Could not reach the calculator. Is the Astro dev server and Plan Advisor API running?');
+      }
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Calculate Plan';
+      }
+    });
+  });
 </script>
 
 <style>
+  .live-hint {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    margin-top: 0.5rem;
+  }
+
+  .results-placeholder .live-copy {
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+    line-height: 1.55;
+    max-width: 420px;
+  }
+
+  .results-placeholder .live-muted {
+    margin-top: 0.85rem;
+    font-size: 0.78rem;
+    color: var(--color-text-muted);
+    font-style: italic;
+  }
+
   /* Profile header */
   .profile-header {
     display: flex;
@@ -332,7 +489,6 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
     flex-shrink: 0;
   }
 
-  /* Layout */
   .calc-layout {
     display: grid;
     grid-template-columns: 420px 1fr;
@@ -344,7 +500,6 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
     .calc-layout { grid-template-columns: 1fr; }
   }
 
-  /* Form */
   .calc-form-wrap {
     background: var(--color-surface);
     border: 1px solid var(--color-border);
@@ -406,7 +561,6 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
     margin-top: 0.3rem;
   }
 
-  /* Rules section */
   .rules-section { margin-bottom: 1.25rem; }
 
   .rules-heading {
@@ -482,7 +636,6 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
     flex-shrink: 0;
   }
 
-  /* Form actions */
   .form-actions {
     display: flex;
     gap: 0.6rem;
@@ -528,7 +681,6 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
 
   .btn-reset:hover { background: var(--color-surface-2); color: var(--color-text); }
 
-  /* ── Results panel ── */
   .results-panel {
     background: var(--color-surface);
     border: 1px solid var(--color-border);
@@ -538,6 +690,8 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
     flex-direction: column;
     gap: 1.25rem;
   }
+
+  .results-placeholder { min-height: 120px; }
 
   .results-header {
     display: flex;
@@ -560,9 +714,6 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
     border-radius: 6px;
     padding: 0.2rem 0.55rem;
   }
-
-  /* Result blocks */
-  .result-block { }
 
   .block-title {
     font-size: 0.78rem;
@@ -601,8 +752,6 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
   }
 
   .result-table tbody tr:last-child td { border-bottom: 1px solid var(--color-border); }
-  .result-table tbody tr:hover { background: rgba(255,255,255,.015); }
-
   .breakdown-label { display: flex; flex-direction: column; gap: 0.3rem; }
   .breakdown-text  { font-size: 0.82rem; font-weight: 500; }
   .breakdown-tags  { display: flex; gap: 0.3rem; }
@@ -641,7 +790,6 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
     text-align: right;
   }
 
-  /* Plan comparison */
   .plan-row td { background: transparent; }
   .plan-recommended td {
     background: rgba(16,185,129,.04);
@@ -670,118 +818,4 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
   .plan-name { font-weight: 500; }
   .plan-name.rec { font-weight: 700; color: var(--color-text); }
   .rec-cost { color: #10b981; font-size: 0.9rem; }
-
-  /* Recommended summary card */
-  .rec-summary {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    background: linear-gradient(135deg, rgba(16,185,129,.1) 0%, rgba(16,185,129,.04) 100%);
-    border: 1px solid rgba(16,185,129,.25);
-    border-radius: 12px;
-    padding: 1.1rem 1.25rem;
-    gap: 1rem;
-    flex-wrap: wrap;
-  }
-
-  .rec-heading {
-    font-size: 0.7rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: #10b981;
-    margin-bottom: 0.3rem;
-  }
-
-  .rec-plan-name {
-    font-size: 1.25rem;
-    font-weight: 800;
-    color: var(--color-text);
-    letter-spacing: -0.02em;
-    margin-bottom: 0.2rem;
-  }
-
-  .rec-plan-desc {
-    font-size: 0.78rem;
-    color: var(--color-text-muted);
-  }
-
-  .rec-cost-block { text-align: right; flex-shrink: 0; }
-
-  .rec-cost-label {
-    font-size: 0.72rem;
-    color: var(--color-text-muted);
-    margin-bottom: 0.2rem;
-  }
-
-  .rec-cost-val {
-    font-size: 1.75rem;
-    font-weight: 800;
-    color: #10b981;
-    letter-spacing: -0.03em;
-    line-height: 1;
-  }
-
-  /* Result action buttons */
-  .result-actions {
-    display: flex;
-    gap: 0.65rem;
-    flex-wrap: wrap;
-    padding-top: 0.25rem;
-    border-top: 1px solid var(--color-border);
-  }
-
-  .btn-save {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.45rem;
-    padding: 0.55rem 1rem;
-    background: var(--color-customer);
-    color: #fff;
-    border: none;
-    border-radius: 8px;
-    font-size: 0.82rem;
-    font-weight: 700;
-    cursor: pointer;
-    font-family: inherit;
-    transition: all 0.13s;
-  }
-
-  .btn-save:hover { background: var(--color-customer-hover); }
-
-  .btn-summary {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.45rem;
-    padding: 0.55rem 1rem;
-    background: rgba(168,85,247,.1);
-    color: #a855f7;
-    border: 1px solid rgba(168,85,247,.25);
-    border-radius: 8px;
-    font-size: 0.82rem;
-    font-weight: 600;
-    cursor: pointer;
-    font-family: inherit;
-    transition: all 0.13s;
-  }
-
-  .btn-summary:hover { background: rgba(168,85,247,.18); }
-
-  .btn-export {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.45rem;
-    padding: 0.55rem 1rem;
-    background: none;
-    color: var(--color-text-muted);
-    border: 1px solid var(--color-border);
-    border-radius: 8px;
-    font-size: 0.82rem;
-    font-weight: 500;
-    cursor: pointer;
-    font-family: inherit;
-    transition: all 0.13s;
-  }
-
-  .btn-export:hover { background: var(--color-surface-2); color: var(--color-text); }
 </style>
