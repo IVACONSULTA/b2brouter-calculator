@@ -1,5 +1,9 @@
 import type { APIRoute } from 'astro';
-import { createSupabaseWithUserJwt, supabase } from '../../../lib/supabase';
+import {
+  createSupabaseWithUserJwt,
+  getSupabaseAnon,
+  isSupabaseConfigured,
+} from '../../../lib/supabase';
 import {
   canAccessUserPortal,
   isAdminRole,
@@ -7,9 +11,13 @@ import {
   type Session,
 } from '../../../lib/session';
 
-const IS_DUMMY_MODE =
-  !import.meta.env.SUPABASE_URL ||
-  import.meta.env.SUPABASE_URL === 'https://placeholder.supabase.co';
+function isPlaceholderSupabaseUrl(): boolean {
+  const url = (import.meta.env.SUPABASE_URL ?? '').trim();
+  return !url || url === 'https://placeholder.supabase.co';
+}
+
+/** Demo / local dummy login when no real Supabase URL is configured. */
+const IS_DUMMY_MODE = isPlaceholderSupabaseUrl();
 
 const DUMMY_USERS: Record<string, { name: string; role: Session['role'] }> = {
   'admin@b2brouter.com': { name: 'Admin User', role: 'admin' },
@@ -43,91 +51,105 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
   const url = new URL(request.url);
   const from = url.searchParams.get('from') ?? '';
 
-  const form = await request.formData();
-  const email = form.get('email')?.toString().trim() ?? '';
-  const password = form.get('password')?.toString() ?? '';
+  try {
+    const form = await request.formData();
+    const email = form.get('email')?.toString().trim() ?? '';
+    const password = form.get('password')?.toString() ?? '';
 
-  if (!email || !password) {
-    return redirect(loginErrorUrl(from, 'missing_fields'));
-  }
+    if (!email || !password) {
+      return redirect(loginErrorUrl(from, 'missing_fields'));
+    }
 
-  // ── Dev / Demo mode ───────────────────────────────────────────────────────
-  if (IS_DUMMY_MODE) {
-    const dummy = DUMMY_USERS[email];
-    if (!dummy || password.length < 1) {
+    // Real Supabase URL set but anon key missing → was uncaught throw + HTTP 500 on Netlify
+    if (!IS_DUMMY_MODE && !isSupabaseConfigured()) {
+      console.error(
+        '[api/auth/login] SUPABASE_URL is set but SUPABASE_ANON_KEY is missing (check Netlify env + deploy context).',
+      );
+      return redirect(loginErrorUrl(from, 'server_config'));
+    }
+
+    // ── Dev / Demo mode ───────────────────────────────────────────────────────
+    if (IS_DUMMY_MODE) {
+      const dummy = DUMMY_USERS[email];
+      if (!dummy || password.length < 1) {
+        return redirect(loginErrorUrl(from, 'invalid_credentials'));
+      }
+
+      const portalErrDummy = assertPortalMatchesRole(from, dummy.role);
+      if (portalErrDummy) return redirect(portalErrDummy);
+
+      cookies.set(
+        'session',
+        JSON.stringify({
+          role: dummy.role,
+          email,
+          name: dummy.name,
+          loggedInAt: new Date().toISOString(),
+        }),
+        {
+          path: '/',
+          httpOnly: true,
+          sameSite: 'lax',
+          maxAge: 60 * 60 * 24,
+        },
+      );
+
+      return redirect(resolveRedirect(dummy.role, from));
+    }
+
+    // ── Supabase: role from public.profiles (see DB triggers + migrations) ───
+    const supabase = getSupabaseAnon();
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+
+    if (error || !data.session || !data.user) {
       return redirect(loginErrorUrl(from, 'invalid_credentials'));
     }
 
-    const portalErr = assertPortalMatchesRole(from, dummy.role);
-    if (portalErr) return redirect(portalErr);
+    const userMeta = data.user.user_metadata ?? {};
+    const userSb = createSupabaseWithUserJwt(data.session.access_token);
+    const { data: profile } = await userSb
+      .from('profiles')
+      .select('role, full_name')
+      .eq('id', data.user.id)
+      .maybeSingle();
+
+    const role = sessionRoleFromProfileOrMeta(
+      profile?.role as string | undefined,
+      userMeta.role as string | undefined,
+    );
+
+    const portalErr = assertPortalMatchesRole(from, role);
+    if (portalErr) {
+      return redirect(portalErr);
+    }
+
+    const name =
+      (profile?.full_name as string | undefined)?.trim() ||
+      (userMeta.full_name as string | undefined) ||
+      (userMeta.name as string | undefined) ||
+      email.split('@')[0];
 
     cookies.set(
       'session',
       JSON.stringify({
-        role: dummy.role,
-        email,
-        name: dummy.name,
+        role,
+        email: data.user.email ?? email,
+        name,
+        supabaseAccessToken: data.session.access_token,
         loggedInAt: new Date().toISOString(),
       }),
       {
         path: '/',
         httpOnly: true,
         sameSite: 'lax',
+        secure: import.meta.env.PROD,
         maxAge: 60 * 60 * 24,
       },
     );
 
-    return redirect(resolveRedirect(dummy.role, from));
+    return redirect(resolveRedirect(role, from));
+  } catch (err) {
+    console.error('[api/auth/login]', err);
+    return redirect(loginErrorUrl(from, 'server_error'));
   }
-
-  // ── Supabase: role from public.profiles (see DB triggers + migrations) ───
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-
-  if (error || !data.session || !data.user) {
-    return redirect(loginErrorUrl(from, 'invalid_credentials'));
-  }
-
-  const userMeta = data.user.user_metadata ?? {};
-  const userSb = createSupabaseWithUserJwt(data.session.access_token);
-  const { data: profile } = await userSb
-    .from('profiles')
-    .select('role, full_name')
-    .eq('id', data.user.id)
-    .maybeSingle();
-
-  const role = sessionRoleFromProfileOrMeta(
-    profile?.role as string | undefined,
-    userMeta.role as string | undefined,
-  );
-
-  const portalErr = assertPortalMatchesRole(from, role);
-  if (portalErr) {
-    return redirect(portalErr);
-  }
-
-  const name =
-    (profile?.full_name as string | undefined)?.trim() ||
-    (userMeta.full_name as string | undefined) ||
-    (userMeta.name as string | undefined) ||
-    email.split('@')[0];
-
-  cookies.set(
-    'session',
-    JSON.stringify({
-      role,
-      email: data.user.email ?? email,
-      name,
-      supabaseAccessToken: data.session.access_token,
-      loggedInAt: new Date().toISOString(),
-    }),
-    {
-      path: '/',
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: import.meta.env.PROD,
-      maxAge: 60 * 60 * 24,
-    },
-  );
-
-  return redirect(resolveRedirect(role, from));
 };

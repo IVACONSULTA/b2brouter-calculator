@@ -24,6 +24,9 @@ const errorMessages: Record<string, string> = {
   unauthorized: 'You do not have access to that page.',
   wrong_portal:
     'This account does not match the portal you chose. Go back to the home page and open Admin or Customer portal as appropriate.',
+  server_config:
+    'Server misconfiguration: Supabase keys are incomplete on the host. Configure SUPABASE_URL and SUPABASE_ANON_KEY for all Netlify deploy contexts.',
+  server_error: 'Something went wrong while signing in. Please try again.',
 };
 
 const errorKey = Astro.url.searchParams.get('error') ?? '';

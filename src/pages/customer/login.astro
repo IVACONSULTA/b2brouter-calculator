@@ -13,6 +13,9 @@ const errorMessages: Record<string, string> = {
   missing_fields: 'Please enter your email and password.',
   wrong_portal:
     'This portal is for internal users and clients. Administrators should use the Admin Portal.',
+  server_config:
+    'Server misconfiguration: SUPABASE_ANON_KEY is missing. Ask your admin to set SUPABASE_ANON_KEY in Netlify for all deploy contexts.',
+  server_error: 'Something went wrong while signing in. Please try again later.',
 };
 
 const errorKey = Astro.url.searchParams.get('error') ?? '';
