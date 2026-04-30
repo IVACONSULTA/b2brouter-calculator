@@ -1,0 +1,127 @@
+---
+description: Best practices and patterns for building Astro 6 SSR applications. Apply when writing or reviewing .astro pages, components, layouts, middleware, and API endpoints.
+globs: **/*.astro, src/pages/**, src/components/**, src/layouts/**, src/middleware.ts
+alwaysApply: false
+---
+
+# Astro 6 Best Practices
+
+## Project Structure
+
+- Follow the conventional `src/` layout: `pages/`, `components/`, `layouts/`, `lib/`, `middleware.ts`
+- Place all routes inside `src/pages/` — file name = URL path
+- Use `src/layouts/` for shared page wrappers (HTML shell, `<head>`, navigation)
+- Keep reusable UI in `src/components/`; keep data-fetching logic in `src/lib/`
+- Use `public/` only for static assets that must not be processed by Astro
+- Prefer `astro add <integration>` over editing `package.json` directly for integrations
+
+## Component Design
+
+- Each `.astro` file has two parts separated by `---`: the **component script** (server-only JS) and the **component template** (HTML + expressions)
+- All code in the frontmatter script (`---`) runs server-side only — never reaches the browser
+- Access props via `const { title } = Astro.props`; define them with a TypeScript `interface Props` for type safety
+- Use `<slot />` for default child injection and named slots (`<slot name="header" />`) for structured layouts
+- Provide fallback content inside `<slot>` tags for when no children are passed
+- Use `<Fragment slot="name">` to pass multiple elements into a named slot without a wrapper div
+- Prefer composition over deeply nested components — small, focused components compose better
+
+## SSR and On-Demand Rendering
+
+- For fully dynamic apps (like PA Plan Advisor), set `output: 'server'` in `astro.config.mjs`
+- In `server` mode, all pages are server-rendered by default — opt static pages in with `export const prerender = true`
+- For hybrid sites, default is static — opt individual routes into SSR with `export const prerender = false`
+- Always install the correct adapter for your deployment target via `astro add` (e.g. `astro add netlify`, `astro add node`)
+- Use `Astro.request` to access the standard Web API `Request` object (url, headers, method, body)
+- Use `Astro.response` to set response status and headers before returning
+- Return `new Response(null, { status: 404 })` or `Astro.redirect('/path', 301)` directly from page frontmatter for early exits
+- Use `Astro.cookies` for reading and writing cookies in SSR pages and API endpoints
+
+## Routing and Pages
+
+- Dynamic routes use bracket syntax: `src/pages/scenarios/[id].astro` → `/scenarios/:id`
+- Access route params with `const { id } = Astro.params`
+- API routes (server endpoints) live in `src/pages/api/` and export named HTTP method functions (`GET`, `POST`, etc.)
+- API routes must return a `Response` object
+- Use `export const prerender = false` on all auth-protected pages and API routes
+- Group admin-only routes under `src/pages/admin/` and protect them in middleware
+
+## Middleware
+
+- Create `src/middleware.ts` to handle auth, role checks, and redirects for every request
+- Use `defineMiddleware` from `astro:middleware` and call `next()` to continue the chain
+- Read the session cookie and validate the JWT in middleware before reaching any protected page
+- Redirect unauthenticated requests to `/login`; redirect unauthorized role access to `/dashboard`
+- Attach user data to `locals` (`context.locals.user`) so pages receive it without re-fetching
+
+```ts
+// src/middleware.ts pattern
+import { defineMiddleware } from 'astro:middleware';
+
+export const onRequest = defineMiddleware(async (context, next) => {
+  const token = context.cookies.get('session')?.value;
+  if (!token && context.url.pathname !== '/login') {
+    return context.redirect('/login');
+  }
+  return next();
+});
+```
+
+## Authentication (Supabase Pattern)
+
+- Use `supabase.auth.signInWithPassword()` and store the JWT in an `httpOnly` cookie — never in `localStorage`
+- Validate the JWT server-side with `supabase.auth.getUser(token)` on every protected request
+- Never store role information in the JWT claims — always query the role from the backend database
+- Use API routes (`src/pages/api/auth/login.ts`, `logout.ts`) to set and clear session cookies
+- Set `httpOnly: true`, `secure: true`, `sameSite: 'lax'` on all session cookies
+
+## Integrations
+
+- Use `astro add` for all official integrations (React, Tailwind, Netlify, Node, etc.)
+- Enable React (or another framework) only for components that require client-side interactivity
+- Mark interactive components with a `client:` directive: `client:load`, `client:idle`, `client:visible`
+- `client:load` — hydrate immediately; use sparingly (increases JS bundle)
+- `client:idle` — hydrate when browser is idle; good for non-critical interactive widgets
+- `client:visible` — hydrate only when component enters viewport; best for below-the-fold content
+- Never add a `client:` directive to components that do not need client-side interactivity
+
+## Performance
+
+- Astro sends zero JavaScript by default — only add `client:` directives when truly necessary
+- Prefer static pre-rendering (`prerender = true`) for pages that don't need per-request data
+- Use server islands (`server:defer`) to delay rendering of slow/personalized sections without blocking the full page
+- Avoid importing heavy client-side libraries in `.astro` frontmatter — they won't be tree-shaken from the server bundle cleanly
+- Use `<Image />` from `astro:assets` for automatic image optimization (WebP conversion, lazy loading, width/height)
+- Set `Cache-Control` headers via `Astro.response.headers` on pages with infrequently changing data
+
+## Content and Data Fetching
+
+- Fetch data in the frontmatter script with `await fetch(...)` — this always runs server-side
+- Keep API base URLs in environment variables (e.g. `API_BASE_URL`) — never hardcode them
+- Use `import.meta.env.VAR_NAME` to access environment variables in Astro files
+- Variables prefixed with `PUBLIC_` are exposed to the client; all others are server-only
+- Never expose `DATABASE_URL`, `OPENAI_API_KEY`, or any secret in a `PUBLIC_` variable
+
+## TypeScript and Type Safety
+
+- Enable TypeScript with `strict: true` in `tsconfig.json`
+- Define `interface Props` inside each component's frontmatter for full prop type checking
+- Type `locals` in `src/env.d.ts` to get type-safe access to `Astro.locals` across the project
+- Use Zod or the built-in Content Collections schema for validating external data shapes
+
+## AI-Assisted Development
+
+- Always use `astro add` when asked to add integrations — not manual `package.json` edits
+- Ask AI tools to check the latest docs before using newer APIs (Content Collections, Sessions, Actions) as training data may reflect older patterns
+- Set up project rules (like this file) so AI tools follow current Astro conventions consistently
+- Use the Astro Docs MCP server (`https://mcp.docs.astro.build/mcp`) to give AI tools real-time access to the latest Astro documentation
+- Verify that generated code does not use deprecated patterns (e.g., old `Astro.fetchContent`, `getStaticPaths` misuse in SSR mode)
+- Start from an official template (`npm create astro@latest`) rather than building the scaffolding from scratch
+
+## Deployment (Netlify)
+
+- Install `@astrojs/netlify` via `astro add netlify`
+- Set `output: 'server'` and `adapter: netlify()` in `astro.config.mjs`
+- Define `NODE_VERSION = "22"` in `netlify.toml` under `[build.environment]`
+- Set all environment variables in the Netlify UI — never commit `.env` files
+- SSR routes become Netlify Functions automatically — no manual serverless configuration required
+- Use `netlify.toml` only for build command, publish directory, and Node version; keep everything else in the Netlify dashboard

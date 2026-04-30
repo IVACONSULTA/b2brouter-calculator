@@ -1,0 +1,1034 @@
+---
+import UserLayout from '../../layouts/UserLayout.astro';
+import { getSession, isAdminRole } from '../../lib/session';
+import { canUsePlanAdvisorApi, paFetchJson } from '../../lib/pa-api';
+import { normalizeScenarioDetail, scenarioFromLegacyDummy, type ScenarioView } from '../../lib/scenario-view';
+import {
+  DUMMY_SCENARIO_RESULT,
+  DUMMY_SCENARIO_RESULT_2,
+} from '../../lib/dummy-data';
+
+const session = getSession(Astro.cookies);
+if (!session) return Astro.redirect('/customer/login');
+if (isAdminRole(session.role)) return Astro.redirect('/admin/dashboard');
+
+const { id } = Astro.params;
+if (!id) return Astro.redirect('/scenarios');
+
+type PaViewer = { displayName: string; subtitle: string };
+let paViewer: PaViewer | null = null;
+let paNotice: string | null = null;
+
+const isInternal = session.role === 'internal';
+
+const allDummy: ScenarioView[] = [
+  scenarioFromLegacyDummy(DUMMY_SCENARIO_RESULT),
+  scenarioFromLegacyDummy(DUMMY_SCENARIO_RESULT_2),
+];
+
+let scenarioView: ScenarioView =
+  allDummy.find((s) => s.id === id) ??
+  (() => {
+    paNotice ??= 'Demo: unknown scenario id — showing a sample scenario.';
+    return scenarioFromLegacyDummy(DUMMY_SCENARIO_RESULT);
+  })();
+
+let summaryProxyPath: string | null = null;
+
+let clientSummaryAllowed = true;
+
+if (canUsePlanAdvisorApi(session) && session.supabaseAccessToken) {
+  const tok = session.supabaseAccessToken;
+  const me = await paFetchJson<{
+    full_name?: string | null;
+    email?: string;
+    company_name?: string | null;
+    client_summary_enabled?: boolean;
+  }>('/me', tok);
+
+  if (me.ok) {
+    paViewer = {
+      displayName:
+        (me.data.full_name?.trim() || me.data.email || session.name)?.trim() || session.name,
+      subtitle: [me.data.email, me.data.company_name].filter(Boolean).join(' · '),
+    };
+    if (me.data.client_summary_enabled === false && session.role === 'client') {
+      clientSummaryAllowed = false;
+    }
+  }
+
+  const row = await paFetchJson<Record<string, unknown>>(
+    `/scenarios/${encodeURIComponent(id)}`,
+    tok,
+  );
+  if (row.ok && row.data) {
+    scenarioView = normalizeScenarioDetail(row.data);
+    summaryProxyPath = `/api/pa/scenarios/${encodeURIComponent(id)}/generate-summary`;
+  } else if (row.status === 403 || row.status === 404) {
+    return Astro.redirect('/scenarios');
+  }
+} else {
+  paNotice =
+    'Showing demo scenario. Use Supabase sign-in + API_BASE_URL for your saved calculations.';
+}
+
+const scenario = scenarioView!;
+const date = new Date(scenario.created_at).toLocaleDateString('en-GB', {
+  day: '2-digit',
+  month: 'long',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+});
+
+const canGenerateSummary = isInternal;
+const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clientSummaryAllowed);
+
+---
+
+<UserLayout
+  title={`Scenario: ${scenario.client_name}`}
+  paViewer={paViewer}
+  paNotice={paNotice}
+  breadcrumbs={[
+    { label: 'Home', href: '/dashboard' },
+    { label: 'Scenarios', href: '/scenarios' },
+    { label: scenario.client_name },
+  ]}
+>
+  <!-- Scenario header -->
+  <div class="scenario-header">
+    <div class="sh-left">
+      <div class="sh-meta">
+        <span class="sh-id">#{scenario.id}</span>
+        <span class="sh-date">{date}</span>
+        {isInternal && scenario.created_by && (
+          <span class="sh-author">by {scenario.created_by}</span>
+        )}
+      </div>
+      <h2 class="sh-client">{scenario.client_name}</h2>
+      <div class="sh-profile">
+        <span class="sh-country">{scenario.country}</span>
+        <span class="sh-sep">·</span>
+        <span>{scenario.provider}</span>
+        <span class="sh-sep">·</span>
+        <span class="sh-version">Version {scenario.profile_version}</span>
+        <span class="sh-sep">·</span>
+        <span class="sh-currency">{scenario.currency}</span>
+        <span class="sh-sep">·</span>
+        <span class="sh-basis">{scenario.calculation_basis}</span>
+      </div>
+    </div>
+    <div class="sh-right">
+      <div class="sh-total-block">
+        <p class="sh-total-label">Recommended Plan</p>
+        <p class="sh-plan-name">{scenario.recommended_plan.plan_name}</p>
+        <p class="sh-total-cost">€{scenario.recommended_plan.total_annual_cost.toLocaleString()} / year</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Action buttons -->
+  <div class="scenario-actions">
+    <!-- TODO: GET /scenarios/{id}/recalculate → opens calculator with pre-filled inputs -->
+    <a href={`/calculator/${scenario.profile_id}`} class="btn-recalc">
+      <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="23 4 23 10 17 10"/>
+        <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+      </svg>
+      New Calculation
+    </a>
+
+    {showSummaryBtn && !scenario.has_summary && summaryProxyPath && (
+      <button type="button" class="btn-gen-summary js-scenario-summary">
+        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+        </svg>
+        Generate AI Summary
+      </button>
+    )}
+    {showSummaryBtn && !scenario.has_summary && !summaryProxyPath && (
+      <button
+        type="button"
+        class="btn-gen-summary"
+        onclick="alert('Configure Supabase + API_BASE_URL, then reopen this scenario to generate summaries.')"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+        </svg>
+        Generate AI Summary
+      </button>
+    )}
+
+    <!-- TODO: GET /scenarios/{id}/export?format=pdf -->
+    <button
+      class="btn-export"
+      onclick={`alert('TODO: GET /scenarios/${scenario.id}/export?format=pdf\\nDownloads a formatted PDF of this scenario')`}
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+      </svg>
+      Export PDF
+    </button>
+
+    {isInternal && (
+      <!-- TODO: DELETE /scenarios/{id} -->
+      <button
+        class="btn-delete"
+        onclick={`if(confirm('Delete this scenario?')) alert('TODO: DELETE /scenarios/${scenario.id}')`}
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="3 6 5 6 21 6"/>
+          <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+          <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+        </svg>
+        Delete
+      </button>
+    )}
+  </div>
+
+  <!-- Main content grid -->
+  <div class="detail-grid">
+    <!-- Left: breakdown + plan comparison -->
+    <div class="detail-main">
+      <!-- Inputs summary -->
+      <section class="detail-block">
+        <h3 class="block-heading">Input Summary</h3>
+        <div class="inputs-grid">
+          {Object.entries(scenario.inputs).map(([key, val]) => (
+            <div class="input-chip">
+              <p class="input-key">{key.replace(/_/g, ' ')}</p>
+              <p class="input-val">{val.toLocaleString()}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <!-- Transaction breakdown -->
+      <section class="detail-block">
+        <h3 class="block-heading">Transaction Breakdown</h3>
+        <div class="table-wrap">
+          <table class="dtable">
+            <thead>
+              <tr>
+                <th>Type</th>
+                <th>Direction</th>
+                <th>Obligation</th>
+                <th class="num">Volume</th>
+                <th class="num">× Multiplier</th>
+                <th class="num">PA Transactions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {scenario.transaction_breakdown.map(row => (
+                <tr>
+                  <td class="row-label">{row.label}</td>
+                  <td>
+                    <span class={`dir-tag ${row.direction === 'Issued' ? 'dir-issued' : 'dir-received'}`}>{row.direction}</span>
+                  </td>
+                  <td><span class="obl-tag">{row.obligation}</span></td>
+                  <td class="num muted">{row.volume.toLocaleString()}</td>
+                  <td class="num">
+                    <span class="mult-val">×{row.multiplier}</span>
+                  </td>
+                  <td class="num bold">{row.pa_transactions.toLocaleString()}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr class="total-row">
+                <td colspan="5" class="total-label">Total PA Transactions / year</td>
+                <td class="num total-val">{scenario.total_pa_transactions.toLocaleString()}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </section>
+
+      <!-- Plan comparison -->
+      <section class="detail-block">
+        <h3 class="block-heading">Plan Comparison</h3>
+        <div class="table-wrap">
+          <table class="dtable">
+            <thead>
+              <tr>
+                <th>Plan</th>
+                <th class="num">Annual Fee</th>
+                <th class="num">Included PA</th>
+                <th class="num">Extra / PA</th>
+                <th class="num">Extra PA Used</th>
+                <th class="num">Total / Year</th>
+              </tr>
+            </thead>
+            <tbody>
+              {scenario.plan_comparison.map(plan => (
+                <tr class:list={['plan-row', { 'plan-rec': plan.recommended }]}>
+                  <td>
+                    <div class="plan-cell">
+                      {plan.recommended && (
+                        <span class="rec-star">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                        </span>
+                      )}
+                      <span class:list={['plan-name', { 'plan-name-rec': plan.recommended }]}>
+                        {plan.plan_name}
+                      </span>
+                      {plan.recommended && <span class="rec-label">Recommended</span>}
+                    </div>
+                  </td>
+                  <td class="num">€{plan.annual_fee.toLocaleString()}</td>
+                  <td class="num muted">{plan.included.toLocaleString()}</td>
+                  <td class="num muted">€{plan.extra_cost.toFixed(2)}</td>
+                  <td class="num muted">{plan.extra_transactions > 0 ? plan.extra_transactions.toLocaleString() : '—'}</td>
+                  <td class="num">
+                    <strong class:list={[{ 'rec-cost': plan.recommended }]}>
+                      €{plan.total_annual_cost.toLocaleString()}
+                    </strong>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Assumptions -->
+      {scenario.assumptions.length > 0 && (
+        <section class="detail-block">
+          <h3 class="block-heading">Business Assumptions</h3>
+          <ul class="assumptions-list">
+            {scenario.assumptions.map(a => (
+              <li class="assumption-item">
+                <span class="assumption-key">{a.key.replace(/_/g, ' ')}</span>
+                <span class="assumption-val">{a.value}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </div>
+
+    <!-- Right: recommended plan + AI summary -->
+    <div class="detail-sidebar">
+      <!-- Recommended plan card -->
+      <div class="rec-card">
+        <div class="rec-header">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+          Recommended Plan
+        </div>
+        <p class="rec-plan-name">{scenario.recommended_plan.plan_name}</p>
+        <p class="rec-total">€{scenario.recommended_plan.total_annual_cost.toLocaleString()}<span class="rec-per">/year</span></p>
+
+        <div class="rec-breakdown">
+          <div class="rec-row">
+            <span>Base fee</span>
+            <strong>€{scenario.recommended_plan.annual_fee.toLocaleString()}</strong>
+          </div>
+          <div class="rec-row">
+            <span>Included PA transactions</span>
+            <strong>{scenario.recommended_plan.included_pa_transactions.toLocaleString()}</strong>
+          </div>
+          <div class="rec-row">
+            <span>Extra PA rate</span>
+            <strong>€{scenario.recommended_plan.extra_transaction_cost.toFixed(2)}</strong>
+          </div>
+          {scenario.recommended_plan.extra_transactions > 0 && (
+            <div class="rec-row">
+              <span>Extra PA consumed</span>
+              <strong>{scenario.recommended_plan.extra_transactions.toLocaleString()}</strong>
+            </div>
+          )}
+          <div class="rec-row rec-total-row">
+            <span>Total extra cost</span>
+            <strong>€{(scenario.recommended_plan.extra_transactions * scenario.recommended_plan.extra_transaction_cost).toLocaleString()}</strong>
+          </div>
+        </div>
+
+        <div class="rec-pa-bar-wrap">
+          <div class="rec-pa-label">
+            <span>PA Usage</span>
+            <span class="pa-pct">{Math.min(100, Math.round((scenario.total_pa_transactions / scenario.recommended_plan.included_pa_transactions) * 100))}% of included</span>
+          </div>
+          <div class="rec-pa-track">
+            <div
+              class="rec-pa-fill"
+              style={`width: ${Math.min(100, (scenario.total_pa_transactions / scenario.recommended_plan.included_pa_transactions) * 100)}%`}
+            ></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- AI Summary block -->
+      <div class="summary-block" id="summary-block">
+        <div class="summary-header">
+          <div class="summary-title-row">
+            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+            </svg>
+            <span class="summary-title">AI Summary</span>
+            {scenario.has_summary && (
+              <span class="summary-ready-badge">Ready</span>
+            )}
+          </div>
+          <p class="summary-desc">Plain-language English summary generated by PA Plan Advisor AI (App 4).</p>
+        </div>
+
+        {scenario.has_summary && scenario.ai_summary ? (
+          <div class="summary-body">
+            <div class="summary-text" id="summary-text">
+              {scenario.ai_summary.split('\n\n').map(paragraph => (
+                <p>{paragraph}</p>
+              ))}
+            </div>
+            <div class="summary-footer">
+              <!-- TODO: copies summary text to clipboard -->
+              <button
+                class="btn-copy"
+                id="btn-copy"
+                onclick="copySummary()"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                </svg>
+                Copy Summary
+              </button>
+              {showSummaryBtn && summaryProxyPath && (
+                <button type="button" class="btn-regen js-scenario-summary">
+                  Regenerate
+                </button>
+              )}
+              {showSummaryBtn && !summaryProxyPath && (
+                <button
+                  type="button"
+                  class="btn-regen"
+                  onclick="alert('Configure Supabase + API_BASE_URL to regenerate summaries.')"
+                >
+                  Regenerate
+                </button>
+              )}
+            </div>
+          </div>
+        ) : showSummaryBtn ? (
+          <div class="summary-empty">
+            <p class="summary-empty-text">No AI summary has been generated yet for this scenario.</p>
+            {summaryProxyPath ? (
+              <button type="button" class="btn-gen-lg js-scenario-summary">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                </svg>
+                Generate AI Summary
+              </button>
+            ) : (
+              <button
+                type="button"
+                class="btn-gen-lg"
+                onclick="alert('Configure Supabase + API_BASE_URL to generate summaries.')"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                </svg>
+                Generate AI Summary
+              </button>
+            )}
+          </div>
+        ) : (
+          <div class="summary-empty">
+            <p class="summary-empty-text">AI summaries are not enabled for your account. Contact your administrator.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  </div>
+</UserLayout>
+
+<script define:vars={{ scenarioIdForSummary: scenario.id }}>
+  function copySummary() {
+    const text = document.getElementById('summary-text')?.innerText;
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(() => {
+      const btn = document.getElementById('btn-copy');
+      if (btn) {
+        btn.textContent = '✓ Copied!';
+        setTimeout(() => {
+          btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy Summary`;
+        }, 2000);
+      }
+    });
+  }
+
+  function attachSummaryGenerators() {
+    document.querySelectorAll<HTMLButtonElement>('.js-scenario-summary').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const path = `/api/pa/scenarios/${encodeURIComponent(String(scenarioIdForSummary))}/generate-summary`;
+        btn.disabled = true;
+        const prev = btn.textContent;
+        btn.textContent = '…';
+        try {
+          const res = await fetch(path, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: '{}',
+            credentials: 'same-origin',
+          });
+          const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+          if (!res.ok) {
+            const msg =
+              typeof data.message === 'string'
+                ? data.message
+                : typeof data.error === 'string'
+                  ? data.error
+                  : JSON.stringify(data);
+            alert(`Summary failed (${res.status}): ${msg}`);
+            btn.disabled = false;
+            btn.textContent = prev ?? 'Generate';
+            return;
+          }
+          window.location.reload();
+        } catch {
+          alert(
+            'Summary request failed. Check Plan Advisor SUMMARY_AGENT_URL configuration or try again.',
+          );
+          btn.disabled = false;
+          btn.textContent = prev ?? 'Generate';
+        }
+      });
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', attachSummaryGenerators);
+</script>
+
+<style>
+  /* Scenario header */
+  .scenario-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1.5rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .sh-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    margin-bottom: 0.45rem;
+    flex-wrap: wrap;
+  }
+
+  .sh-id {
+    font-size: 0.7rem;
+    font-family: 'SF Mono', ui-monospace, monospace;
+    color: var(--color-text-muted);
+    background: var(--color-surface-2);
+    border-radius: 4px;
+    padding: 0.1rem 0.4rem;
+  }
+
+  .sh-date, .sh-author {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+  }
+
+  .sh-client {
+    font-size: 1.35rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--color-text);
+    margin-bottom: 0.45rem;
+  }
+
+  .sh-profile {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
+  }
+
+  .sh-country { font-weight: 700; color: var(--color-customer); }
+  .sh-sep     { opacity: 0.4; }
+  .sh-version { font-family: 'SF Mono', ui-monospace, monospace; font-size: 0.75rem; }
+  .sh-currency, .sh-basis { font-size: 0.75rem; }
+
+  .sh-right { flex-shrink: 0; text-align: right; }
+
+  .sh-total-block {
+    background: rgba(29,111,92,.06);
+    border: 1px solid rgba(29,111,92,.2);
+    border-radius: 10px;
+    padding: 0.9rem 1.1rem;
+    min-width: 180px;
+  }
+
+  .sh-total-label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-success); margin-bottom: 0.25rem; font-weight: 700; }
+  .sh-plan-name   { font-size: 1.05rem; font-weight: 800; color: var(--color-text); margin-bottom: 0.1rem; }
+  .sh-total-cost  { font-size: 0.82rem; color: var(--color-success); font-weight: 700; }
+
+  /* Action buttons */
+  .scenario-actions {
+    display: flex;
+    gap: 0.6rem;
+    margin-bottom: 1.25rem;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .btn-recalc {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.5rem 0.9rem;
+    background: var(--color-customer);
+    color: #fff;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    transition: all 0.13s;
+    white-space: nowrap;
+  }
+
+  .btn-recalc:hover { background: var(--color-customer-hover); }
+
+  .btn-gen-summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.5rem 0.9rem;
+    background: rgba(168,85,247,.1);
+    color: #a855f7;
+    border: 1px solid rgba(168,85,247,.25);
+    border-radius: 8px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.13s;
+    white-space: nowrap;
+  }
+
+  .btn-gen-summary:hover { background: rgba(168,85,247,.18); }
+
+  .btn-export {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.5rem 0.9rem;
+    background: none;
+    color: var(--color-text-muted);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.13s;
+    white-space: nowrap;
+  }
+
+  .btn-export:hover { background: var(--color-surface-2); color: var(--color-text); }
+
+  .btn-delete {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.5rem 0.9rem;
+    background: none;
+    color: var(--color-text-muted);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.13s;
+    white-space: nowrap;
+    margin-left: auto;
+  }
+
+  .btn-delete:hover { background: rgba(239,68,68,.08); color: #ef4444; border-color: rgba(239,68,68,.3); }
+
+  /* Detail grid */
+  .detail-grid {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: 1.25rem;
+    align-items: start;
+  }
+
+  @media (max-width: 1100px) { .detail-grid { grid-template-columns: 1fr; } }
+
+  .detail-main { display: flex; flex-direction: column; gap: 1.1rem; }
+
+  .detail-block {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    padding: 1.1rem 1.25rem;
+  }
+
+  .block-heading {
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-text-muted);
+    margin-bottom: 0.9rem;
+  }
+
+  /* Inputs grid */
+  .inputs-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 0.65rem;
+  }
+
+  .input-chip {
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    padding: 0.65rem 0.85rem;
+  }
+
+  .input-key { font-size: 0.68rem; color: var(--color-text-muted); text-transform: capitalize; margin-bottom: 0.25rem; }
+  .input-val { font-size: 1.05rem; font-weight: 800; color: var(--color-text); letter-spacing: -0.02em; }
+
+  /* Tables */
+  .table-wrap { overflow-x: auto; }
+
+  .dtable {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+    min-width: 580px;
+  }
+
+  .dtable th {
+    text-align: left;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.67rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-muted);
+    background: var(--color-surface-2);
+    border-bottom: 1px solid var(--color-border);
+    white-space: nowrap;
+  }
+
+  .dtable th.num { text-align: right; }
+
+  .dtable td {
+    padding: 0.65rem 0.75rem;
+    border-bottom: 1px solid var(--color-border);
+    color: var(--color-text);
+    vertical-align: middle;
+  }
+
+  .dtable td.num { text-align: right; }
+  .dtable tbody tr:last-child td { border-bottom: 1px solid var(--color-border); }
+  .dtable tbody tr:hover { background: rgba(255,255,255,.015); }
+
+  .row-label { font-weight: 500; font-size: 0.82rem; }
+
+  .dir-tag {
+    font-size: 0.62rem;
+    font-weight: 700;
+    padding: 0.1rem 0.35rem;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+  }
+
+  .dir-issued   { background: rgba(88,119,152,.12); color: var(--color-admin); }
+  .dir-received { background: rgba(168,85,247,.12); color: #a855f7; }
+
+  .obl-tag {
+    font-size: 0.62rem;
+    color: var(--color-text-muted);
+    background: var(--color-surface-2);
+    border-radius: 4px;
+    padding: 0.1rem 0.35rem;
+    white-space: nowrap;
+  }
+
+  .mult-val {
+    font-family: 'SF Mono', ui-monospace, monospace;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--color-customer);
+    background: var(--color-customer-soft);
+    padding: 0.1rem 0.35rem;
+    border-radius: 4px;
+  }
+
+  .muted { color: var(--color-text-muted); }
+  .bold  { font-weight: 700; }
+  .num   { text-align: right; }
+
+  .total-row td {
+    background: var(--color-surface-2);
+    padding: 0.6rem 0.75rem;
+    border-bottom: none;
+  }
+
+  .total-label { font-size: 0.75rem; font-weight: 700; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.05em; }
+  .total-val   { font-size: 1rem; font-weight: 800; color: var(--color-text); }
+
+  /* Plan comparison */
+  .plan-row td { background: transparent; }
+  .plan-rec td { background: rgba(29,111,92,.04); }
+
+  .plan-cell { display: flex; align-items: center; gap: 0.45rem; }
+  .rec-star  { color: var(--color-success); display: flex; }
+  .plan-name { font-weight: 500; }
+  .plan-name-rec { font-weight: 700; }
+
+  .rec-label {
+    font-size: 0.62rem;
+    font-weight: 700;
+    background: var(--color-success-soft);
+    color: var(--color-success);
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+  }
+
+  .rec-cost { color: var(--color-success); }
+
+  /* Assumptions */
+  .assumptions-list { list-style: none; display: flex; flex-direction: column; gap: 0.45rem; }
+
+  .assumption-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 0.75rem;
+    background: var(--color-surface-2);
+    border-radius: 7px;
+    gap: 1rem;
+  }
+
+  .assumption-key {
+    font-size: 0.78rem;
+    color: var(--color-text-muted);
+    text-transform: capitalize;
+  }
+
+  .assumption-val {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--color-text);
+  }
+
+  /* ── Sidebar ── */
+  .detail-sidebar { display: flex; flex-direction: column; gap: 1.1rem; }
+
+  /* Recommended card */
+  .rec-card {
+    background: linear-gradient(135deg, var(--color-success-soft) 0%, rgba(29,111,92,.03) 100%);
+    border: 1px solid rgba(29,111,92,.25);
+    border-radius: var(--radius);
+    padding: 1.1rem 1.2rem;
+  }
+
+  .rec-header {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-success);
+    margin-bottom: 0.75rem;
+  }
+
+  .rec-plan-name {
+    font-size: 1.4rem;
+    font-weight: 800;
+    color: var(--color-text);
+    letter-spacing: -0.02em;
+    margin-bottom: 0.2rem;
+  }
+
+  .rec-total {
+    font-size: 1.7rem;
+    font-weight: 800;
+    color: var(--color-success);
+    letter-spacing: -0.03em;
+    line-height: 1;
+    margin-bottom: 1rem;
+  }
+
+  .rec-per { font-size: 0.85rem; font-weight: 500; color: var(--color-text-muted); margin-left: 0.2rem; }
+
+  .rec-breakdown { border-top: 1px solid var(--color-success-soft); padding-top: 0.75rem; margin-bottom: 1rem; }
+
+  .rec-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.3rem 0;
+    font-size: 0.78rem;
+    color: var(--color-text-muted);
+  }
+
+  .rec-row strong { font-weight: 700; color: var(--color-text); font-size: 0.82rem; }
+  .rec-total-row  { border-top: 1px solid var(--color-success-soft); padding-top: 0.4rem; margin-top: 0.25rem; }
+
+  /* PA usage bar */
+  .rec-pa-bar-wrap { }
+  .rec-pa-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.72rem;
+    color: var(--color-text-muted);
+    margin-bottom: 0.4rem;
+  }
+
+  .pa-pct { font-weight: 600; color: var(--color-customer); }
+
+  .rec-pa-track {
+    height: 6px;
+    background: var(--color-success-soft);
+    border-radius: 100px;
+    overflow: hidden;
+  }
+
+  .rec-pa-fill {
+    height: 100%;
+    background: var(--color-customer);
+    border-radius: 100px;
+    transition: width 0.6s ease;
+  }
+
+  /* AI Summary block */
+  .summary-block {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  .summary-header {
+    padding: 1rem 1.1rem 0.75rem;
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-surface-2);
+  }
+
+  .summary-title-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.35rem;
+    color: var(--color-text);
+  }
+
+  .summary-title { font-size: 0.88rem; font-weight: 700; }
+
+  .summary-ready-badge {
+    font-size: 0.62rem;
+    font-weight: 700;
+    background: var(--color-success-soft);
+    color: var(--color-success);
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+  }
+
+  .summary-desc { font-size: 0.73rem; color: var(--color-text-muted); line-height: 1.4; }
+
+  .summary-body { padding: 1rem 1.1rem; }
+
+  .summary-text {
+    font-size: 0.84rem;
+    line-height: 1.65;
+    color: var(--color-text);
+    margin-bottom: 1rem;
+  }
+
+  .summary-text p { margin-bottom: 0.65rem; }
+  .summary-text p:last-child { margin-bottom: 0; }
+
+  .summary-footer {
+    display: flex;
+    gap: 0.5rem;
+    padding-top: 0.65rem;
+    border-top: 1px solid var(--color-border);
+    flex-wrap: wrap;
+  }
+
+  .btn-copy {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 0.9rem;
+    background: var(--color-customer);
+    color: #fff;
+    border: none;
+    border-radius: 7px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.13s;
+  }
+
+  .btn-copy:hover { background: var(--color-customer-hover); }
+
+  .btn-regen {
+    padding: 0.45rem 0.9rem;
+    background: none;
+    border: 1px solid var(--color-border);
+    border-radius: 7px;
+    font-size: 0.78rem;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.13s;
+  }
+
+  .btn-regen:hover { background: var(--color-surface-2); color: var(--color-text); }
+
+  /* Summary empty state */
+  .summary-empty {
+    padding: 1.25rem 1.1rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    text-align: center;
+  }
+
+  .summary-empty-text {
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
+    line-height: 1.5;
+  }
+
+  .btn-gen-lg {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.6rem 1.2rem;
+    background: rgba(168,85,247,.1);
+    color: #a855f7;
+    border: 1px solid rgba(168,85,247,.3);
+    border-radius: 8px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.13s;
+  }
+
+  .btn-gen-lg:hover { background: rgba(168,85,247,.2); }
+</style>

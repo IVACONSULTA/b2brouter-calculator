@@ -1,0 +1,14 @@
+@import "tailwindcss";
+
+/* Align with IVA Consulta / nexdevconsulting.com (Blocksy theme tokens) */
+@theme {
+  --font-sans: "Open Sans", ui-sans-serif, system-ui, sans-serif;
+  --color-iva-1: #587798;
+  --color-iva-2: #4b637d;
+  --color-iva-3: #3a4f66;
+  --color-iva-4: #33465a;
+  --color-iva-5: #253647;
+  --color-iva-7: #fafbfc;
+  --color-iva-9: #5d7fa3;
+  --color-iva-12: #89b3e0;
+}

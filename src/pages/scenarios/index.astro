@@ -1,0 +1,714 @@
+---
+import UserLayout from '../../layouts/UserLayout.astro';
+import { getSession, isAdminRole } from '../../lib/session';
+import { canUsePlanAdvisorApi, paFetchJson } from '../../lib/pa-api';
+import { DUMMY_SCENARIOS } from '../../lib/dummy-data';
+
+const session = getSession(Astro.cookies);
+if (!session) return Astro.redirect('/customer/login');
+if (isAdminRole(session.role)) return Astro.redirect('/admin/dashboard');
+
+const isInternal = session.role === 'internal';
+
+type PaViewer = { displayName: string; subtitle: string };
+let paViewer: PaViewer | null = null;
+let paNotice: string | null = null;
+
+type ScenarioRow = {
+  id: string;
+  client_name: string;
+  country: string;
+  provider: string;
+  version: string;
+  total_pa_transactions: number | null;
+  recommended_plan: string;
+  total_cost: number;
+  has_summary: boolean;
+  created_at: string;
+  created_by?: string;
+};
+
+type ApiScenarioListItem = {
+  id: string;
+  client_name?: string | null;
+  country_name?: string | null;
+  provider_name?: string | null;
+  version?: string | null;
+  has_summary?: boolean;
+  created_at: string;
+  created_by_email?: string | null;
+  total_pa_transactions?: number | string | null;
+  recommended_plan_name?: string | null;
+  recommended_total_annual_cost?: number | string | null;
+};
+
+function mapDummy(rows: typeof DUMMY_SCENARIOS): ScenarioRow[] {
+  return rows.map((s) => ({
+    id: s.id,
+    client_name: s.client_name,
+    country: s.country,
+    provider: s.provider,
+    version: 'v1.0',
+    total_pa_transactions: null,
+    recommended_plan: s.recommended_plan,
+    total_cost: s.total_cost,
+    has_summary: s.has_summary,
+    created_at: s.created_at,
+    created_by: s.created_by,
+  }));
+}
+
+const dummySubset = isInternal
+  ? DUMMY_SCENARIOS
+  : DUMMY_SCENARIOS.filter((_, i) => i % 2 === 0);
+
+let scenarios: ScenarioRow[] = mapDummy(dummySubset);
+
+if (!session.supabaseAccessToken) {
+  paNotice =
+    'Demo session (no JWT). Sign in with Supabase + set API_BASE_URL for live scenarios.';
+} else if (!(import.meta.env.API_BASE_URL ?? '').trim()) {
+  paNotice = 'Set API_BASE_URL to load scenarios from Plan Advisor.';
+} else if (canUsePlanAdvisorApi(session) && session.supabaseAccessToken) {
+  const tok = session.supabaseAccessToken;
+
+  const me = await paFetchJson<{ full_name?: string | null; email?: string; company_name?: string | null }>(
+    '/me',
+    tok,
+  );
+  if (me.ok) {
+    paViewer = {
+      displayName:
+        (me.data.full_name?.trim() || me.data.email || session.name)?.trim() || session.name,
+      subtitle: [me.data.email, me.data.company_name].filter(Boolean).join(' · '),
+    };
+  }
+
+  const list = await paFetchJson<ApiScenarioListItem[]>('/scenarios', tok);
+  if (list.ok) {
+    scenarios = list.data.map((r) => ({
+      id: r.id,
+      client_name: r.client_name ?? '—',
+      country: r.country_name ?? '',
+      provider: r.provider_name ?? '',
+      version: String(r.version ?? '—'),
+      total_pa_transactions:
+        r.total_pa_transactions !== null && r.total_pa_transactions !== undefined
+          ? Number(r.total_pa_transactions)
+          : null,
+      recommended_plan: r.recommended_plan_name ?? '—',
+      total_cost:
+        typeof r.recommended_total_annual_cost === 'number'
+          ? r.recommended_total_annual_cost
+          : Number(r.recommended_total_annual_cost ?? 0),
+      has_summary: Boolean(r.has_summary),
+      created_at:
+        typeof r.created_at === 'string' ? r.created_at : new Date().toISOString(),
+      created_by: r.created_by_email ?? undefined,
+    }));
+  } else {
+    paNotice = `Plan Advisor unreachable (HTTP ${list.status}). Showing demo scenarios.`;
+  }
+}
+
+const withSummary = scenarios.filter((s) => s.has_summary).length;
+const withoutSummary = scenarios.filter((s) => !s.has_summary).length;
+
+const byCountry: Record<string, ScenarioRow[]> = {};
+for (const s of scenarios) {
+  byCountry[s.country] ??= [];
+  byCountry[s.country].push(s);
+}
+---
+
+<UserLayout
+  title="Scenarios"
+  breadcrumbs={[{ label: 'Home', href: '/dashboard' }, { label: 'Scenarios' }]}
+  paViewer={paViewer}
+  paNotice={paNotice}
+>
+  <!-- Header row -->
+  <div class="page-header">
+    <div>
+      <h2 class="page-heading">{isInternal ? 'All Scenarios' : 'My Scenarios'}</h2>
+      <p class="page-sub">
+        {isInternal
+          ? 'All calculation scenarios created by the team.'
+          : 'Your saved PA plan calculations.'}
+      </p>
+    </div>
+    <a href="/countries" class="btn-new">
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+      </svg>
+      New Calculation
+    </a>
+  </div>
+
+  <!-- Stats row -->
+  <div class="stats-row">
+    <div class="stat-card">
+      <p class="stat-val">{scenarios.length}</p>
+      <p class="stat-label">Total Scenarios</p>
+    </div>
+    <div class="stat-card">
+      <p class="stat-val green">{withSummary}</p>
+      <p class="stat-label">With AI Summary</p>
+    </div>
+    <div class="stat-card">
+      <p class="stat-val amber">{withoutSummary}</p>
+      <p class="stat-label">Pending Summary</p>
+    </div>
+    <div class="stat-card">
+      <p class="stat-val">{Object.keys(byCountry).length}</p>
+      <p class="stat-label">Countries</p>
+    </div>
+  </div>
+
+  <!-- Filter + search -->
+  <div class="filter-row">
+    <div class="filter-tabs" id="filter-tabs">
+      <button class="ftab active" data-filter="all">All <span class="ftab-count">{scenarios.length}</span></button>
+      <button class="ftab" data-filter="has_summary">Has Summary <span class="ftab-count">{withSummary}</span></button>
+      <button class="ftab" data-filter="no_summary">No Summary <span class="ftab-count">{withoutSummary}</span></button>
+    </div>
+    <div class="search-wrap">
+      <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      <input type="search" id="search-input" class="search-input" placeholder="Search client, country…" />
+    </div>
+  </div>
+
+  <!-- Scenarios table -->
+  {scenarios.length === 0 ? (
+    <div class="empty-state">
+      <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+        <line x1="16" y1="13" x2="8" y2="13"/>
+        <line x1="16" y1="17" x2="8" y2="17"/>
+      </svg>
+      <p>No scenarios yet.</p>
+      <a href="/countries" class="empty-cta">Start your first calculation →</a>
+    </div>
+  ) : (
+    <div class="table-wrap">
+      <table class="table" id="scenarios-table">
+        <thead>
+          <tr>
+            <th>Client</th>
+            <th>Country / Provider</th>
+            <th>Version</th>
+            <th class="num">PA Transactions</th>
+            <th>Recommended Plan</th>
+            <th class="num">Annual Cost</th>
+            <th>Summary</th>
+            <th>Date</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {scenarios.map(s => (
+            <tr
+              data-summary={s.has_summary ? 'has_summary' : 'no_summary'}
+              data-search={`${s.client_name} ${s.country} ${s.provider}`.toLowerCase()}
+            >
+              <td>
+                <p class="client-name">{s.client_name}</p>
+                {isInternal && s.created_by && (
+                  <p class="created-by">by {s.created_by}</p>
+                )}
+              </td>
+              <td>
+                <div class="country-cell">
+                  <span class="country-code">{(s.country || '??').slice(0, 2).toUpperCase()}</span>
+                  <div>
+                    <p class="country-name">{s.country}</p>
+                    <p class="provider-name">{s.provider}</p>
+                  </div>
+                </div>
+              </td>
+              <td><span class="version-pill">{s.version}</span></td>
+              <td class="num muted">{s.total_pa_transactions != null ? s.total_pa_transactions.toLocaleString() : '—'}</td>
+              <td>
+                <span class="plan-pill">{s.recommended_plan}</span>
+              </td>
+              <td class="num">
+                <strong>€{s.total_cost.toLocaleString()}</strong>
+              </td>
+              <td>
+                {s.has_summary
+                  ? <span class="summary-badge yes">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="20 6 9 17 4 12"/>
+                      </svg>
+                      Ready
+                    </span>
+                  : <span class="summary-badge no">Pending</span>
+                }
+              </td>
+              <td class="muted">{new Date(s.created_at).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' })}</td>
+              <td>
+                <div class="action-row">
+                  <a href={`/scenarios/${s.id}`} class="btn-view">View</a>
+                  {!s.has_summary && (
+                    <button type="button" class="btn-gen-summary js-gen-summary" data-scenario-id={s.id}>
+                      AI Summary
+                    </button>
+                  )}
+                  <!-- TODO: GET /scenarios/{id}/export?format=pdf -->
+                  <button
+                    class="btn-icon"
+                    title="Export PDF"
+                    data-id={s.id}
+                    onclick={`alert('TODO: GET /scenarios/${s.id}/export?format=pdf')`}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                      <polyline points="7 10 12 15 17 10"/>
+                      <line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                  </button>
+                  <!-- TODO: DELETE /scenarios/{id} -->
+                  <button
+                    class="btn-icon btn-danger"
+                    title="Delete scenario"
+                    data-id={s.id}
+                    onclick={`alert('TODO: DELETE /scenarios/${s.id}\\nDeletes this scenario permanently')`}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="3 6 5 6 21 6"/>
+                      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                      <path d="M10 11v6"/><path d="M14 11v6"/>
+                      <path d="M9 6V4h6v2"/>
+                    </svg>
+                  </button>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )}
+
+  <!-- Bulk actions footer (shown when rows are selected - TODO with checkbox logic) -->
+  <div class="bulk-bar" id="bulk-bar" style="display:none">
+    <span class="bulk-count" id="bulk-count">0 selected</span>
+    <!-- TODO: POST /scenarios/bulk-summary → bulk generate summaries -->
+    <button class="bulk-btn" onclick="alert('TODO: POST /scenarios/bulk-summary')">Generate Summaries</button>
+    <!-- TODO: POST /scenarios/bulk-export -->
+    <button class="bulk-btn" onclick="alert('TODO: POST /scenarios/bulk-export?format=pdf')">Export Selected</button>
+  </div>
+</UserLayout>
+
+<script>
+  const tabs   = document.querySelectorAll<HTMLButtonElement>('.ftab');
+  const rows   = document.querySelectorAll<HTMLTableRowElement>('#scenarios-table tbody tr');
+  const search = document.getElementById('search-input') as HTMLInputElement | null;
+
+  let activeFilter = 'all';
+  let searchQuery  = '';
+
+  function applyFilters() {
+    rows.forEach(row => {
+      const sumAttr   = row.dataset.summary ?? '';
+      const term      = row.dataset.search ?? '';
+      const matchF    = activeFilter === 'all' || sumAttr === activeFilter;
+      const matchS    = term.includes(searchQuery);
+      row.style.display = matchF && matchS ? '' : 'none';
+    });
+  }
+
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      tabs.forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      activeFilter = tab.dataset.filter ?? 'all';
+      applyFilters();
+    });
+  });
+
+  if (search) {
+    search.addEventListener('input', () => {
+      searchQuery = search.value.toLowerCase();
+      applyFilters();
+    });
+  }
+
+  document.querySelectorAll<HTMLButtonElement>('.js-gen-summary').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.getAttribute('data-scenario-id');
+      if (!id) return;
+      btn.disabled = true;
+      const prev = btn.textContent;
+      btn.textContent = '…';
+      try {
+        const res = await fetch(`/api/pa/scenarios/${encodeURIComponent(id)}/generate-summary`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: '{}',
+          credentials: 'same-origin',
+        });
+        const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+        if (!res.ok) {
+          const msg =
+            typeof data.message === 'string'
+              ? data.message
+              : typeof data.error === 'string'
+                ? data.error
+                : JSON.stringify(data);
+          alert(`Summary failed (${res.status}): ${msg}`);
+          btn.disabled = false;
+          btn.textContent = prev ?? 'AI Summary';
+          return;
+        }
+        window.location.reload();
+      } catch {
+        alert(
+          'Summary request failed. Check Plan Advisor SUMMARY_AGENT_URL configuration or try again.',
+        );
+        btn.disabled = false;
+        btn.textContent = prev ?? 'AI Summary';
+      }
+    });
+  });
+</script>
+
+<style>
+  .page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+    flex-wrap: wrap;
+  }
+
+  .page-heading {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--color-text);
+    margin-bottom: 0.25rem;
+  }
+
+  .page-sub { font-size: 0.82rem; color: var(--color-text-muted); }
+
+  .btn-new {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.5rem 1rem;
+    background: var(--color-customer);
+    color: #fff;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    transition: all 0.13s;
+    white-space: nowrap;
+  }
+
+  .btn-new:hover { background: var(--color-customer-hover); }
+
+  /* Stats row */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 0.85rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .stat-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    padding: 0.9rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  .stat-val {
+    font-size: 1.55rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1;
+    color: var(--color-text);
+  }
+
+  .stat-val.green { color: var(--color-success); }
+  .stat-val.amber { color: #f59e0b; }
+
+  .stat-label { font-size: 0.72rem; color: var(--color-text-muted); }
+
+  /* Filter row */
+  .filter-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.85rem;
+    flex-wrap: wrap;
+  }
+
+  .filter-tabs {
+    display: flex;
+    gap: 0.2rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    padding: 0.2rem;
+  }
+
+  .ftab {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.32rem 0.7rem;
+    border-radius: 6px;
+    border: none;
+    background: none;
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    transition: all 0.13s;
+    font-family: inherit;
+  }
+
+  .ftab:hover { background: var(--color-surface-2); color: var(--color-text); }
+
+  .ftab.active {
+    background: var(--color-customer-soft);
+    color: var(--color-customer);
+    font-weight: 700;
+  }
+
+  .ftab-count {
+    font-size: 0.65rem;
+    background: var(--color-surface-2);
+    color: var(--color-text-muted);
+    padding: 0.05rem 0.3rem;
+    border-radius: 100px;
+  }
+
+  .ftab.active .ftab-count {
+    background: rgba(29,111,92,.2);
+    color: var(--color-customer);
+  }
+
+  .search-wrap {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    padding: 0.4rem 0.7rem;
+    color: var(--color-text-muted);
+  }
+
+  .search-input {
+    background: none;
+    border: none;
+    outline: none;
+    font-size: 0.82rem;
+    color: var(--color-text);
+    font-family: inherit;
+    width: 200px;
+  }
+
+  .search-input::placeholder { color: var(--color-text-muted); }
+
+  /* Table */
+  .table-wrap {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    overflow-x: auto;
+  }
+
+  .table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+    min-width: 900px;
+  }
+
+  .table th {
+    text-align: left;
+    padding: 0.6rem 0.9rem;
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-muted);
+    background: var(--color-surface-2);
+    border-bottom: 1px solid var(--color-border);
+    white-space: nowrap;
+  }
+
+  .table th.num { text-align: right; }
+
+  .table td {
+    padding: 0.75rem 0.9rem;
+    color: var(--color-text);
+    border-bottom: 1px solid var(--color-border);
+    vertical-align: middle;
+  }
+
+  .table td.num { text-align: right; }
+  .table tbody tr:last-child td { border-bottom: none; }
+  .table tbody tr:hover { background: rgba(255,255,255,.018); }
+
+  .client-name { font-weight: 600; color: var(--color-text); }
+  .created-by  { font-size: 0.7rem; color: var(--color-text-muted); margin-top: 0.1rem; }
+
+  .country-cell { display: flex; align-items: center; gap: 0.55rem; }
+
+  .country-code {
+    font-size: 0.62rem;
+    font-weight: 800;
+    color: var(--color-customer);
+    background: var(--color-customer-soft);
+    border-radius: 4px;
+    padding: 0.12rem 0.35rem;
+    letter-spacing: 0.04em;
+    flex-shrink: 0;
+  }
+
+  .country-name { font-weight: 600; font-size: 0.82rem; }
+  .provider-name { font-size: 0.72rem; color: var(--color-text-muted); }
+
+  .version-pill {
+    font-size: 0.7rem;
+    font-family: 'SF Mono', ui-monospace, monospace;
+    color: var(--color-text-muted);
+    background: var(--color-surface-2);
+    border-radius: 4px;
+    padding: 0.12rem 0.4rem;
+  }
+
+  .plan-pill {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-text);
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-border);
+    border-radius: 5px;
+    padding: 0.15rem 0.5rem;
+  }
+
+  .muted { color: var(--color-text-muted); }
+
+  .summary-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 0.18rem 0.5rem;
+    border-radius: 100px;
+  }
+
+  .summary-badge.yes { background: var(--color-success-soft); color: var(--color-success); }
+  .summary-badge.no  { background: var(--color-surface-2); color: var(--color-text-muted); }
+
+  .action-row { display: flex; align-items: center; gap: 0.4rem; }
+
+  .btn-view {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-customer);
+    padding: 0.25rem 0.6rem;
+    border-radius: 5px;
+    border: 1px solid rgba(29,111,92,.3);
+    transition: all 0.13s;
+    white-space: nowrap;
+  }
+
+  .btn-view:hover { background: var(--color-customer-soft); }
+
+  .btn-gen-summary {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: #a855f7;
+    padding: 0.22rem 0.55rem;
+    border-radius: 5px;
+    border: 1px solid rgba(168,85,247,.25);
+    background: none;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.13s;
+    white-space: nowrap;
+  }
+
+  .btn-gen-summary:hover { background: rgba(168,85,247,.08); }
+
+  .btn-icon {
+    width: 26px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--color-border);
+    border-radius: 5px;
+    background: none;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    transition: all 0.13s;
+    flex-shrink: 0;
+  }
+
+  .btn-icon:hover { background: var(--color-surface-2); color: var(--color-text); }
+  .btn-icon.btn-danger:hover { background: rgba(239,68,68,.08); color: #ef4444; border-color: rgba(239,68,68,.3); }
+
+  /* Empty state */
+  .empty-state {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    padding: 3rem 2rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    color: var(--color-text-muted);
+    text-align: center;
+  }
+
+  .empty-state p { font-size: 0.88rem; }
+  .empty-cta { font-size: 0.82rem; color: var(--color-customer); font-weight: 600; }
+
+  /* Bulk bar */
+  .bulk-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 9px;
+    padding: 0.65rem 1rem;
+    margin-top: 0.85rem;
+    flex-wrap: wrap;
+  }
+
+  .bulk-count { font-size: 0.8rem; font-weight: 600; color: var(--color-text); flex: 1; }
+
+  .bulk-btn {
+    font-size: 0.78rem;
+    font-weight: 600;
+    padding: 0.4rem 0.85rem;
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    color: var(--color-text);
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.13s;
+  }
+
+  .bulk-btn:hover { background: var(--color-customer-soft); color: var(--color-customer); }
+</style>

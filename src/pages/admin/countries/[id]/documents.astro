@@ -1,0 +1,565 @@
+---
+import AdminLayout from '../../../../layouts/AdminLayout.astro';
+import { getSession, isAdminRole } from '../../../../lib/session';
+import { DUMMY_PROFILES, DUMMY_DOCUMENTS, DOCUMENT_TYPES } from '../../../../lib/dummy-data';
+
+const session = getSession(Astro.cookies);
+if (!session) return Astro.redirect('/admin/login');
+if (!isAdminRole(session.role)) return Astro.redirect('/dashboard');
+
+const { id } = Astro.params;
+const profile = DUMMY_PROFILES.find(p => p.id === id) ?? DUMMY_PROFILES[0];
+const documents = DUMMY_DOCUMENTS;
+
+const copyrightMeta: Record<string, { label: string; cls: string; desc: string }> = {
+  pending:    { label: 'Pending',    cls: 'c-pending',    desc: 'Not yet analyzed' },
+  clear:      { label: 'Clear',      cls: 'c-clear',      desc: 'No restrictions detected' },
+  restricted: { label: 'Restricted', cls: 'c-restricted', desc: 'Verbatim extraction prohibited; factual rules only' },
+  blocked:    { label: 'Blocked',    cls: 'c-blocked',    desc: 'AI opt-out clause detected — must be reviewed manually' },
+};
+
+const clearDocs    = documents.filter(d => d.copyright_status === 'clear' || d.copyright_status === 'restricted');
+const blockedDocs  = documents.filter(d => d.copyright_status === 'blocked');
+---
+
+<AdminLayout
+  title={`Documents — ${profile.country.name} / ${profile.provider.name}`}
+  breadcrumbs={[
+    { label: 'Countries', href: '/countries' },
+    { label: `${profile.country.name} / ${profile.provider.name}`, href: `/admin/countries/${profile.id}/setup` },
+    { label: 'Documents' },
+  ]}
+>
+  <!-- Step bar -->
+  <div class="step-bar">
+    <a href={`/admin/countries/${profile.id}/setup`} class="step-tab">
+      <span class="step-num done">✓</span> Profile Setup
+    </a>
+    <div class="step-connector"></div>
+    <a href={`/admin/countries/${profile.id}/documents`} class="step-tab active">
+      <span class="step-num">2</span> Documents
+    </a>
+    <div class="step-connector"></div>
+    <span class="step-tab disabled">
+      <span class="step-num">3</span> AI Analysis
+    </span>
+    <div class="step-connector"></div>
+    <span class="step-tab disabled">
+      <span class="step-num">4</span> Activate
+    </span>
+  </div>
+
+  <div class="two-col">
+    <!-- Left: existing docs -->
+    <div class="left-col">
+      <div class="panel">
+        <div class="panel-head">
+          <div>
+            <h2 class="panel-title">Uploaded Documents</h2>
+            <p class="panel-subtitle">{documents.length} documents · {clearDocs.length} processable · {blockedDocs.length} blocked</p>
+          </div>
+          <!-- TODO: POST /admin/documents/analyze via App 2 API → App 3 CrewAI -->
+          <button
+            id="analyze-btn"
+            class="btn-analyze"
+            onclick="handleAnalyze()"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2a10 10 0 1 0 10 10"/><path d="M12 6v6l4 2"/>
+              <path d="M18 2l4 4-4 4"/><path d="M22 2v8h-8"/>
+            </svg>
+            Analyze selected with AI
+          </button>
+        </div>
+
+        {blockedDocs.length > 0 && (
+          <div class="guardrail-banner">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"/>
+              <line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            <div>
+              <p class="banner-title">AI opt-out detected in {blockedDocs.length} document(s)</p>
+              <p class="banner-desc">These documents contain an explicit AI processing restriction (DSM Directive Art. 4 opt-out). They are excluded from AI analysis and must be reviewed manually.</p>
+            </div>
+          </div>
+        )}
+
+        <table class="table">
+          <thead>
+            <tr>
+              <th style="width:32px">
+                <input type="checkbox" id="select-all" />
+              </th>
+              <th>File</th>
+              <th>Type</th>
+              <th>Copyright</th>
+              <th>Uploaded</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {documents.map(doc => {
+              const meta = copyrightMeta[doc.copyright_status];
+              return (
+                <tr class={doc.copyright_status === 'blocked' ? 'row-blocked' : ''}>
+                  <td>
+                    <input
+                      type="checkbox"
+                      class="doc-checkbox"
+                      data-doc-id={doc.id}
+                      checked={doc.selected && doc.copyright_status !== 'blocked'}
+                      disabled={doc.copyright_status === 'blocked'}
+                    />
+                  </td>
+                  <td>
+                    <div class="file-cell">
+                      <div class={`file-icon fi-${doc.copyright_status}`}>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                          <polyline points="14 2 14 8 20 8"/>
+                        </svg>
+                      </div>
+                      <div>
+                        <p class="file-name">{doc.filename}</p>
+                        <p class="file-size">{doc.size}</p>
+                      </div>
+                    </div>
+                  </td>
+                  <td>
+                    <span class="type-label">
+                      {DOCUMENT_TYPES.find(t => t.value === doc.document_type)?.label ?? doc.document_type}
+                    </span>
+                  </td>
+                  <td>
+                    <div class="copyright-cell">
+                      <span class={`c-badge ${meta.cls}`}>{meta.label}</span>
+                      <span class="c-desc">{meta.desc}</span>
+                    </div>
+                  </td>
+                  <td class="muted">{doc.uploaded_at}</td>
+                  <td>
+                    <div class="row-actions">
+                      <!-- TODO: GET /admin/documents/{doc.id}/download via App 2 API -->
+                      <button class="btn-icon" title="Download" onclick={`alert('TODO: download ${doc.filename}')`}>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                          <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                      </button>
+                      <!-- TODO: DELETE /admin/documents/{doc.id} via App 2 API -->
+                      <button class="btn-icon btn-danger" title="Delete" onclick={`alert('TODO: delete ${doc.filename}')`}>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <polyline points="3 6 5 6 21 6"/>
+                          <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                          <path d="M10 11v6"/><path d="M14 11v6"/>
+                          <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                        </svg>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Right: upload form -->
+    <div class="right-col">
+      <div class="panel">
+        <h2 class="panel-title">Upload Document</h2>
+        <p class="panel-subtitle" style="margin-bottom:1rem">PDF, DOCX, XLSX, CSV, TXT, MD — max 20 MB</p>
+
+        <!-- TODO: POST /admin/documents/upload via App 2 API → saves to Railway Volume + DB -->
+        <form id="upload-form" class="upload-form" action="#" method="POST" enctype="multipart/form-data">
+          <div class="drop-zone" id="drop-zone">
+            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+            <p class="drop-label">Drop file here or <label for="file-input" class="drop-link">browse</label></p>
+            <input type="file" id="file-input" name="file" accept=".pdf,.docx,.xlsx,.csv,.txt,.md" class="hidden" />
+          </div>
+
+          <div class="field">
+            <label for="doc_type">Document Type <span class="required">*</span></label>
+            <select id="doc_type" name="document_type" required>
+              <option value="" disabled selected>Select type…</option>
+              {DOCUMENT_TYPES.map(t => (
+                <option value={t.value}>{t.label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="description">Description</label>
+            <textarea id="description" name="description" rows="2" placeholder="Brief description of this document…"></textarea>
+          </div>
+
+          <button type="submit" class="btn-upload">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            </svg>
+            Upload Document
+          </button>
+        </form>
+      </div>
+
+      <!-- Copyright legend -->
+      <div class="panel legend-panel">
+        <h3 class="legend-title">Copyright status legend</h3>
+        {Object.entries(copyrightMeta).map(([key, meta]) => (
+          <div class="legend-row">
+            <span class={`c-badge ${meta.cls}`}>{meta.label}</span>
+            <span class="legend-desc">{meta.desc}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  </div>
+</AdminLayout>
+
+<script>
+  // Select all checkbox
+  const selectAll = document.getElementById('select-all') as HTMLInputElement;
+  const checkboxes = document.querySelectorAll<HTMLInputElement>('.doc-checkbox:not(:disabled)');
+
+  selectAll.addEventListener('change', () => {
+    checkboxes.forEach(cb => cb.checked = selectAll.checked);
+  });
+
+  // Drag-and-drop visual
+  const dropZone = document.getElementById('drop-zone')!;
+  const fileInput = document.getElementById('file-input') as HTMLInputElement;
+
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    const files = e.dataTransfer?.files;
+    if (files?.[0]) {
+      dropZone.querySelector('.drop-label')!.textContent = `Selected: ${files[0].name}`;
+    }
+  });
+
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files?.[0]) {
+      dropZone.querySelector('.drop-label')!.innerHTML = `Selected: <strong>${fileInput.files[0].name}</strong>`;
+    }
+  });
+
+  // Upload form submit
+  document.getElementById('upload-form')!.addEventListener('submit', e => {
+    e.preventDefault();
+    alert('TODO: POST to API_BASE_URL/admin/documents/upload');
+  });
+
+  // Analyze button
+  function handleAnalyze() {
+    const selected = Array.from(document.querySelectorAll<HTMLInputElement>('.doc-checkbox:checked'))
+      .map(cb => cb.dataset.docId);
+    if (selected.length === 0) {
+      alert('Please select at least one document to analyze.');
+      return;
+    }
+    alert(`TODO: POST to API_BASE_URL/admin/documents/analyze\nDocuments: ${selected.join(', ')}`);
+  }
+
+  (window as any).handleAnalyze = handleAnalyze;
+</script>
+
+<style>
+  .step-bar {
+    display: flex;
+    align-items: center;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    padding: 0.85rem 1.25rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .step-tab {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: var(--color-text-muted);
+    white-space: nowrap;
+    transition: color 0.13s;
+  }
+
+  .step-tab.active { color: var(--color-admin); font-weight: 700; }
+  .step-tab.disabled { opacity: 0.35; cursor: default; pointer-events: none; }
+
+  .step-num {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.68rem;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  .step-tab.active .step-num { background: var(--color-admin); border-color: var(--color-admin); color: #fff; }
+  .step-num.done { background: var(--color-success); border-color: var(--color-success); color: #fff; font-size: 0.6rem; }
+
+  .step-connector { flex: 1; height: 1px; background: var(--color-border); margin: 0 0.75rem; min-width: 24px; }
+
+  /* Layout */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 300px;
+    gap: 1.25rem;
+    align-items: start;
+  }
+
+  @media (max-width: 1000px) { .two-col { grid-template-columns: 1fr; } }
+
+  .right-col { display: flex; flex-direction: column; gap: 1rem; }
+
+  .panel {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    padding: 1.1rem 1.25rem;
+  }
+
+  .panel-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .panel-title { font-size: 0.9rem; font-weight: 700; color: var(--color-text); }
+  .panel-subtitle { font-size: 0.75rem; color: var(--color-text-muted); margin-top: 0.2rem; }
+
+  .btn-analyze {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.5rem 1rem;
+    background: var(--color-admin);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.13s;
+    white-space: nowrap;
+    font-family: inherit;
+  }
+
+  .btn-analyze:hover { background: var(--color-admin-hover); transform: translateY(-1px); box-shadow: 0 4px 16px rgba(88,119,152,.35); }
+
+  .guardrail-banner {
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-start;
+    background: rgba(239,68,68,.05);
+    border: 1px solid rgba(239,68,68,.2);
+    border-radius: 8px;
+    padding: 0.8rem 1rem;
+    margin-bottom: 1rem;
+    color: #ef4444;
+  }
+
+  .banner-title { font-size: 0.82rem; font-weight: 700; margin-bottom: 0.25rem; }
+  .banner-desc  { font-size: 0.75rem; color: var(--color-text-muted); line-height: 1.5; }
+
+  /* Table */
+  .table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+    margin: 0 -1.25rem;
+    width: calc(100% + 2.5rem);
+  }
+
+  .table th {
+    text-align: left;
+    padding: 0.5rem 1rem;
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-muted);
+    background: var(--color-surface-2);
+    border-top: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .table td {
+    padding: 0.7rem 1rem;
+    border-bottom: 1px solid var(--color-border);
+    vertical-align: middle;
+  }
+
+  .table tbody tr:last-child td { border-bottom: none; }
+  .table tbody tr:hover:not(.row-blocked) { background: rgba(255,255,255,.02); }
+  .row-blocked { opacity: 0.55; }
+
+  .file-cell { display: flex; align-items: center; gap: 0.6rem; }
+
+  .file-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .fi-clear      { background: var(--color-success-soft); color: var(--color-success); }
+  .fi-restricted { background: rgba(245,158,11,.12); color: #f59e0b; }
+  .fi-blocked    { background: rgba(239,68,68,.12);  color: #ef4444; }
+  .fi-pending    { background: var(--color-surface-2); color: var(--color-text-muted); }
+
+  .file-name { font-size: 0.8rem; font-weight: 500; color: var(--color-text); }
+  .file-size { font-size: 0.68rem; color: var(--color-text-muted); }
+
+  .type-label { font-size: 0.74rem; color: var(--color-text-muted); }
+
+  .copyright-cell { display: flex; flex-direction: column; gap: 0.2rem; }
+
+  .c-badge {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    border-radius: 100px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    width: fit-content;
+  }
+
+  .c-clear      { background: var(--color-success-soft); color: var(--color-success); }
+  .c-restricted { background: rgba(245,158,11,.12); color: #f59e0b; }
+  .c-blocked    { background: rgba(239,68,68,.12);  color: #ef4444; }
+  .c-pending    { background: var(--color-surface-2); color: var(--color-text-muted); }
+
+  .c-desc { font-size: 0.67rem; color: var(--color-text-muted); }
+
+  .muted { color: var(--color-text-muted); font-size: 0.75rem; }
+
+  .row-actions { display: flex; gap: 0.3rem; }
+
+  .btn-icon {
+    width: 26px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--color-border);
+    border-radius: 5px;
+    background: none;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    transition: all 0.13s;
+  }
+
+  .btn-icon:hover { background: var(--color-surface-2); color: var(--color-text); }
+  .btn-danger:hover { background: rgba(239,68,68,.1); color: #ef4444; border-color: rgba(239,68,68,.3); }
+
+  /* Upload form */
+  .upload-form { display: flex; flex-direction: column; gap: 0.9rem; }
+
+  .drop-zone {
+    border: 2px dashed var(--color-border);
+    border-radius: 10px;
+    padding: 1.5rem 1rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.13s;
+    color: var(--color-text-muted);
+  }
+
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: var(--color-admin);
+    background: var(--color-admin-soft);
+    color: var(--color-admin);
+  }
+
+  .drop-label { font-size: 0.8rem; margin-top: 0.5rem; }
+
+  .drop-link {
+    color: var(--color-admin);
+    cursor: pointer;
+    font-weight: 600;
+  }
+
+  .hidden { display: none; }
+
+  .field { display: flex; flex-direction: column; gap: 0.4rem; }
+
+  label { font-size: 0.75rem; font-weight: 600; color: var(--color-text); }
+  .required { color: #ef4444; }
+
+  select, textarea {
+    padding: 0.55rem 0.8rem;
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-border);
+    border-radius: 7px;
+    color: var(--color-text);
+    font-size: 0.82rem;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.13s;
+    width: 100%;
+  }
+
+  select:focus, textarea:focus { border-color: var(--color-admin); }
+  textarea { resize: vertical; }
+
+  .btn-upload {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    padding: 0.6rem 1rem;
+    background: var(--color-surface-2);
+    color: var(--color-text);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    font-size: 0.83rem;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.13s;
+  }
+
+  .btn-upload:hover { background: var(--color-admin); color: #fff; border-color: var(--color-admin); }
+
+  /* Legend */
+  .legend-panel { padding: 1rem 1.1rem; }
+
+  .legend-title {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--color-text);
+    margin-bottom: 0.75rem;
+  }
+
+  .legend-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .legend-desc { font-size: 0.72rem; color: var(--color-text-muted); line-height: 1.4; }
+</style>

@@ -1,0 +1,821 @@
+---
+import UserLayout from '../../layouts/UserLayout.astro';
+import { getSession, isAdminRole } from '../../lib/session';
+import { canUsePlanAdvisorApi, paFetchJson } from '../../lib/pa-api';
+import {
+  DUMMY_PROFILES,
+  DUMMY_ACTIVE_RULES,
+  DUMMY_SCENARIO_RESULT,
+} from '../../lib/dummy-data';
+
+const session = getSession(Astro.cookies);
+if (!session) return Astro.redirect('/customer/login');
+if (isAdminRole(session.role)) return Astro.redirect('/admin/dashboard');
+
+const { profile_id } = Astro.params;
+
+type PaViewer = { displayName: string; subtitle: string };
+let paViewer: PaViewer | null = null;
+let paNotice: string | null = null;
+
+type ApiProfile = {
+  profile_id: string;
+  country_name?: string;
+  provider_name?: string;
+  version?: string;
+  currency?: string;
+  calculation_basis?: string;
+  inputs: Array<{
+    key: string;
+    label: string;
+    direction?: string;
+    obligation?: string;
+    operation_group?: string;
+    pa_transactions_per_item: number;
+  }>;
+};
+
+const liveApi = canUsePlanAdvisorApi(session) && !!session.supabaseAccessToken;
+
+let profile:
+  | {
+      id: string;
+      country: { code: string; name: string };
+      provider: { name: string; type: string };
+      version: string;
+      currency: string;
+    }
+  | undefined;
+
+let calculationBasis = 'PA transactions';
+let rules: Array<{
+  input_key: string;
+  label: string;
+  direction: string;
+  obligation: string;
+  pa_transactions_per_item: number;
+  placeholder: number;
+}> = [];
+
+let dummyResult = DUMMY_SCENARIO_RESULT;
+let showDummyResults = true;
+let useProxyCalculate = false;
+/** Client-visible AI summary toggle from Plan Advisor `/api/me` (ignored for internal users). */
+let clientSummaryFromApi = true;
+
+if (liveApi && session.supabaseAccessToken && profile_id) {
+  const tok = session.supabaseAccessToken;
+
+  const me = await paFetchJson<{
+    full_name?: string | null;
+    email?: string;
+    company_name?: string | null;
+    client_summary_enabled?: boolean;
+  }>('/me', tok);
+  if (me.ok) {
+    paViewer = {
+      displayName:
+        (me.data.full_name?.trim() || me.data.email || session.name)?.trim() || session.name,
+      subtitle: [me.data.email, me.data.company_name].filter(Boolean).join(' · '),
+    };
+    if (me.data.client_summary_enabled === false) {
+      clientSummaryFromApi = false;
+    }
+  }
+
+  const loaded = await paFetchJson<ApiProfile>(`/calculator/profile/${profile_id}`, tok);
+  if (loaded.ok && loaded.data) {
+    useProxyCalculate = true;
+    showDummyResults = false;
+    const d = loaded.data;
+    profile = {
+      id: d.profile_id,
+      country: {
+        code: (d.country_name ?? '').slice(0, 2).toUpperCase() || '—',
+        name: d.country_name ?? '',
+      },
+      provider: {
+        name: d.provider_name ?? '',
+        type: 'PA',
+      },
+      version: String(d.version ?? ''),
+      currency: String(d.currency ?? ''),
+    };
+    calculationBasis = d.calculation_basis ?? 'PA transactions';
+    rules = (d.inputs ?? []).map((inp) => ({
+      input_key: inp.key,
+      label: inp.label,
+      direction: inp.direction ?? '—',
+      obligation: inp.obligation ?? '—',
+      pa_transactions_per_item: Number(inp.pa_transactions_per_item ?? 0),
+      placeholder: 0,
+    }));
+  } else {
+    paNotice = loaded.status
+      ? `Could not load calculator profile (HTTP ${loaded.status}). Try Countries again.`
+      : 'Could not load calculator profile.';
+  }
+}
+
+if (!profile) {
+  const d = DUMMY_PROFILES.find((p) => p.id === profile_id && p.status === 'active');
+  if (d) {
+    profile = {
+      id: d.id,
+      country: d.country,
+      provider: d.provider,
+      version: d.version,
+      currency: d.currency,
+    };
+    calculationBasis = dummyResult.calculation_basis;
+    rules = (DUMMY_ACTIVE_RULES[profile_id!] ?? []).map((r) => ({
+      input_key: r.input_key,
+      label: r.label,
+      direction: r.direction,
+      obligation: r.obligation,
+      pa_transactions_per_item: r.pa_transactions_per_item,
+      placeholder: Number(
+        (dummyResult.inputs as Record<string, number>)[r.input_key] ?? r.placeholder ?? 0,
+      ),
+    }));
+  }
+}
+
+if (!profile) {
+  return Astro.redirect('/countries');
+}
+
+const canGenerateSummary = session.role === 'internal';
+const showSummaryBtn =
+  canGenerateSummary || (session.role === 'client' && clientSummaryFromApi);
+---
+
+<UserLayout
+  title="Calculator"
+  paViewer={paViewer}
+  paNotice={paNotice}
+  breadcrumbs={[
+    { label: 'Home', href: '/dashboard' },
+    { label: 'Countries', href: '/countries' },
+    { label: `${profile.country.name} / ${profile.provider.name}` },
+  ]}
+>
+  <div class="profile-header">
+    <div class="ph-info">
+      <div class="ph-flag">
+        <span class="ph-code">{profile.country.code}</span>
+        <div>
+          <p class="ph-country">{profile.country.name} — {profile.provider.name}</p>
+          <p class="ph-meta">Version {profile.version} · {profile.currency} · {calculationBasis}</p>
+        </div>
+      </div>
+    </div>
+    <span class="active-badge">Active</span>
+  </div>
+
+  <div class="calc-layout">
+    <section class="calc-form-wrap">
+      <div class="form-header">
+        <h2 class="form-title">Transaction Volumes</h2>
+        <p class="form-sub">
+          Enter your estimated annual transaction volumes. The calculator applies approved profile
+          multipliers and saves the result as a scenario.
+        </p>
+      </div>
+
+      <form id="calc-form" data-profile-id={profile.id} data-use-proxy={useProxyCalculate ? '1' : '0'}>
+        <div class="form-field">
+          <label class="field-label" for="client-name">Client Name <span class="req">*</span></label>
+          <input
+            type="text"
+            id="client-name"
+            name="client_name"
+            class="field-input"
+            placeholder="e.g. Acme Corp"
+            value="Acme Corp"
+            required
+          />
+          <p class="field-hint">Used to identify this scenario in your history.</p>
+        </div>
+
+        <div class="rules-section">
+          <h3 class="rules-heading">Transaction inputs</h3>
+          <div class="rules-grid">
+            {rules.map((rule) => (
+              <div class="rule-input-card" data-key={rule.input_key}>
+                <div class="rule-card-top">
+                  <div class="rule-badges">
+                    <span class={`dir-badge ${rule.direction === 'Issued' ? 'dir-issued' : 'dir-received'}`}>
+                      {rule.direction}
+                    </span>
+                    <span class="obl-badge">{rule.obligation}</span>
+                  </div>
+                  <span class="mult-hint">×{rule.pa_transactions_per_item} PA</span>
+                </div>
+                <label class="field-label" for={`input-${rule.input_key}`}>
+                  {rule.label}
+                </label>
+                <div class="number-wrap">
+                  <input
+                    type="number"
+                    id={`input-${rule.input_key}`}
+                    name={rule.input_key}
+                    class="field-input number-input"
+                    min="0"
+                    step="100"
+                    placeholder="0"
+                    value={rule.placeholder}
+                  />
+                  <span class="unit-label">/ year</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" class="btn-calculate" id="btn-calc">
+            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="4" y="2" width="16" height="20" rx="2"/>
+              <line x1="8" y1="10" x2="12" y2="10"/><line x1="12" y1="6" x2="12" y2="14"/>
+              <line x1="8" y1="18" x2="16" y2="18"/><line x1="8" y1="14" x2="10" y2="14"/>
+            </svg>
+            Calculate Plan
+          </button>
+          <button type="button" class="btn-reset" onclick="document.getElementById('calc-form')?.reset()">
+            Clear
+          </button>
+        </div>
+      </form>
+    </section>
+
+    {showDummyResults ? (
+      <section class="results-panel" id="results-panel">
+        <div class="results-header">
+          <h2 class="results-title">Demo result (offline)</h2>
+          <span class="results-client">{dummyResult.client_name}</span>
+        </div>
+
+        <div class="result-block">
+          <h3 class="block-title">Transaction Breakdown</h3>
+          <table class="result-table">
+            <thead>
+              <tr>
+                <th>Type</th>
+                <th class="num">Volume</th>
+                <th class="num">× Multiplier</th>
+                <th class="num">PA Transactions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {dummyResult.transaction_breakdown.map((row) => (
+                <tr>
+                  <td>
+                    <div class="breakdown-label">
+                      <span class="breakdown-text">{row.label}</span>
+                      <div class="breakdown-tags">
+                        <span class={`dir-mini ${row.direction === 'Issued' ? 'dir-issued' : 'dir-received'}`}>{row.direction}</span>
+                        <span class="obl-mini">{row.obligation}</span>
+                      </div>
+                    </div>
+                  </td>
+                  <td class="num muted">{row.volume.toLocaleString()}</td>
+                  <td class="num">
+                    <span class="multiplier">×{row.multiplier}</span>
+                  </td>
+                  <td class="num strong">{row.pa_transactions.toLocaleString()}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr class="total-row">
+                <td colspan="3" class="total-label">Total PA Transactions / year</td>
+                <td class="num total-val">{dummyResult.total_pa_transactions.toLocaleString()}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        <div class="result-block">
+          <h3 class="block-title">Plan Comparison</h3>
+          <table class="result-table">
+            <thead>
+              <tr>
+                <th>Plan</th>
+                <th class="num">Annual Fee</th>
+                <th class="num">Included PA</th>
+                <th class="num">Extra / PA</th>
+                <th class="num">Extra PA</th>
+                <th class="num">Total / Year</th>
+              </tr>
+            </thead>
+            <tbody>
+              {dummyResult.plan_comparison.map((plan) => (
+                <tr class:list={['plan-row', { 'plan-recommended': plan.recommended }]}>
+                  <td>
+                    <div class="plan-name-cell">
+                      {plan.recommended && (
+                        <span class="rec-badge">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                          Best
+                        </span>
+                      )}
+                      <span class={plan.recommended ? 'plan-name rec' : 'plan-name'}>{plan.plan_name}</span>
+                    </div>
+                  </td>
+                  <td class="num">€{plan.annual_fee.toLocaleString()}</td>
+                  <td class="num muted">{plan.included.toLocaleString()}</td>
+                  <td class="num muted">€{plan.extra_cost.toFixed(2)}</td>
+                  <td class="num muted">{plan.extra_transactions > 0 ? plan.extra_transactions.toLocaleString() : '—'}</td>
+                  <td class="num">
+                    <strong class={plan.recommended ? 'rec-cost' : ''}>€{plan.total_annual_cost.toLocaleString()}</strong>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <p class="live-hint">With Supabase + API configured, submitting the form saves a real scenario and opens the breakdown page.</p>
+      </section>
+    ) : (
+      <section class="results-panel results-placeholder">
+        <h2 class="results-title">Results</h2>
+        <p class="live-copy">
+          Submit <strong>Calculate Plan</strong> to run the deterministic engine on Plan Advisor. You will be
+          redirected to the scenario with full breakdown and optional English AI summary.
+        </p>
+        {!showSummaryBtn && (
+          <p class="live-muted">AI summaries are disabled for your account.</p>
+        )}
+      </section>
+    )}
+  </div>
+</UserLayout>
+
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const form = document.getElementById('calc-form') as HTMLFormElement | null;
+    if (!form) return;
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const useProxy = form.getAttribute('data-use-proxy') === '1';
+      if (!useProxy) {
+        const panel = document.getElementById('results-panel');
+        if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        alert(
+          'Demo profile only. Configure SUPABASE_URL, sign in with a real user, and set API_BASE_URL to call Plan Advisor.',
+        );
+        return;
+      }
+
+      const profileId = form.getAttribute('data-profile-id');
+      if (!profileId) return;
+
+      const fd = new FormData(form);
+      const client_name = String(fd.get('client_name') ?? '').trim();
+      const inputs: Record<string, number> = {};
+      for (const [k, v] of fd.entries()) {
+        if (k === 'client_name') continue;
+        inputs[k] = Number(v) || 0;
+      }
+
+      const btn = document.getElementById('btn-calc') as HTMLButtonElement | null;
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Calculating…';
+      }
+
+      try {
+        const res = await fetch('/api/pa/calculate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({ profile_id: profileId, client_name, inputs }),
+        });
+        const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+        if (!res.ok) {
+          const msg =
+            typeof data.error === 'string' ? data.error : typeof data.message === 'string' ? data.message : JSON.stringify(data);
+          alert(`Calculation failed (${res.status}): ${msg}`);
+          if (btn) {
+            btn.disabled = false;
+            btn.innerHTML =
+              `<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="10" x2="12" y2="10"/><line x1="12" y1="6" x2="12" y2="14"/><line x1="8" y1="18" x2="16" y2="18"/><line x1="8" y1="14" x2="10" y2="14"/></svg> Calculate Plan`;
+          }
+          return;
+        }
+        const sid = typeof data.scenario_id === 'string' ? data.scenario_id : null;
+        if (sid) {
+          window.location.href = `/scenarios/${sid}`;
+          return;
+        }
+        alert('Unexpected response — no scenario_id returned.');
+      } catch {
+        alert('Could not reach the calculator. Is the Astro dev server and Plan Advisor API running?');
+      }
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Calculate Plan';
+      }
+    });
+  });
+</script>
+
+<style>
+  .live-hint {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    margin-top: 0.5rem;
+  }
+
+  .results-placeholder .live-copy {
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+    line-height: 1.55;
+    max-width: 420px;
+  }
+
+  .results-placeholder .live-muted {
+    margin-top: 0.85rem;
+    font-size: 0.78rem;
+    color: var(--color-text-muted);
+    font-style: italic;
+  }
+
+  /* Profile header */
+  .profile-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    padding: 1rem 1.25rem;
+    margin-bottom: 1.25rem;
+    gap: 1rem;
+  }
+
+  .ph-flag { display: flex; align-items: center; gap: 0.85rem; }
+
+  .ph-code {
+    font-size: 0.8rem;
+    font-weight: 800;
+    color: var(--color-customer);
+    background: var(--color-customer-soft);
+    border-radius: 7px;
+    padding: 0.35rem 0.6rem;
+    letter-spacing: 0.05em;
+  }
+
+  .ph-country {
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: var(--color-text);
+    margin-bottom: 0.15rem;
+  }
+
+  .ph-meta { font-size: 0.75rem; color: var(--color-text-muted); }
+
+  .active-badge {
+    font-size: 0.7rem;
+    font-weight: 700;
+    background: var(--color-success-soft);
+    color: var(--color-success);
+    padding: 0.25rem 0.65rem;
+    border-radius: 100px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .calc-layout {
+    display: grid;
+    grid-template-columns: 420px 1fr;
+    gap: 1.25rem;
+    align-items: start;
+  }
+
+  @media (max-width: 1100px) {
+    .calc-layout { grid-template-columns: 1fr; }
+  }
+
+  .calc-form-wrap {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    padding: 1.25rem;
+    position: sticky;
+    top: 1rem;
+  }
+
+  .form-header { margin-bottom: 1.25rem; }
+
+  .form-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--color-text);
+    margin-bottom: 0.35rem;
+  }
+
+  .form-sub {
+    font-size: 0.78rem;
+    color: var(--color-text-muted);
+    line-height: 1.5;
+  }
+
+  .form-field { margin-bottom: 1rem; }
+
+  .field-label {
+    display: block;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--color-text);
+    margin-bottom: 0.35rem;
+  }
+
+  .req { color: #ef4444; }
+
+  .field-input {
+    width: 100%;
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-border);
+    border-radius: 7px;
+    padding: 0.55rem 0.75rem;
+    font-size: 0.85rem;
+    color: var(--color-text);
+    font-family: inherit;
+    outline: none;
+    box-sizing: border-box;
+    transition: border-color 0.13s;
+  }
+
+  .field-input:focus {
+    border-color: var(--color-customer);
+    box-shadow: 0 0 0 2px var(--color-success-soft);
+  }
+
+  .field-hint {
+    font-size: 0.72rem;
+    color: var(--color-text-muted);
+    margin-top: 0.3rem;
+  }
+
+  .rules-section { margin-bottom: 1.25rem; }
+
+  .rules-heading {
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-text-muted);
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .rules-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+  }
+
+  .rule-input-card {
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-border);
+    border-radius: 9px;
+    padding: 0.75rem;
+  }
+
+  .rule-card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.5rem;
+  }
+
+  .rule-badges { display: flex; gap: 0.35rem; }
+
+  .dir-badge, .obl-badge, .dir-mini, .obl-mini {
+    font-size: 0.62rem;
+    font-weight: 700;
+    border-radius: 4px;
+    padding: 0.1rem 0.35rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .dir-issued   { background: rgba(88,119,152,.12); color: var(--color-admin); }
+  .dir-received { background: rgba(168,85,247,.12); color: #a855f7; }
+  .obl-badge    { background: var(--color-surface); color: var(--color-text-muted); border: 1px solid var(--color-border); }
+  .dir-mini     { font-size: 0.58rem; }
+  .obl-mini     { font-size: 0.58rem; background: var(--color-surface-2); color: var(--color-text-muted); }
+
+  .mult-hint {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--color-customer);
+    background: var(--color-customer-soft);
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    font-family: 'SF Mono', ui-monospace, monospace;
+  }
+
+  .number-wrap {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .number-input { flex: 1; }
+
+  .unit-label {
+    font-size: 0.72rem;
+    color: var(--color-text-muted);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .form-actions {
+    display: flex;
+    gap: 0.6rem;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .btn-calculate {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.65rem 1.25rem;
+    background: var(--color-customer);
+    color: #fff;
+    border: none;
+    border-radius: 9px;
+    font-size: 0.88rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.13s;
+    font-family: inherit;
+    flex: 1;
+    justify-content: center;
+  }
+
+  .btn-calculate:hover {
+    background: var(--color-customer-hover);
+    box-shadow: 0 4px 18px rgba(29,111,92,.35);
+    transform: translateY(-1px);
+  }
+
+  .btn-reset {
+    padding: 0.65rem 0.9rem;
+    background: none;
+    border: 1px solid var(--color-border);
+    border-radius: 9px;
+    font-size: 0.82rem;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.13s;
+  }
+
+  .btn-reset:hover { background: var(--color-surface-2); color: var(--color-text); }
+
+  .results-panel {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+
+  .results-placeholder { min-height: 120px; }
+
+  .results-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .results-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--color-text);
+  }
+
+  .results-client {
+    font-size: 0.78rem;
+    color: var(--color-text-muted);
+    background: var(--color-surface-2);
+    border-radius: 6px;
+    padding: 0.2rem 0.55rem;
+  }
+
+  .block-title {
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-text-muted);
+    margin-bottom: 0.65rem;
+  }
+
+  .result-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+  }
+
+  .result-table th {
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-muted);
+    background: var(--color-surface-2);
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .result-table th.num, .result-table td.num { text-align: right; }
+
+  .result-table td {
+    padding: 0.65rem 0.75rem;
+    border-bottom: 1px solid var(--color-border);
+    color: var(--color-text);
+    vertical-align: middle;
+  }
+
+  .result-table tbody tr:last-child td { border-bottom: 1px solid var(--color-border); }
+  .breakdown-label { display: flex; flex-direction: column; gap: 0.3rem; }
+  .breakdown-text  { font-size: 0.82rem; font-weight: 500; }
+  .breakdown-tags  { display: flex; gap: 0.3rem; }
+
+  .multiplier {
+    font-family: 'SF Mono', ui-monospace, monospace;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--color-customer);
+    background: var(--color-customer-soft);
+    padding: 0.1rem 0.35rem;
+    border-radius: 4px;
+  }
+
+  .muted  { color: var(--color-text-muted); }
+  .strong { font-weight: 700; }
+
+  .total-row td {
+    background: var(--color-surface-2);
+    padding: 0.6rem 0.75rem;
+    border-bottom: none;
+  }
+
+  .total-label {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .total-val {
+    font-size: 1rem;
+    font-weight: 800;
+    color: var(--color-text);
+    text-align: right;
+  }
+
+  .plan-row td { background: transparent; }
+  .plan-recommended td {
+    background: rgba(29,111,92,.04);
+    border-color: var(--color-success-soft);
+  }
+
+  .plan-name-cell {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .rec-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.62rem;
+    font-weight: 700;
+    background: var(--color-success-soft);
+    color: var(--color-success);
+    padding: 0.12rem 0.4rem;
+    border-radius: 4px;
+    white-space: nowrap;
+  }
+
+  .plan-name { font-weight: 500; }
+  .plan-name.rec { font-weight: 700; color: var(--color-text); }
+  .rec-cost { color: var(--color-success); font-size: 0.9rem; }
+</style>

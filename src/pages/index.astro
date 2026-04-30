@@ -1,0 +1,236 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout title="Home">
+  <main class="landing">
+    <div class="hero">
+      <div class="badge">B2B Router Calculator</div>
+      <h1>Welcome</h1>
+      <p class="subtitle">
+        Choose your portal to continue. Each portal has its own dedicated workspace
+        tailored to your role.
+      </p>
+
+      <div class="portal-grid">
+        <a href="/admin/login" class="portal-card admin">
+          <div class="portal-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+              <path d="M2 17l10 5 10-5"/>
+              <path d="M2 12l10 5 10-5"/>
+            </svg>
+          </div>
+          <div class="portal-content">
+            <h2>Admin Portal</h2>
+            <p>Manage routes, configurations, pricing rules, and system settings.</p>
+          </div>
+          <div class="portal-arrow">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M5 12h14M12 5l7 7-7 7"/>
+            </svg>
+          </div>
+        </a>
+
+        <a href="/customer/login" class="portal-card customer">
+          <div class="portal-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="8" r="4"/>
+              <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+            </svg>
+          </div>
+          <div class="portal-content">
+            <h2>Customer Portal</h2>
+            <p>View your routes, calculate costs, and manage your account settings.</p>
+          </div>
+          <div class="portal-arrow">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M5 12h14M12 5l7 7-7 7"/>
+            </svg>
+          </div>
+        </a>
+      </div>
+    </div>
+  </main>
+</Layout>
+
+<style>
+  .landing {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    background: radial-gradient(
+      ellipse at 50% 0%,
+      rgba(88, 119, 152, 0.1) 0%,
+      transparent 60%
+    );
+  }
+
+  .hero {
+    max-width: 680px;
+    width: 100%;
+    text-align: center;
+  }
+
+  .badge {
+    display: inline-block;
+    padding: 0.3rem 0.9rem;
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-border);
+    border-radius: 100px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+    margin-bottom: 1.5rem;
+  }
+
+  h1 {
+    font-size: clamp(2.5rem, 6vw, 4rem);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    background: linear-gradient(135deg, var(--iva-5) 0%, var(--iva-3) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 1rem;
+  }
+
+  .subtitle {
+    font-size: 1.1rem;
+    color: var(--color-text-muted);
+    max-width: 480px;
+    margin: 0 auto 3rem;
+    line-height: 1.7;
+  }
+
+  .portal-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.25rem;
+  }
+
+  @media (max-width: 540px) {
+    .portal-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .portal-card {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+    padding: 1.75rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    transition: all 0.2s ease;
+    position: relative;
+    overflow: hidden;
+    text-align: left;
+  }
+
+  .portal-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    border-radius: inherit;
+  }
+
+  .portal-card.admin::before {
+    background: var(--color-admin-soft);
+  }
+
+  .portal-card.customer::before {
+    background: var(--color-customer-soft);
+  }
+
+  .portal-card:hover {
+    border-color: transparent;
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-card);
+  }
+
+  .portal-card.admin:hover {
+    border-color: rgba(88, 119, 152, 0.45);
+    box-shadow: 0 16px 40px rgba(64, 104, 148, 0.2);
+  }
+
+  .portal-card.customer:hover {
+    border-color: rgba(51, 70, 90, 0.45);
+    box-shadow: 0 16px 40px rgba(51, 70, 90, 0.15);
+  }
+
+  .portal-card:hover::before {
+    opacity: 1;
+  }
+
+  .portal-icon {
+    padding: 0.75rem;
+    border-radius: var(--radius-sm);
+    position: relative;
+    z-index: 1;
+  }
+
+  .admin .portal-icon {
+    background: var(--color-admin-soft);
+    color: var(--color-admin);
+  }
+
+  .customer .portal-icon {
+    background: var(--color-customer-soft);
+    color: var(--color-customer);
+  }
+
+  .portal-content {
+    flex: 1;
+    position: relative;
+    z-index: 1;
+  }
+
+  .portal-content h2 {
+    font-size: 1.15rem;
+    font-weight: 700;
+    margin-bottom: 0.4rem;
+    letter-spacing: -0.01em;
+  }
+
+  .admin .portal-content h2 {
+    color: var(--color-admin);
+  }
+
+  .customer .portal-content h2 {
+    color: var(--color-customer);
+  }
+
+  .portal-content p {
+    font-size: 0.875rem;
+    color: var(--color-text-muted);
+    line-height: 1.5;
+  }
+
+  .portal-arrow {
+    align-self: flex-end;
+    color: var(--color-text-muted);
+    transition: transform 0.2s ease, color 0.2s ease;
+    position: relative;
+    z-index: 1;
+  }
+
+  .admin:hover .portal-arrow {
+    color: var(--color-admin);
+    transform: translateX(4px);
+  }
+
+  .customer:hover .portal-arrow {
+    color: var(--color-customer);
+    transform: translateX(4px);
+  }
+</style>

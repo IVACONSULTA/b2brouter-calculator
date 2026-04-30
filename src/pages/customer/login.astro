@@ -1,0 +1,280 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { getSession, canAccessUserPortal } from '../../lib/session';
+
+const session = getSession(Astro.cookies);
+if (session) {
+  if (canAccessUserPortal(session.role)) return Astro.redirect('/dashboard');
+  return Astro.redirect('/admin/dashboard');
+}
+
+const errorMessages: Record<string, string> = {
+  invalid_credentials: 'Incorrect email or password. Please try again.',
+  missing_fields: 'Please enter your email and password.',
+  wrong_portal:
+    'This portal is for internal users and clients. Administrators should use the Admin Portal.',
+  server_config:
+    'Server misconfiguration: SUPABASE_ANON_KEY is missing. Ask your admin to set SUPABASE_ANON_KEY in Netlify for all deploy contexts.',
+  server_error: 'Something went wrong while signing in. Please try again later.',
+};
+
+const errorKey = Astro.url.searchParams.get('error') ?? '';
+const errorMsg = errorMessages[errorKey] ?? '';
+
+const isDemoMode =
+  import.meta.env.SUPABASE_URL === 'https://placeholder.supabase.co' || !import.meta.env.SUPABASE_URL;
+---
+
+<Layout title="Customer Portal sign in — PA Plan Advisor">
+  <main class="login-page">
+    <div class="login-card">
+      <div class="login-header">
+        <div class="icon customer">
+          <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+          </svg>
+        </div>
+        <div>
+          <h1>Customer Portal</h1>
+          <p>Internal team and client accounts (<code>internal</code> / <code>client</code> in profiles)</p>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      {isDemoMode && (
+        <div class="demo-banner">
+          <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+          <div><strong>Demo mode</strong> — use analyst or client demo accounts.</div>
+        </div>
+      )}
+
+      {errorMsg && (
+        <div class="error-banner">
+          <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          {errorMsg}
+        </div>
+      )}
+
+      <form action="/api/auth/login?from=customer" method="POST" class="login-form" id="login-form">
+        <div class="field">
+          <label for="email">Email</label>
+          <input type="email" id="email" name="email" placeholder="you@company.com" autocomplete="email" required />
+        </div>
+        <div class="field">
+          <label for="password">Password</label>
+          <input type="password" id="password" name="password" placeholder="••••••••" autocomplete="current-password" required />
+        </div>
+        <button type="submit" class="btn-submit" id="btn-submit">Sign in</button>
+      </form>
+
+      {isDemoMode && (
+        <div class="demo-accounts">
+          <p class="demo-accounts-title">Demo accounts</p>
+          <div class="demo-list">
+            <button type="button" class="demo-btn" data-email="analyst@b2brouter.com">
+              <span class="demo-dot dot-internal"></span><span class="demo-email">analyst@b2brouter.com</span><span class="demo-role">Internal</span>
+            </button>
+            <button type="button" class="demo-btn" data-email="client@acmecorp.com">
+              <span class="demo-dot dot-client"></span><span class="demo-email">client@acmecorp.com</span><span class="demo-role">Client</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div class="back-link"><a href="/">← Back to portal selection</a></div>
+    </div>
+  </main>
+</Layout>
+
+<script>
+  document.querySelectorAll('.demo-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const email = (btn as HTMLElement).dataset.email!;
+      (document.getElementById('email') as HTMLInputElement).value = email;
+      (document.getElementById('password') as HTMLInputElement).value = 'demo1234';
+    });
+  });
+  document.getElementById('login-form')?.addEventListener('submit', () => {
+    const b = document.getElementById('btn-submit') as HTMLButtonElement;
+    b.textContent = 'Signing in…';
+    b.disabled = true;
+  });
+</script>
+
+<style>
+  .login-page {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    background: radial-gradient(ellipse at 70% 20%, var(--color-customer-soft) 0%, transparent 55%);
+  }
+  .login-card {
+    width: 100%;
+    max-width: 440px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    padding: 2.25rem 2.5rem;
+  }
+  .login-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+  .icon.customer {
+    width: 52px;
+    height: 52px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-customer-soft);
+    color: var(--color-customer);
+    flex-shrink: 0;
+  }
+  .login-header h1 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--color-text);
+    margin-bottom: 0.2rem;
+  }
+  .login-header p {
+    font-size: 0.78rem;
+    color: var(--color-text-muted);
+    line-height: 1.4;
+  }
+  .login-header code { font-size: 0.7em; }
+  .divider {
+    height: 1px;
+    background: var(--color-border);
+    margin-bottom: 1.25rem;
+  }
+  .demo-banner,
+  .error-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    border-radius: 8px;
+    padding: 0.7rem 0.9rem;
+    margin-bottom: 1.1rem;
+    font-size: 0.8rem;
+    line-height: 1.5;
+  }
+  .demo-banner {
+    background: rgba(245, 158, 11, 0.07);
+    border: 1px solid rgba(245, 158, 11, 0.2);
+    color: #fbbf24;
+  }
+  .error-banner {
+    background: rgba(239, 68, 68, 0.07);
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    color: #f87171;
+  }
+  .login-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+  .field label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--color-text-muted);
+  }
+  .field input {
+    padding: 0.65rem 0.9rem;
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    color: var(--color-text);
+    font-size: 0.88rem;
+    font-family: inherit;
+    outline: none;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .field input:focus {
+    border-color: var(--color-customer);
+    box-shadow: 0 0 0 2px rgba(51, 70, 90, 0.18);
+  }
+  .btn-submit {
+    padding: 0.8rem 1.5rem;
+    background: var(--color-customer);
+    color: #fff;
+    border: none;
+    border-radius: 9px;
+    font-size: 0.92rem;
+    font-weight: 700;
+    cursor: pointer;
+    margin-top: 0.25rem;
+  }
+  .btn-submit:hover:not(:disabled) {
+    background: var(--color-customer-hover);
+  }
+  .btn-submit:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+  .demo-accounts {
+    margin-top: 1.25rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--color-border);
+  }
+  .demo-accounts-title {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--color-text-muted);
+    margin-bottom: 0.65rem;
+  }
+  .demo-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-border);
+    border-radius: 7px;
+    cursor: pointer;
+    font-family: inherit;
+    text-align: left;
+    margin-bottom: 0.35rem;
+  }
+  .demo-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .dot-internal {
+    background: var(--color-admin);
+  }
+  .dot-client {
+    background: var(--color-customer);
+  }
+  .demo-email {
+    flex: 1;
+    font-size: 0.78rem;
+    color: var(--color-text);
+  }
+  .demo-role {
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+  }
+  .back-link {
+    margin-top: 1.25rem;
+    text-align: center;
+  }
+  .back-link a {
+    font-size: 0.8rem;
+    color: var(--color-text-muted);
+  }
+</style>

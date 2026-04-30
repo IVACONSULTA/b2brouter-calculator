@@ -1,0 +1,691 @@
+---
+import UserLayout from '../layouts/UserLayout.astro';
+import { getSession, isAdminRole } from '../lib/session';
+import {
+  canUsePlanAdvisorApi,
+  paFetchJson,
+} from '../lib/pa-api';
+import { DUMMY_ACTIVE_PROFILES, DUMMY_SCENARIOS } from '../lib/dummy-data';
+
+const session = getSession(Astro.cookies);
+if (!session) return Astro.redirect('/customer/login');
+if (isAdminRole(session.role)) return Astro.redirect('/admin/dashboard');
+
+const isInternal = session.role === 'internal';
+
+const apiReady = canUsePlanAdvisorApi(session);
+
+type PaViewer = { displayName: string; subtitle: string };
+
+type PaMe = {
+  full_name?: string | null;
+  email?: string;
+  company_name?: string | null;
+};
+type DashApi = {
+  active_profiles: Array<{
+    profile_id: string;
+    country_code?: string | null;
+    country_name?: string | null;
+    provider_name?: string | null;
+    provider_type?: string | null;
+    version?: string | null;
+    currency?: string | null;
+    active_from?: string | null;
+    rules_count?: number | null;
+    plans_count?: number | null;
+  }>;
+  recent_scenarios: Array<{
+    id: string;
+    client_name?: string | null;
+    created_at: string;
+    has_summary?: boolean;
+    recommended_plan?: string | null;
+    total_annual_cost?: number | string | null;
+    country_name?: string | null;
+    provider_name?: string | null;
+    created_by_email?: string | null;
+  }>;
+  ai_calls_this_month: number | null;
+  scenario_stats: { total: number; with_summary: number };
+};
+
+type ProfileTile = {
+  id: string;
+  country: { code: string; name: string };
+  provider: { name: string; type: string };
+  version: string;
+  currency: string;
+  active_from: string | null;
+  rules_count: number;
+  plans_count: number;
+};
+
+type ScenarioLite = {
+  id: string;
+  client_name: string;
+  country: string;
+  provider: string;
+  recommended_plan: string;
+  total_cost: number;
+  has_summary: boolean;
+  created_at: string;
+  created_by?: string;
+};
+
+function mapProfilesFromDummy(): ProfileTile[] {
+  return DUMMY_ACTIVE_PROFILES.map((p) => ({
+    id: p.id,
+    country: p.country,
+    provider: p.provider,
+    version: p.version,
+    currency: p.currency,
+    active_from: p.active_from ?? null,
+    rules_count: p.rules_count,
+    plans_count: p.plans_count,
+  }));
+}
+
+function mapScenariosFromDummy(): ScenarioLite[] {
+  const slice = isInternal
+    ? DUMMY_SCENARIOS.slice(0, 4)
+    : DUMMY_SCENARIOS.filter((_, i) => i % 2 === 0).slice(0, 3);
+  return slice.map((s) => ({
+    id: s.id,
+    client_name: s.client_name,
+    country: s.country,
+    provider: s.provider,
+    recommended_plan: s.recommended_plan,
+    total_cost: s.total_cost,
+    has_summary: s.has_summary,
+    created_at: s.created_at,
+    created_by: s.created_by,
+  }));
+}
+
+let paNotice: string | null = null;
+let paViewer: PaViewer | null = null;
+
+let activeProfiles: ProfileTile[] = mapProfilesFromDummy();
+let myScenarios: ScenarioLite[] = mapScenariosFromDummy();
+let scenarioStats = {
+  total: myScenarios.length,
+  with_summary: myScenarios.filter((x) => x.has_summary).length,
+};
+let aiCallsThisMonth: number | null = isInternal ? 12 : null;
+
+if (!session.supabaseAccessToken) {
+  paNotice =
+    'Demo session (no JWT). Configure Supabase sign-in + API_BASE_URL for live calculator data.';
+} else if (!(import.meta.env.API_BASE_URL ?? '').trim()) {
+  paNotice = 'Set API_BASE_URL to reach Plan Advisor from this app.';
+}
+
+if (
+  apiReady &&
+  session.supabaseAccessToken &&
+  (import.meta.env.API_BASE_URL ?? '').trim().length > 0
+) {
+  const tok = session.supabaseAccessToken;
+  const me = await paFetchJson<PaMe>('/me', tok);
+  if (me.ok) {
+    paViewer = {
+      displayName: (me.data.full_name?.trim() || me.data.email || session.name)?.trim() || session.name,
+      subtitle: [me.data.email, me.data.company_name].filter(Boolean).join(' · '),
+    };
+  }
+
+  const dash = await paFetchJson<DashApi>('/user/dashboard', tok);
+  if (dash.ok) {
+    activeProfiles = dash.data.active_profiles.map((p) => ({
+      id: p.profile_id,
+      country: {
+        code: p.country_code ?? '—',
+        name: p.country_name ?? '',
+      },
+      provider: {
+        name: p.provider_name ?? '',
+        type: p.provider_type ?? '',
+      },
+      version: String(p.version ?? ''),
+      currency: String(p.currency ?? ''),
+      active_from:
+        typeof p.active_from === 'string' && p.active_from.length ? p.active_from : null,
+      rules_count: Number(p.rules_count ?? 0),
+      plans_count: Number(p.plans_count ?? 0),
+    }));
+
+    myScenarios = dash.data.recent_scenarios.map((s) => ({
+      id: s.id,
+      client_name: s.client_name ?? '—',
+      country: s.country_name ?? '',
+      provider: s.provider_name ?? '',
+      recommended_plan:
+        typeof s.recommended_plan === 'string' && s.recommended_plan ? s.recommended_plan : '—',
+      total_cost:
+        typeof s.total_annual_cost === 'number'
+          ? s.total_annual_cost
+          : Number(s.total_annual_cost ?? 0),
+      has_summary: Boolean(s.has_summary),
+      created_at: typeof s.created_at === 'string' ? s.created_at : '',
+      created_by: s.created_by_email ?? undefined,
+    }));
+
+    scenarioStats = dash.data.scenario_stats;
+    aiCallsThisMonth =
+      dash.data.ai_calls_this_month !== null &&
+      dash.data.ai_calls_this_month !== undefined
+        ? Number(dash.data.ai_calls_this_month)
+        : null;
+  } else {
+    const suffix = ` Plan Advisor unreachable (HTTP ${dash.status}). Showing demo placeholders.`;
+    paNotice = (paNotice ? paNotice.trim() + suffix : suffix.trim());
+  }
+}
+
+const greetingDisplay = paViewer?.displayName ?? session.name;
+const greetingWord = greetingDisplay.split(/\s+/)[0];
+
+---
+
+<UserLayout title="Dashboard" paViewer={paViewer} paNotice={paNotice}>
+  <!-- Welcome banner -->
+  <div class="welcome-banner">
+    <div class="welcome-text">
+      <h2>Welcome back, {greetingWord} 👋</h2>
+      <p>
+        {isInternal
+          ? 'Run calculations for any active country/provider profile and generate AI-powered summaries for clients.'
+          : 'Calculate your recommended PA plan for any active country and provider below.'
+        }
+      </p>
+    </div>
+    <a href="/countries" class="banner-cta">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+      </svg>
+      Start New Calculation
+    </a>
+  </div>
+
+  <!-- KPIs -->
+  <div class="kpi-row">
+    <div class="kpi">
+      <div class="kpi-icon green">
+        <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/>
+          <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+        </svg>
+      </div>
+      <div>
+        <p class="kpi-value">{activeProfiles.length}</p>
+        <p class="kpi-label">Active Profiles</p>
+      </div>
+    </div>
+
+    <div class="kpi">
+      <div class="kpi-icon blue">
+        <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+        </svg>
+      </div>
+      <div>
+        <p class="kpi-value">{scenarioStats.total}</p>
+        <p class="kpi-label">{isInternal ? 'Total Scenarios' : 'My Scenarios'}</p>
+      </div>
+    </div>
+
+    <div class="kpi">
+      <div class="kpi-icon amber">
+        <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/>
+        </svg>
+      </div>
+      <div>
+        <p class="kpi-value">{scenarioStats.with_summary}</p>
+        <p class="kpi-label">With AI Summary</p>
+      </div>
+    </div>
+
+    {isInternal && (
+      <div class="kpi">
+        <div class="kpi-icon purple">
+          <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+          </svg>
+        </div>
+        <div>
+          <p class="kpi-value">{aiCallsThisMonth ?? '—'}</p>
+          <p class="kpi-label">AI Calls This Month</p>
+        </div>
+      </div>
+    )}
+  </div>
+
+  <!-- Two-column layout -->
+  <div class="two-col">
+    <!-- Active countries / profiles -->
+    <section class="panel">
+      <div class="panel-head">
+        <h2 class="panel-title">Available Profiles</h2>
+        <a href="/countries" class="link-more">View all →</a>
+      </div>
+      <div class="profile-grid">
+        {activeProfiles.map(p => (
+          <div class="profile-card">
+            <div class="profile-top">
+              <div class="profile-flag">
+                <span class="code">{p.country.code}</span>
+                <span class="cname">{p.country.name}</span>
+              </div>
+              <span class="status-pill">Active</span>
+            </div>
+            <div class="profile-mid">
+              <p class="provider">{p.provider.name}</p>
+              <p class="version">Version {p.version} · {p.currency}</p>
+            </div>
+            <div class="profile-meta">
+              <span class="meta-item">
+                <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                {p.rules_count} rules
+              </span>
+              <span class="meta-item">
+                <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12V22H4V12"/><path d="M22 7H2v5h20V7z"/><path d="M12 22V7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
+                {p.plans_count} plans
+              </span>
+              {p.active_from && (
+                <span class="meta-item">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                  Since {p.active_from}
+                </span>
+              )}
+            </div>
+            <!-- TODO: GET /calculator/profile/{p.id} via App 2 API → load dynamic inputs -->
+            <a href={`/calculator/${p.id}`} class="calc-btn">
+              Calculate →
+            </a>
+          </div>
+        ))}
+      </div>
+    </section>
+
+    <!-- Recent scenarios -->
+    <section class="panel">
+      <div class="panel-head">
+        <h2 class="panel-title">{isInternal ? 'Recent Scenarios' : 'My Recent Scenarios'}</h2>
+        <a href="/scenarios" class="link-more">View all →</a>
+      </div>
+
+      {myScenarios.length === 0
+        ? (
+          <div class="empty-state">
+            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+            </svg>
+            <p>No scenarios yet.</p>
+            <a href="/countries" class="empty-cta">Start your first calculation →</a>
+          </div>
+        )
+        : (
+          <ul class="scenario-list">
+            {myScenarios.map(s => (
+              <li class="scenario-item">
+                <div class="scenario-left">
+                  <p class="scenario-client">{s.client_name}</p>
+                  <p class="scenario-meta">{s.country} / {s.provider} · {
+                    typeof s.created_at === 'string' && s.created_at
+                      ? new Date(s.created_at).toLocaleString('en-GB', {
+                          day: '2-digit',
+                          month: 'short',
+                          year: 'numeric',
+                        })
+                      : '—'
+                  }</p>
+                </div>
+                <div class="scenario-right">
+                  <div>
+                    <p class="scenario-plan">{s.recommended_plan}</p>
+                    <p class="scenario-cost">€{s.total_cost.toLocaleString()}/yr</p>
+                  </div>
+                  {s.has_summary
+                    ? <span class="summary-dot summary-yes" title="AI summary available">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="12" r="10"/></svg>
+                      </span>
+                    : <span class="summary-dot summary-no" title="No AI summary yet">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="12" r="10"/></svg>
+                      </span>
+                  }
+                  <a href={`/scenarios/${s.id}`} class="scenario-link">View →</a>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )
+      }
+    </section>
+  </div>
+
+  <!-- Role capabilities reminder -->
+  <div class="capabilities-bar">
+    <span class="cap-label">Your permissions:</span>
+    <span class="cap-tag green">Run calculations</span>
+    {isInternal && <span class="cap-tag blue">Generate AI summaries</span>}
+    {!isInternal && <span class="cap-tag amber">AI summaries (if enabled)</span>}
+    <span class="cap-tag gray">View own scenarios</span>
+    {isInternal && <span class="cap-tag gray">View all internal scenarios</span>}
+  </div>
+</UserLayout>
+
+<style>
+  /* Welcome banner */
+  .welcome-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.25rem;
+    background: linear-gradient(135deg, rgba(29,111,92,.08) 0%, rgba(29,111,92,.02) 100%);
+    border: 1px solid rgba(29,111,92,.2);
+    border-radius: var(--radius);
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1.25rem;
+    flex-wrap: wrap;
+  }
+
+  .welcome-text h2 {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--color-text);
+    margin-bottom: 0.3rem;
+  }
+
+  .welcome-text p {
+    font-size: 0.82rem;
+    color: var(--color-text-muted);
+    line-height: 1.5;
+    max-width: 480px;
+  }
+
+  .banner-cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.6rem 1.2rem;
+    background: var(--color-customer);
+    color: #fff;
+    border-radius: 9px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    transition: all 0.13s;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .banner-cta:hover {
+    background: var(--color-customer-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(29,111,92,.3);
+  }
+
+  /* KPIs */
+  .kpi-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 0.85rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .kpi {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    padding: 1rem 1.1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+  }
+
+  .kpi-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .kpi-icon.green  { background: var(--color-success-soft); color: var(--color-success); }
+  .kpi-icon.blue   { background: rgba(88,119,152,.12); color: var(--color-admin); }
+  .kpi-icon.amber  { background: rgba(245,158,11,.12); color: #f59e0b; }
+  .kpi-icon.purple { background: rgba(168,85,247,.12); color: #a855f7; }
+
+  .kpi-value {
+    font-size: 1.5rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1;
+    color: var(--color-text);
+  }
+
+  .kpi-label {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    margin-top: 0.2rem;
+  }
+
+  /* Two column */
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.1rem;
+    margin-bottom: 1.1rem;
+    align-items: start;
+  }
+
+  @media (max-width: 1000px) { .two-col { grid-template-columns: 1fr; } }
+
+  .panel {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    padding: 1.1rem 1.25rem;
+  }
+
+  .panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+  }
+
+  .panel-title {
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: var(--color-text);
+  }
+
+  .link-more {
+    font-size: 0.78rem;
+    color: var(--color-customer);
+    font-weight: 500;
+  }
+
+  .link-more:hover { opacity: 0.75; }
+
+  /* Profile grid */
+  .profile-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 0.75rem;
+  }
+
+  .profile-card {
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+    transition: all 0.15s;
+  }
+
+  .profile-card:hover {
+    border-color: rgba(29,111,92,.3);
+    box-shadow: 0 4px 16px rgba(0,0,0,.2);
+    transform: translateY(-2px);
+  }
+
+  .profile-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  .profile-flag { display: flex; align-items: center; gap: 0.4rem; }
+
+  .code {
+    font-size: 0.65rem;
+    font-weight: 800;
+    color: var(--color-customer);
+    background: var(--color-customer-soft);
+    border-radius: 4px;
+    padding: 0.15rem 0.4rem;
+    letter-spacing: 0.03em;
+  }
+
+  .cname { font-size: 0.82rem; font-weight: 600; color: var(--color-text); }
+
+  .status-pill {
+    font-size: 0.62rem;
+    font-weight: 700;
+    background: var(--color-success-soft);
+    color: var(--color-success);
+    border-radius: 100px;
+    padding: 0.12rem 0.45rem;
+    white-space: nowrap;
+  }
+
+  .provider { font-size: 0.78rem; color: var(--color-text); font-weight: 500; }
+  .version  { font-size: 0.7rem;  color: var(--color-text-muted); margin-top: 0.15rem; }
+
+  .profile-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+
+  .meta-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.68rem;
+    color: var(--color-text-muted);
+    background: var(--color-surface);
+    border-radius: 4px;
+    padding: 0.15rem 0.4rem;
+  }
+
+  .calc-btn {
+    display: block;
+    text-align: center;
+    padding: 0.45rem;
+    background: var(--color-customer);
+    color: #fff;
+    border-radius: 7px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    transition: all 0.13s;
+    margin-top: auto;
+  }
+
+  .calc-btn:hover { background: var(--color-customer-hover); }
+
+  /* Scenarios list */
+  .scenario-list { list-style: none; }
+
+  .scenario-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.65rem 0;
+    border-bottom: 1px solid var(--color-border);
+    gap: 1rem;
+  }
+
+  .scenario-item:last-child { border-bottom: none; }
+
+  .scenario-client { font-size: 0.82rem; font-weight: 600; color: var(--color-text); }
+  .scenario-meta   { font-size: 0.72rem; color: var(--color-text-muted); margin-top: 0.15rem; }
+
+  .scenario-right {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-shrink: 0;
+  }
+
+  .scenario-plan { font-size: 0.78rem; font-weight: 600; color: var(--color-text); text-align: right; }
+  .scenario-cost { font-size: 0.7rem; color: var(--color-text-muted); text-align: right; }
+
+  .summary-dot { display: flex; }
+  .summary-yes { color: var(--color-success); }
+  .summary-no  { color: var(--color-surface-2); }
+
+  .scenario-link {
+    font-size: 0.75rem;
+    color: var(--color-customer);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  /* Empty state */
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    color: var(--color-text-muted);
+    text-align: center;
+    gap: 0.5rem;
+  }
+
+  .empty-state p { font-size: 0.82rem; }
+
+  .empty-cta {
+    font-size: 0.78rem;
+    color: var(--color-customer);
+    font-weight: 600;
+    margin-top: 0.25rem;
+  }
+
+  /* Capabilities bar */
+  .capabilities-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.65rem 1rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    flex-wrap: wrap;
+  }
+
+  .cap-label { font-size: 0.72rem; color: var(--color-text-muted); font-weight: 600; margin-right: 0.25rem; }
+
+  .cap-tag {
+    font-size: 0.68rem;
+    font-weight: 600;
+    padding: 0.18rem 0.55rem;
+    border-radius: 100px;
+  }
+
+  .cap-tag.green  { background: var(--color-success-soft); color: var(--color-success); }
+  .cap-tag.blue   { background: rgba(88,119,152,.1); color: var(--color-admin); }
+  .cap-tag.amber  { background: rgba(245,158,11,.1); color: #f59e0b; }
+  .cap-tag.gray   { background: var(--color-surface-2); color: var(--color-text-muted); }
+</style>

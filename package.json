@@ -1,0 +1,33 @@
+{
+  "name": "b2brouter-calculator",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "astro dev",
+    "seed:users": "node --env-file=.env scripts/seed-local-users.mjs",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/IVACONSULTA/b2brouter-calculator.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/IVACONSULTA/b2brouter-calculator/issues"
+  },
+  "homepage": "https://github.com/IVACONSULTA/b2brouter-calculator#readme",
+  "dependencies": {
+    "@astrojs/netlify": "^7.0.8",
+    "@astrojs/node": "^10.0.6",
+    "@supabase/supabase-js": "^2.104.1",
+    "@tailwindcss/vite": "^4.2.4",
+    "astro": "^6.1.9",
+    "tailwindcss": "^4.2.4"
+  }
+}
