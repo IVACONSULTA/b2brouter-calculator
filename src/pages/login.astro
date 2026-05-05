@@ -18,7 +18,10 @@ if (session) {
 }
 
 const errorMessages: Record<string, string> = {
-  invalid_credentials: 'Incorrect email or password. Please try again.',
+  invalid_credentials:
+    'Incorrect email or password, or no user in this Supabase project. Use Dashboard → Authentication to add or reset the user; locally run npm run seed:users if needed.',
+  email_not_confirmed:
+    'Confirm your email (check inbox), or change email confirmation under Supabase Auth settings.',
   missing_fields: 'Please enter your email and password.',
   session_expired: 'Your session has expired. Please sign in again.',
   unauthorized: 'You do not have access to that page.',

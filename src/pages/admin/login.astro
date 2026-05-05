@@ -9,7 +9,10 @@ if (session) {
 }
 
 const errorMessages: Record<string, string> = {
-  invalid_credentials: 'Incorrect email or password. Please try again.',
+  invalid_credentials:
+    'Incorrect email or password, or no user in this Supabase project. Reset the password under Supabase Dashboard → Authentication.',
+  email_not_confirmed:
+    'Confirm your email first, or adjust Supabase Auth email confirmation settings.',
   missing_fields: 'Please enter your email and password.',
   wrong_portal:
     'This portal is for administrator accounts only. Use the Customer Portal with your internal or client account.',

@@ -102,6 +102,29 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error || !data.session || !data.user) {
+      const errCode =
+        error && typeof error === 'object' && 'code' in error
+          ? String((error as { code?: string }).code ?? '')
+          : '';
+      const errMsg = (error && typeof error === 'object' && 'message' in error
+        ? String((error as { message?: string }).message ?? '')
+        : ''
+      ).toLowerCase();
+
+      console.error('[api/auth/login] signInWithPassword failed', {
+        email,
+        code: errCode || undefined,
+        message: error?.message,
+        status: (error as { status?: number })?.status,
+      });
+
+      if (
+        errCode === 'email_not_confirmed' ||
+        errMsg.includes('email not confirmed')
+      ) {
+        return redirect(loginErrorUrl(from, 'email_not_confirmed'));
+      }
+
       return redirect(loginErrorUrl(from, 'invalid_credentials'));
     }
 
