@@ -116,6 +116,12 @@ const date = new Date(scenario.created_at).toLocaleDateString('en-GB', {
 const canGenerateSummary = isInternal;
 const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clientSummaryAllowed);
 
+/** Same-origin absolute URL for browser `fetch` ([Astro data fetching](https://docs.astro.build/en/guides/data-fetching/) — `new URL(..., Astro.url)`). */
+const summaryPostUrl = summaryProxyPath
+  ? new URL(summaryProxyPath, Astro.url).href
+  : '';
+
+console.log(summaryPostUrl);
 ---
 
 <UserLayout
@@ -166,7 +172,11 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
     </a>
 
     {showSummaryBtn && !scenario.has_summary && summaryProxyPath && (
-      <button type="button" class="btn-gen-summary js-scenario-summary">
+      <button
+        type="button"
+        class="btn-gen-summary"
+         data-summary-url={summaryPostUrl}
+      >
         <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
         </svg>
@@ -177,7 +187,7 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
       <button
         type="button"
         class="btn-gen-summary"
-        onclick="alert('Configure Supabase + API_BASE_URL to generate summaries.')"
+        data-summary-url={summaryPostUrl}
       >
         <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
@@ -314,7 +324,11 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
               Copy Summary
             </button>
             {showSummaryBtn && summaryProxyPath && (
-              <button type="button" class="btn-regen js-scenario-summary">
+              <button
+                type="button"
+                class="btn-regen"
+                data-summary-url={summaryPostUrl}
+              >
                 Regenerate
               </button>
             )}
@@ -322,7 +336,7 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
               <button
                 type="button"
                 class="btn-regen"
-                onclick="alert('Configure Supabase + API_BASE_URL to regenerate summaries.')"
+                data-summary-url={summaryPostUrl}
               >
                 Regenerate
               </button>
@@ -333,7 +347,11 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
         <div class="summary-empty">
           <p class="summary-empty-text">No AI summary has been generated yet for this scenario.</p>
           {summaryProxyPath ? (
-            <button type="button" class="btn-gen-lg js-scenario-summary">
+            <button
+              type="button"
+              class="btn-gen-lg"
+              data-summary-url={summaryPostUrl}
+              >
               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
               </svg>
@@ -343,7 +361,7 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
             <button
               type="button"
               class="btn-gen-lg"
-              onclick="alert('Configure Supabase + API_BASE_URL to generate summaries.')"
+              data-summary-url={summaryPostUrl}
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
@@ -508,172 +526,25 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
   <ScenarioDeleteModal />
 </UserLayout>
 
-<script define:vars={{ summaryProxyPath }}>
-  function copySummary() {
-    const text = document.getElementById('summary-text')?.innerText;
-    if (!text) return;
-    navigator.clipboard.writeText(text).then(() => {
-      const btn = document.getElementById('btn-copy');
-      if (btn) {
-        btn.textContent = '✓ Copied!';
-        setTimeout(() => {
-          btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy Summary`;
-        }, 2000);
+<script>
+  import '../../scripts/scenario-detail-page';
+
+  const summaryButtons = document.querySelectorAll("button.btn-gen-summary, button.btn-regen, btn-gen-lg");
+
+  summaryButtons.forEach(button => {
+    button.addEventListener('click', async () => {
+      console.log("Hi, I'm here");
+      const response = await fetch(button.dataset.summaryPostUrl!, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to generate summary: ${response.statusText}`);
       }
+      const data = await response.json();
+      console.log(data);
     });
-  }
-
-  async function downloadScenarioJsonDetail(id: string) {
-    const res = await fetch(
-      `/api/pa/scenarios/${encodeURIComponent(id)}/export?format=json`,
-      { credentials: 'same-origin' },
-    );
-    if (!res.ok) {
-      const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-      const msg =
-        typeof data.message === 'string'
-          ? data.message
-          : typeof data.error === 'string'
-            ? data.error
-            : `HTTP ${res.status}`;
-      alert(`Download failed: ${msg}`);
-      return;
-    }
-    const blob = await res.blob();
-    const cd = res.headers.get('Content-Disposition');
-    let safeName = `scenario-${id.slice(0, 8)}.json`;
-    const quoted = cd && /filename="([^"]+)"/.exec(cd);
-    if (quoted) safeName = quoted[1] ?? safeName;
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = safeName;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  }
-
-  function attachScenarioExportDelete() {
-    document.querySelectorAll<HTMLButtonElement>('.js-scenario-export').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const sid = btn.getAttribute('data-scenario-id');
-        if (!sid) return;
-        void downloadScenarioJsonDetail(sid);
-      });
-    });
-    document.querySelectorAll<HTMLButtonElement>('.js-scenario-delete').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        const sid = btn.getAttribute('data-scenario-id');
-        if (!sid) return;
-        const clientName = btn.getAttribute('data-client-name') ?? undefined;
-        const w = window as Window & {
-          paScenarioDeleteConfirm?: (opts?: { clientName?: string }) => Promise<boolean>;
-          paScenarioDialogAlert?: (message: string) => Promise<void>;
-        };
-        const ok =
-          typeof w.paScenarioDeleteConfirm === 'function'
-            ? await w.paScenarioDeleteConfirm({ clientName })
-            : window.confirm('Delete this scenario permanently? This cannot be undone.');
-        if (!ok) return;
-        btn.disabled = true;
-        try {
-          const res = await fetch(`/api/pa/scenarios/${encodeURIComponent(sid)}`, {
-            method: 'DELETE',
-            credentials: 'same-origin',
-          });
-          if (res.status === 204) {
-            window.location.href = '/scenarios';
-            return;
-          }
-          const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-          const msg =
-            typeof data.message === 'string'
-              ? data.message
-              : typeof data.error === 'string'
-                ? data.error
-                : JSON.stringify(data);
-          const detail = `Delete failed (${res.status}): ${msg}`;
-          if (typeof w.paScenarioDialogAlert === 'function') await w.paScenarioDialogAlert(detail);
-          else alert(detail);
-          btn.disabled = false;
-        } catch {
-          if (typeof w.paScenarioDialogAlert === 'function') {
-            await w.paScenarioDialogAlert(
-              'Delete request failed. Check your connection and try again.',
-            );
-          } else {
-            alert('Delete request failed. Check your connection and try again.');
-          }
-          btn.disabled = false;
-        }
-      });
-    });
-  }
-
-  function resolveSummaryPostPath(): string | null {
-    return typeof summaryProxyPath === 'string' && summaryProxyPath.length > 0
-      ? summaryProxyPath
-      : null;
-  }
-
-  /** Same-origin POST to Astro BFF; handler uses `paFetchJson` with the same path as dashboard. */
-  function attachSummaryGenerators() {
-    const path = resolveSummaryPostPath();
-    if (!path) return;
-
-    document.querySelectorAll<HTMLButtonElement>('.js-scenario-summary').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        btn.disabled = true;
-        const prev = btn.textContent;
-        btn.textContent = '…';
-        try {
-          const response = await fetch(path, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: '{}',
-            credentials: 'same-origin',
-          });
-
-          const data = (await response.json().catch(() => ({}))) as Record<string, unknown>;
-
-          if (!response.ok) {
-            const msg =
-              typeof data.message === 'string'
-                ? data.message
-                : typeof data.error === 'string'
-                  ? data.error
-                  : JSON.stringify(data);
-            alert(`Summary failed (${response.status}): ${msg}`);
-            btn.disabled = false;
-            btn.textContent = prev ?? 'Generate';
-            return;
-          }
-
-          window.location.reload();
-        } catch (err) {
-          console.error(err);
-          alert(
-            'Summary request failed. Check your connection and Plan Advisor SUMMARY_AGENT_URL configuration.',
-          );
-          btn.disabled = false;
-          btn.textContent = prev ?? 'Generate';
-        }
-      });
-    });
-  }
-
-  function initScenarioDetailClient() {
-    attachSummaryGenerators();
-    attachScenarioExportDelete();
-  }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initScenarioDetailClient);
-  } else {
-    initScenarioDetailClient();
-  }
+  });
 </script>
-
