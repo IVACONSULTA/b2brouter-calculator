@@ -2,7 +2,12 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 function readCredentials(): { url: string; anonKey: string } {
   const url = (import.meta.env.SUPABASE_URL ?? '').trim();
-  const anonKey = (import.meta.env.SUPABASE_ANON_KEY ?? '').trim();
+  // Local dev: many Supabase snippets use SUPABASE_KEY for the anon JWT; production uses SUPABASE_ANON_KEY.
+  const anonKey = (
+    import.meta.env.SUPABASE_ANON_KEY ??
+    (import.meta.env.DEV ? import.meta.env.SUPABASE_KEY : '') ??
+    ''
+  ).trim();
   return { url, anonKey };
 }
 

@@ -5,7 +5,8 @@
  *   supabase db reset
  *   npm run seed:users
  *
- * Requires SUPABASE_SERVICE_ROLE_KEY in `.env` (from `supabase status` — never commit it).
+ * Requires SUPABASE_SERVICE_ROLE_KEY in `.env` (from `supabase status -o env` → SERVICE_ROLE_KEY=eyJ...
+ * — the JWT, not sb_publishable_; sb_secret_ may not work for admin API on some CLI versions).
  * `public.profiles` rows follow from auth user_metadata via DB triggers.
  */
 

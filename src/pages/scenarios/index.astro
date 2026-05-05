@@ -1,12 +1,19 @@
 ---
 import UserLayout from '../../layouts/UserLayout.astro';
 import { getSession, isAdminRole } from '../../lib/session';
-import { canUsePlanAdvisorApi, paFetchJson } from '../../lib/pa-api';
+import { paFetchJson } from '../../lib/pa-api';
+import { getFreshSupabaseAccessToken } from '../../lib/supabase-session';
 import { DUMMY_SCENARIOS } from '../../lib/dummy-data';
 
 const session = getSession(Astro.cookies);
 if (!session) return Astro.redirect('/customer/login');
 if (isAdminRole(session.role)) return Astro.redirect('/admin/dashboard');
+
+let paToken: string | null = null;
+if (session.supabaseAccessToken?.trim()) {
+  const fresh = await getFreshSupabaseAccessToken(Astro.cookies);
+  if (fresh.ok) paToken = fresh.accessToken;
+}
 
 const isInternal = session.role === 'internal';
 
@@ -69,12 +76,13 @@ if (!session.supabaseAccessToken) {
     'Demo session (no JWT). Sign in with Supabase + set API_BASE_URL for live scenarios.';
 } else if (!(import.meta.env.API_BASE_URL ?? '').trim()) {
   paNotice = 'Set API_BASE_URL to load scenarios from Plan Advisor.';
-} else if (canUsePlanAdvisorApi(session) && session.supabaseAccessToken) {
-  const tok = session.supabaseAccessToken;
-
+} else if (!paToken) {
+  paNotice =
+    'Session expired. Please sign out and sign in again so a fresh Supabase token is stored.';
+} else {
   const me = await paFetchJson<{ full_name?: string | null; email?: string; company_name?: string | null }>(
     '/me',
-    tok,
+    paToken,
   );
   if (me.ok) {
     paViewer = {
@@ -84,7 +92,7 @@ if (!session.supabaseAccessToken) {
     };
   }
 
-  const list = await paFetchJson<ApiScenarioListItem[]>('/scenarios', tok);
+  const list = await paFetchJson<ApiScenarioListItem[]>('/scenarios', paToken);
   if (list.ok) {
     scenarios = list.data.map((r) => ({
       id: r.id,

@@ -1,7 +1,8 @@
 ---
 import UserLayout from '../../layouts/UserLayout.astro';
 import { getSession, isAdminRole } from '../../lib/session';
-import { canUsePlanAdvisorApi, paFetchJson } from '../../lib/pa-api';
+import { paFetchJson } from '../../lib/pa-api';
+import { getFreshSupabaseAccessToken } from '../../lib/supabase-session';
 import {
   DUMMY_PROFILES,
   DUMMY_ACTIVE_RULES,
@@ -11,6 +12,12 @@ import {
 const session = getSession(Astro.cookies);
 if (!session) return Astro.redirect('/customer/login');
 if (isAdminRole(session.role)) return Astro.redirect('/admin/dashboard');
+
+let paToken: string | null = null;
+if (session.supabaseAccessToken?.trim()) {
+  const fresh = await getFreshSupabaseAccessToken(Astro.cookies);
+  if (fresh.ok) paToken = fresh.accessToken;
+}
 
 const { profile_id } = Astro.params;
 
@@ -35,7 +42,9 @@ type ApiProfile = {
   }>;
 };
 
-const liveApi = canUsePlanAdvisorApi(session) && !!session.supabaseAccessToken;
+const liveApi =
+  !!paToken &&
+  (import.meta.env.API_BASE_URL ?? '').trim().length > 0;
 
 let profile:
   | {
@@ -63,15 +72,13 @@ let useProxyCalculate = false;
 /** Client-visible AI summary toggle from Plan Advisor `/api/me` (ignored for internal users). */
 let clientSummaryFromApi = true;
 
-if (liveApi && session.supabaseAccessToken && profile_id) {
-  const tok = session.supabaseAccessToken;
-
+if (liveApi && paToken && profile_id) {
   const me = await paFetchJson<{
     full_name?: string | null;
     email?: string;
     company_name?: string | null;
     client_summary_enabled?: boolean;
-  }>('/me', tok);
+  }>('/me', paToken);
   if (me.ok) {
     paViewer = {
       displayName:
@@ -83,7 +90,7 @@ if (liveApi && session.supabaseAccessToken && profile_id) {
     }
   }
 
-  const loaded = await paFetchJson<ApiProfile>(`/calculator/profile/${profile_id}`, tok);
+  const loaded = await paFetchJson<ApiProfile>(`/calculator/profile/${profile_id}`, paToken);
   if (loaded.ok && loaded.data) {
     useProxyCalculate = true;
     showDummyResults = false;

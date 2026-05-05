@@ -136,6 +136,7 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
         email: data.user.email ?? email,
         name,
         supabaseAccessToken: data.session.access_token,
+        supabaseRefreshToken: data.session.refresh_token,
         loggedInAt: new Date().toISOString(),
       }),
       {

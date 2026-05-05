@@ -4,8 +4,10 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "astro dev",
+    "dev": "cross-env NETLIFY_DEV=1 astro dev",
     "seed:users": "node --env-file=.env scripts/seed-local-users.mjs",
+    "sync:auth:prod-to-local": "node --env-file=.env scripts/sync-prod-auth-to-local.mjs",
+    "auth:set-local-passwords": "node --env-file=.env scripts/set-local-user-passwords.mjs",
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro"
@@ -29,5 +31,8 @@
     "@tailwindcss/vite": "^4.2.4",
     "astro": "^6.1.9",
     "tailwindcss": "^4.2.4"
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3"
   }
 }

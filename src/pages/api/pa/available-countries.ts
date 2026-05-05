@@ -4,8 +4,8 @@ import { getFreshSupabaseAccessToken } from '../../../lib/supabase-session';
 
 export const prerender = false;
 
-/** Same-origin proxy: reads httpOnly session and calls Plan Advisor `POST /api/calculator/calculate`. */
-export const POST: APIRoute = async ({ request, cookies }) => {
+/** Same-origin proxy: uses httpOnly session JWT → Plan Advisor `GET /api/calculator/available-countries`. */
+export const GET: APIRoute = async ({ cookies }) => {
   const fresh = await getFreshSupabaseAccessToken(cookies);
   if (!fresh.ok) {
     const msg =
@@ -18,21 +18,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     });
   }
 
-  let body: Record<string, unknown>;
-  try {
-    body = await request.json();
-  } catch {
-    return new Response(JSON.stringify({ error: 'Invalid JSON body.' }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  }
-
-  const result = await paFetchJson<Record<string, unknown>>('/calculator/calculate', fresh.accessToken, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
+  const result = await paFetchJson<unknown[]>('/calculator/available-countries', fresh.accessToken);
 
   if (!result.ok) {
     return new Response(JSON.stringify(result.error), {

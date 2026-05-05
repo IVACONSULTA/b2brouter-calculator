@@ -15,6 +15,9 @@ supabase/functions/.env
 # Astro build output
 dist
 
+# Astro file-based sessions (local dev when NETLIFY_DEV=1)
+.astro/session
+
 # Editor / OS
 .DS_Store
 *.pem

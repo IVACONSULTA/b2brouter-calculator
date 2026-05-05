@@ -5,11 +5,18 @@ import {
   canUsePlanAdvisorApi,
   paFetchJson,
 } from '../lib/pa-api';
+import { getFreshSupabaseAccessToken } from '../lib/supabase-session';
 import { DUMMY_ACTIVE_PROFILES, DUMMY_SCENARIOS } from '../lib/dummy-data';
 
 const session = getSession(Astro.cookies);
 if (!session) return Astro.redirect('/customer/login');
 if (isAdminRole(session.role)) return Astro.redirect('/admin/dashboard');
+
+let paToken: string | null = null;
+if (session.supabaseAccessToken?.trim()) {
+  const fresh = await getFreshSupabaseAccessToken(Astro.cookies);
+  if (fresh.ok) paToken = fresh.accessToken;
+}
 
 const isInternal = session.role === 'internal';
 
@@ -119,15 +126,17 @@ if (!session.supabaseAccessToken) {
     'Demo session (no JWT). Configure Supabase sign-in + API_BASE_URL for live calculator data.';
 } else if (!(import.meta.env.API_BASE_URL ?? '').trim()) {
   paNotice = 'Set API_BASE_URL to reach Plan Advisor from this app.';
+} else if (!paToken) {
+  paNotice =
+    'Session expired. Please sign out and sign in again so a fresh Supabase token is stored.';
 }
 
 if (
   apiReady &&
-  session.supabaseAccessToken &&
+  paToken &&
   (import.meta.env.API_BASE_URL ?? '').trim().length > 0
 ) {
-  const tok = session.supabaseAccessToken;
-  const me = await paFetchJson<PaMe>('/me', tok);
+  const me = await paFetchJson<PaMe>('/me', paToken);
   if (me.ok) {
     paViewer = {
       displayName: (me.data.full_name?.trim() || me.data.email || session.name)?.trim() || session.name,
@@ -135,7 +144,7 @@ if (
     };
   }
 
-  const dash = await paFetchJson<DashApi>('/user/dashboard', tok);
+  const dash = await paFetchJson<DashApi>('/user/dashboard', paToken);
   if (dash.ok) {
     activeProfiles = dash.data.active_profiles.map((p) => ({
       id: p.profile_id,
