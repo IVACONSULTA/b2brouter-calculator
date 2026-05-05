@@ -1,0 +1,177 @@
+/* page-customer-login — scoped shell for one route */
+.page-customer-login {
+  .login-page {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      background: radial-gradient(ellipse at 70% 20%, var(--color-customer-soft) 0%, transparent 55%);
+    }
+    .login-card {
+      width: 100%;
+      max-width: 440px;
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-radius: var(--radius);
+      padding: 2.25rem 2.5rem;
+    }
+    .login-header {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .icon.customer {
+      width: 52px;
+      height: 52px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--color-customer-soft);
+      color: var(--color-customer);
+      flex-shrink: 0;
+    }
+    .login-header h1 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--color-text);
+      margin-bottom: 0.2rem;
+    }
+    .login-header p {
+      font-size: 0.78rem;
+      color: var(--color-text-muted);
+      line-height: 1.4;
+    }
+    .login-header code { font-size: 0.7em; }
+    .divider {
+      height: 1px;
+      background: var(--color-border);
+      margin-bottom: 1.25rem;
+    }
+    .demo-banner,
+    .error-banner {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.6rem;
+      border-radius: 8px;
+      padding: 0.7rem 0.9rem;
+      margin-bottom: 1.1rem;
+      font-size: 0.8rem;
+      line-height: 1.5;
+    }
+    .demo-banner {
+      background: rgba(245, 158, 11, 0.07);
+      border: 1px solid rgba(245, 158, 11, 0.2);
+      color: #fbbf24;
+    }
+    .error-banner {
+      background: rgba(239, 68, 68, 0.07);
+      border: 1px solid rgba(239, 68, 68, 0.2);
+      color: #f87171;
+    }
+    .login-form {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    .field label {
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--color-text-muted);
+    }
+    .field input {
+      padding: 0.65rem 0.9rem;
+      background: var(--color-surface-2);
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      color: var(--color-text);
+      font-size: 0.88rem;
+      font-family: inherit;
+      outline: none;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .field input:focus {
+      border-color: var(--color-customer);
+      box-shadow: 0 0 0 2px rgba(51, 70, 90, 0.18);
+    }
+    .btn-submit {
+      padding: 0.8rem 1.5rem;
+      background: var(--color-customer);
+      color: #fff;
+      border: none;
+      border-radius: 9px;
+      font-size: 0.92rem;
+      font-weight: 700;
+      cursor: pointer;
+      margin-top: 0.25rem;
+    }
+    .btn-submit:hover:not(:disabled) {
+      background: var(--color-customer-hover);
+    }
+    .btn-submit:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .demo-accounts {
+      margin-top: 1.25rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--color-border);
+    }
+    .demo-accounts-title {
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-text-muted);
+      margin-bottom: 0.65rem;
+    }
+    .demo-btn {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      width: 100%;
+      padding: 0.5rem 0.75rem;
+      background: var(--color-surface-2);
+      border: 1px solid var(--color-border);
+      border-radius: 7px;
+      cursor: pointer;
+      font-family: inherit;
+      text-align: left;
+      margin-bottom: 0.35rem;
+    }
+    .demo-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .dot-internal {
+      background: var(--color-admin);
+    }
+    .dot-client {
+      background: var(--color-customer);
+    }
+    .demo-email {
+      flex: 1;
+      font-size: 0.78rem;
+      color: var(--color-text);
+    }
+    .demo-role {
+      font-size: 0.65rem;
+      font-weight: 700;
+      color: var(--color-text-muted);
+      text-transform: uppercase;
+    }
+    .back-link {
+      margin-top: 1.25rem;
+      text-align: center;
+    }
+    .back-link a {
+      font-size: 0.8rem;
+      color: var(--color-text-muted);
+    }
+}

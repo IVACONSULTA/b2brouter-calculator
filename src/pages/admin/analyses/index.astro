@@ -2,6 +2,7 @@
 import AdminLayout from '../../../layouts/AdminLayout.astro';
 import { getSession, isAdminRole } from '../../../lib/session';
 import { DUMMY_ANALYSES } from '../../../lib/dummy-data';
+import '../../../styles/pages/admin-analyses-index.css';
 
 const session = getSession(Astro.cookies);
 if (!session) return Astro.redirect('/admin/login');
@@ -12,7 +13,7 @@ if (!isAdminRole(session.role)) return Astro.redirect('/dashboard');
   title="AI Analyses"
   breadcrumbs={[{ label: 'Admin' }, { label: 'AI Analyses' }]}
 >
-  <div class="panel">
+  <div class="page-admin-analyses-index panel">
     <table class="table">
       <thead>
         <tr>
@@ -56,67 +57,3 @@ if (!isAdminRole(session.role)) return Astro.redirect('/dashboard');
   </div>
 </AdminLayout>
 
-<style>
-  .panel {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius);
-    overflow: hidden;
-  }
-
-  .table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.83rem;
-  }
-
-  .table th {
-    text-align: left;
-    padding: 0.65rem 1rem;
-    font-size: 0.7rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--color-text-muted);
-    background: var(--color-surface-2);
-    border-bottom: 1px solid var(--color-border);
-  }
-
-  .table td {
-    padding: 0.75rem 1rem;
-    color: var(--color-text);
-    border-bottom: 1px solid var(--color-border);
-    vertical-align: middle;
-  }
-
-  .table tbody tr:last-child td { border-bottom: none; }
-  .table tbody tr:hover { background: rgba(255,255,255,.02); }
-
-  .bold  { font-weight: 600; }
-  .muted { color: var(--color-text-muted); }
-  .green { color: var(--color-success); font-weight: 600; }
-
-  .badge {
-    display: inline-block;
-    padding: 0.2rem 0.55rem;
-    border-radius: 100px;
-    font-size: 0.7rem;
-    font-weight: 700;
-    white-space: nowrap;
-  }
-
-  .badge-green { background: var(--color-success-soft); color: var(--color-success); }
-  .badge-amber { background: rgba(245,158,11,.12);  color: #f59e0b; }
-
-  .btn-action {
-    font-size: 0.78rem;
-    font-weight: 600;
-    color: var(--color-admin);
-    padding: 0.25rem 0.6rem;
-    border-radius: 5px;
-    border: 1px solid rgba(88,119,152,.3);
-    transition: all 0.13s;
-  }
-
-  .btn-action:hover { background: var(--color-admin-soft); }
-</style>

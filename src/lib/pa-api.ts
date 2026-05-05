@@ -61,6 +61,11 @@ export function paApiAbsoluteUrl(apiPath: string): string | null {
   return `${base}/api${suffix}`;
 }
 
+/** POST target for AI summary — same rules as `paApiAbsoluteUrl`. */
+export function paScenarioGenerateSummaryUrl(scenarioId: string): string | null {
+  return paApiAbsoluteUrl(`/scenarios/${encodeURIComponent(scenarioId)}/generate-summary`);
+}
+
 export type PaOk<T> =
   | { ok: true; status: number; data: T }
   | { ok: false; status: number; error: unknown };
