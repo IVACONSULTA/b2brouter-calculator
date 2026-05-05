@@ -80,17 +80,6 @@ function isActive(href: string, exact = false) {
           </a>
         </nav>
 
-        <!-- Quick calc CTA -->
-        <div class="calc-cta">
-          <p class="cta-label">Start a new calculation</p>
-          <a href="/countries" class="cta-btn">
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
-            New Calculation
-          </a>
-        </div>
-
       </div>
 
       <div class="sidebar-bottom">
@@ -281,41 +270,6 @@ function isActive(href: string, exact = false) {
     background: var(--color-admin-soft);
     color: var(--color-admin);
   }
-
-  /* CTA block */
-  .calc-cta {
-    border: 1px dashed var(--color-border);
-    border-radius: 9px;
-    padding: 0.85rem;
-    margin-top: 0.5rem;
-    text-align: center;
-  }
-
-  .cta-label {
-    font-size: 0.73rem;
-    color: var(--color-text-muted);
-    margin-bottom: 0.6rem;
-  }
-
-  .cta-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.45rem 0.9rem;
-    background: var(--color-customer);
-    color: #fff;
-    border-radius: 7px;
-    font-size: 0.78rem;
-    font-weight: 600;
-    transition: all 0.13s;
-  }
-
-  .cta-btn:hover { background: var(--color-customer-hover); }
-
-  [data-role="internal"] .cta-btn { background: var(--color-admin); }
-  [data-role="internal"] .cta-btn:hover { background: var(--color-admin-hover); }
-  [data-role="admin"] .cta-btn { background: var(--color-admin); }
-  [data-role="admin"] .cta-btn:hover { background: var(--color-admin-hover); }
 
   /* ── Sidebar bottom ── */
   .sidebar-bottom {

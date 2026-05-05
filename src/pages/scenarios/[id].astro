@@ -8,6 +8,7 @@ import {
   DUMMY_SCENARIO_RESULT,
   DUMMY_SCENARIO_RESULT_2,
 } from '../../lib/dummy-data';
+import ScenarioDeleteModal from '../../components/ScenarioDeleteModal.astro';
 
 const session = getSession(Astro.cookies);
 if (!session) return Astro.redirect('/customer/login');
@@ -42,6 +43,9 @@ let scenarioView: ScenarioView =
 
 let summaryProxyPath: string | null = null;
 
+/** Loaded from GET /scenarios/:id (not demo fallback). */
+let scenarioFromApi = false;
+
 let clientSummaryAllowed = true;
 
 if (
@@ -73,6 +77,7 @@ if (
   if (row.ok && row.data) {
     scenarioView = normalizeScenarioDetail(row.data);
     summaryProxyPath = `/api/pa/scenarios/${encodeURIComponent(id)}/generate-summary`;
+    scenarioFromApi = true;
   } else if (row.status === 403 || row.status === 404) {
     return Astro.redirect('/scenarios');
   }
@@ -169,28 +174,45 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
       </button>
     )}
 
-    <!-- TODO: GET /scenarios/{id}/export?format=pdf -->
-    <button
-      class="btn-export"
-      onclick={`alert('TODO: GET /scenarios/${scenario.id}/export?format=pdf\\nDownloads a formatted PDF of this scenario')`}
-    >
-      <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-        <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-      </svg>
-      Export PDF
-    </button>
+    {scenarioFromApi && (
+      <button type="button" class="btn-export js-scenario-export" data-scenario-id={scenario.id}>
+        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        Download JSON
+      </button>
+    )}
 
-    {isInternal && (
-      <!-- TODO: DELETE /scenarios/{id} -->
+    {!scenarioFromApi && (
       <button
-        class="btn-delete"
-        onclick={`if(confirm('Delete this scenario?')) alert('TODO: DELETE /scenarios/${scenario.id}')`}
+        type="button"
+        class="btn-export"
+        disabled
+        title="Available when this scenario is loaded from Plan Advisor"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        Download JSON
+      </button>
+    )}
+
+    {scenarioFromApi && (
+      <button
+        type="button"
+        class="btn-delete js-scenario-delete"
+        data-scenario-id={scenario.id}
+        data-client-name={scenario.client_name}
       >
         <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="3 6 5 6 21 6"/>
           <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-          <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+          <path d="M10 11v6"/><path d="M14 11v6"/>
+          <path d="M9 6V4h6v2"/>
         </svg>
         Delete
       </button>
@@ -205,12 +227,27 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
       <section class="detail-block">
         <h3 class="block-heading">Input Summary</h3>
         <div class="inputs-grid">
-          {Object.entries(scenario.inputs).map(([key, val]) => (
-            <div class="input-chip">
-              <p class="input-key">{key.replace(/_/g, ' ')}</p>
-              <p class="input-val">{val.toLocaleString()}</p>
-            </div>
-          ))}
+          {scenario.calculator_form?.groups?.length ? (
+            scenario.calculator_form.groups.map((g) => {
+              const v =
+                g.input_keys.length > 0
+                  ? (scenario.inputs[g.input_keys[0]!] ?? 0)
+                  : 0;
+              return (
+                <div class="input-chip">
+                  <p class="input-key">{g.display_label}</p>
+                  <p class="input-val">{v.toLocaleString()}</p>
+                </div>
+              );
+            })
+          ) : (
+            Object.entries(scenario.inputs).map(([key, val]) => (
+              <div class="input-chip">
+                <p class="input-key">{key.replace(/_/g, ' ')}</p>
+                <p class="input-val">{val.toLocaleString()}</p>
+              </div>
+            ))
+          )}
         </div>
       </section>
 
@@ -232,7 +269,14 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
             <tbody>
               {scenario.transaction_breakdown.map(row => (
                 <tr>
-                  <td class="row-label">{row.label}</td>
+                  <td class="row-label">
+                    <div class="type-cell">
+                      <span class="type-main">{row.label}</span>
+                      {row.detail_label && (
+                        <span class="type-detail">{row.detail_label}</span>
+                      )}
+                    </div>
+                  </td>
                   <td>
                     <span class={`dir-tag ${row.direction === 'Issued' ? 'dir-issued' : 'dir-received'}`}>{row.direction}</span>
                   </td>
@@ -450,6 +494,8 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
       </div>
     </div>
   </div>
+
+  <ScenarioDeleteModal />
 </UserLayout>
 
 <script define:vars={{ scenarioIdForSummary: scenario.id }}>
@@ -464,6 +510,94 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
           btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy Summary`;
         }, 2000);
       }
+    });
+  }
+
+  async function downloadScenarioJsonDetail(id: string) {
+    const res = await fetch(
+      `/api/pa/scenarios/${encodeURIComponent(id)}/export?format=json`,
+      { credentials: 'same-origin' },
+    );
+    if (!res.ok) {
+      const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      const msg =
+        typeof data.message === 'string'
+          ? data.message
+          : typeof data.error === 'string'
+            ? data.error
+            : `HTTP ${res.status}`;
+      alert(`Download failed: ${msg}`);
+      return;
+    }
+    const blob = await res.blob();
+    const cd = res.headers.get('Content-Disposition');
+    let safeName = `scenario-${id.slice(0, 8)}.json`;
+    const quoted = cd && /filename="([^"]+)"/.exec(cd);
+    if (quoted) safeName = quoted[1] ?? safeName;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = safeName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function attachScenarioExportDelete() {
+    document.querySelectorAll<HTMLButtonElement>('.js-scenario-export').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const sid = btn.getAttribute('data-scenario-id');
+        if (!sid) return;
+        void downloadScenarioJsonDetail(sid);
+      });
+    });
+    document.querySelectorAll<HTMLButtonElement>('.js-scenario-delete').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const sid = btn.getAttribute('data-scenario-id');
+        if (!sid) return;
+        const clientName = btn.getAttribute('data-client-name') ?? undefined;
+        const w = window as Window & {
+          paScenarioDeleteConfirm?: (opts?: { clientName?: string }) => Promise<boolean>;
+          paScenarioDialogAlert?: (message: string) => Promise<void>;
+        };
+        const ok =
+          typeof w.paScenarioDeleteConfirm === 'function'
+            ? await w.paScenarioDeleteConfirm({ clientName })
+            : window.confirm('Delete this scenario permanently? This cannot be undone.');
+        if (!ok) return;
+        btn.disabled = true;
+        try {
+          const res = await fetch(`/api/pa/scenarios/${encodeURIComponent(sid)}`, {
+            method: 'DELETE',
+            credentials: 'same-origin',
+          });
+          if (res.status === 204) {
+            window.location.href = '/scenarios';
+            return;
+          }
+          const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+          const msg =
+            typeof data.message === 'string'
+              ? data.message
+              : typeof data.error === 'string'
+                ? data.error
+                : JSON.stringify(data);
+          const detail = `Delete failed (${res.status}): ${msg}`;
+          if (typeof w.paScenarioDialogAlert === 'function') await w.paScenarioDialogAlert(detail);
+          else alert(detail);
+          btn.disabled = false;
+        } catch {
+          if (typeof w.paScenarioDialogAlert === 'function') {
+            await w.paScenarioDialogAlert(
+              'Delete request failed. Check your connection and try again.',
+            );
+          } else {
+            alert('Delete request failed. Check your connection and try again.');
+          }
+          btn.disabled = false;
+        }
+      });
     });
   }
 
@@ -506,7 +640,10 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
     });
   }
 
-  document.addEventListener('DOMContentLoaded', attachSummaryGenerators);
+  document.addEventListener('DOMContentLoaded', () => {
+    attachSummaryGenerators();
+    attachScenarioExportDelete();
+  });
 </script>
 
 <style>
@@ -644,6 +781,10 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
   }
 
   .btn-export:hover { background: var(--color-surface-2); color: var(--color-text); }
+  .btn-export:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
 
   .btn-delete {
     display: inline-flex;
@@ -747,6 +888,24 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
   .dtable tbody tr:hover { background: rgba(255,255,255,.015); }
 
   .row-label { font-weight: 500; font-size: 0.82rem; }
+
+  .type-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  .type-main {
+    font-weight: 600;
+    color: var(--color-text);
+  }
+
+  .type-detail {
+    font-size: 0.72rem;
+    font-weight: 400;
+    color: var(--color-text-muted);
+    line-height: 1.35;
+  }
 
   .dir-tag {
     font-size: 0.62rem;

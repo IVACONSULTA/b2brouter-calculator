@@ -1,3 +1,5 @@
+import { buildRuleDisplayGroups, type CalcRuleRow } from './calculator-rule-groups';
+
 // ─── Calculation Profiles (Country + Provider combos) ────────────────────────
 
 export const DUMMY_PROFILES = [
@@ -10,7 +12,7 @@ export const DUMMY_PROFILES = [
     status: 'active' as const,
     active_from: '2025-01-01',
     created_at: '2024-11-15',
-    rules_count: 6,
+    rules_count: 5,
     plans_count: 3,
     analysis_id: 'analysis-fr-001',
   },
@@ -49,7 +51,7 @@ export const DUMMY_PROFILES = [
     status: 'active' as const,
     active_from: '2025-07-01',
     created_at: '2024-08-20',
-    rules_count: 8,
+    rules_count: 4,
     plans_count: 4,
     analysis_id: 'analysis-de-002',
   },
@@ -476,23 +478,39 @@ export const DUMMY_ACTIVE_PROFILES = DUMMY_PROFILES.filter(p => p.status === 'ac
 
 export const DUMMY_ACTIVE_RULES: Record<string, {
   id: string; input_key: string; label: string;
-  direction: string; obligation: string; pa_transactions_per_item: number;
-  placeholder: number;
+  direction: string; obligation: string; operation_group: string;
+  pa_transactions_per_item: number; placeholder: number;
 }[]> = {
   'profile-fr-b2b-1': [
-    { id: 'rule-002', input_key: 'issued_einvoicing',    label: 'Issued e-invoicing invoices/year',        direction: 'Issued',   obligation: 'E-invoicing',         pa_transactions_per_item: 1.5, placeholder: 5000 },
-    { id: 'rule-003', input_key: 'received_einvoicing',  label: 'Received e-invoicing invoices/year',      direction: 'Received', obligation: 'E-invoicing',         pa_transactions_per_item: 1.0, placeholder: 2000 },
-    { id: 'rule-004', input_key: 'issued_ereporting',    label: 'Issued e-reporting transactions/year',    direction: 'Issued',   obligation: 'E-reporting',         pa_transactions_per_item: 0.5, placeholder: 3000 },
-    { id: 'rule-005', input_key: 'received_ereporting',  label: 'Received e-reporting transactions/year',  direction: 'Received', obligation: 'E-reporting',         pa_transactions_per_item: 0.3, placeholder: 1000 },
-    { id: 'rule-006', input_key: 'payment_ereporting',   label: 'Payment e-reporting transactions/year',   direction: 'Issued',   obligation: 'Payment e-reporting', pa_transactions_per_item: 0.2, placeholder: 2000 },
+    { id: 'rule-002', input_key: 'issued_einvoicing',    label: 'Issued e-invoicing invoices/year',        direction: 'Issued',   obligation: 'E-invoicing',         operation_group: 'Domestic B2B invoices', pa_transactions_per_item: 1.5, placeholder: 5000 },
+    { id: 'rule-003', input_key: 'received_einvoicing',  label: 'Received e-invoicing invoices/year',      direction: 'Received', obligation: 'E-invoicing',         operation_group: 'Domestic B2B invoices', pa_transactions_per_item: 1.0, placeholder: 5000 },
+    { id: 'rule-004', input_key: 'issued_ereporting',    label: 'Issued e-reporting transactions/year',    direction: 'Issued',   obligation: 'E-reporting',         operation_group: 'E-reporting flows', pa_transactions_per_item: 0.5, placeholder: 3000 },
+    { id: 'rule-005', input_key: 'received_ereporting',  label: 'Received e-reporting transactions/year',  direction: 'Received', obligation: 'E-reporting',         operation_group: 'E-reporting flows', pa_transactions_per_item: 0.3, placeholder: 3000 },
+    { id: 'rule-006', input_key: 'payment_ereporting',   label: 'Payment e-reporting transactions/year',   direction: 'Issued',   obligation: 'Payment e-reporting', operation_group: 'Payment e-reporting', pa_transactions_per_item: 0.2, placeholder: 2000 },
   ],
   'profile-de-sap-1': [
-    { id: 'rule-de-01', input_key: 'issued_einvoicing',     label: 'Issued e-invoices/year (B2B domestic)',    direction: 'Issued',   obligation: 'E-invoicing', pa_transactions_per_item: 1.0, placeholder: 10000 },
-    { id: 'rule-de-02', input_key: 'received_einvoicing',   label: 'Received e-invoices/year (B2B domestic)',  direction: 'Received', obligation: 'E-invoicing', pa_transactions_per_item: 0.8, placeholder: 5000 },
-    { id: 'rule-de-03', input_key: 'crossborder_issued',    label: 'Cross-border issued invoices/year',        direction: 'Issued',   obligation: 'E-reporting', pa_transactions_per_item: 0.5, placeholder: 2000 },
-    { id: 'rule-de-04', input_key: 'crossborder_received',  label: 'Cross-border received invoices/year',      direction: 'Received', obligation: 'E-reporting', pa_transactions_per_item: 0.4, placeholder: 1500 },
+    { id: 'rule-de-01', input_key: 'issued_einvoicing',     label: 'Issued e-invoices/year (B2B domestic)',    direction: 'Issued',   obligation: 'E-invoicing', operation_group: 'B2B domestic', pa_transactions_per_item: 1.0, placeholder: 10000 },
+    { id: 'rule-de-02', input_key: 'received_einvoicing',   label: 'Received e-invoices/year (B2B domestic)',  direction: 'Received', obligation: 'E-invoicing', operation_group: 'B2B domestic', pa_transactions_per_item: 0.8, placeholder: 10000 },
+    { id: 'rule-de-03', input_key: 'crossborder_issued',    label: 'Cross-border issued invoices/year',        direction: 'Issued',   obligation: 'E-reporting', operation_group: 'Cross-border', pa_transactions_per_item: 0.5, placeholder: 2000 },
+    { id: 'rule-de-04', input_key: 'crossborder_received',  label: 'Cross-border received invoices/year',      direction: 'Received', obligation: 'E-reporting', operation_group: 'Cross-border', pa_transactions_per_item: 0.4, placeholder: 2000 },
   ],
 };
+
+/** Calculator rows per profile — same merge grouping as `/calculator` (for demo counts). */
+export function dummyCalculatorInputGroupsCount(profileId: string): number {
+  const raw = DUMMY_ACTIVE_RULES[profileId];
+  if (!raw?.length) return 0;
+  const rows: CalcRuleRow[] = raw.map((r) => ({
+    input_key: r.input_key,
+    label: r.label,
+    direction: r.direction,
+    obligation: r.obligation,
+    operation_group: r.operation_group ?? '',
+    pa_transactions_per_item: r.pa_transactions_per_item,
+    placeholder: 0,
+  }));
+  return buildRuleDisplayGroups(rows).length;
+}
 
 export const DUMMY_ACTIVE_PLANS: Record<string, {
   id: string; plan_name: string; annual_fee: number;

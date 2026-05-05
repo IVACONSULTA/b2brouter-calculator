@@ -33,7 +33,7 @@ function headersInitToRecord(init?: HeadersInit): Record<string, string> {
   return { ...init };
 }
 
-function paAuthHeaders(token: string, extra?: HeadersInit): Record<string, string> {
+export function paAuthHeaders(token: string, extra?: HeadersInit): Record<string, string> {
   const key = planAdvisorApiKey();
   return {
     ...headersInitToRecord(extra),

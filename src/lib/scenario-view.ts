@@ -1,7 +1,19 @@
 /** View model for `/scenarios/[id].astro`, derived from backend `GET /api/scenarios/:id`. */
 
+export interface CalculatorFormGroup {
+  display_label: string;
+  input_keys: string[];
+}
+
+/** Mirrors the calculator’s grouped fields; stored in `input_json.calculator_form`. */
+export interface CalculatorForm {
+  groups: CalculatorFormGroup[];
+}
+
 export interface ScenarioBreakdownRow {
   label: string;
+  /** Granular rule label when it differs from the grouped Type label. */
+  detail_label?: string;
   direction: string;
   obligation: string;
   volume: number;
@@ -31,6 +43,8 @@ export interface ScenarioView {
   created_at: string;
   created_by?: string;
   inputs: Record<string, number>;
+  /** Present when the scenario was saved from the grouped calculator UI. */
+  calculator_form: CalculatorForm | null;
   transaction_breakdown: ScenarioBreakdownRow[];
   total_pa_transactions: number;
   plan_comparison: ScenarioPlanComparisonRow[];
@@ -62,6 +76,51 @@ function num(v: unknown, fallback = 0): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
+function parseScenarioInputJson(inputJson: Record<string, unknown>): {
+  inputs: Record<string, number>;
+  calculator_form: CalculatorForm | null;
+} {
+  if (!inputJson || typeof inputJson !== 'object') {
+    return { inputs: {}, calculator_form: null };
+  }
+
+  const maybeInputs = inputJson.inputs;
+  if (maybeInputs && typeof maybeInputs === 'object' && !Array.isArray(maybeInputs)) {
+    const inputs: Record<string, number> = {};
+    for (const [k, v] of Object.entries(maybeInputs as Record<string, unknown>)) {
+      inputs[k] = num(v);
+    }
+
+    let calculator_form: CalculatorForm | null = null;
+    const cfRaw = inputJson.calculator_form;
+    if (cfRaw && typeof cfRaw === 'object' && cfRaw !== null && 'groups' in cfRaw) {
+      const rawGroups = (cfRaw as { groups?: unknown }).groups;
+      if (Array.isArray(rawGroups)) {
+        const groups: CalculatorFormGroup[] = [];
+        for (const g of rawGroups) {
+          if (!g || typeof g !== 'object') continue;
+          const go = g as Record<string, unknown>;
+          const display_label = String(go.display_label ?? '').trim();
+          const input_keys = Array.isArray(go.input_keys)
+            ? go.input_keys.map((k) => String(k).trim()).filter(Boolean)
+            : [];
+          if (!display_label || !input_keys.length) continue;
+          groups.push({ display_label, input_keys });
+        }
+        if (groups.length) calculator_form = { groups };
+      }
+    }
+    return { inputs, calculator_form };
+  }
+
+  const inputs: Record<string, number> = {};
+  for (const [k, v] of Object.entries(inputJson)) {
+    if (k === 'calculator_form' || k === 'inputs') continue;
+    inputs[k] = num(v);
+  }
+  return { inputs, calculator_form: null };
+}
+
 export function normalizeScenarioDetail(raw: Record<string, unknown>): ScenarioView {
   const profileId =
     typeof raw.profile_id === 'string' ? raw.profile_id : String(raw.profile_id ?? '');
@@ -90,8 +149,12 @@ export function normalizeScenarioDetail(raw: Record<string, unknown>): ScenarioV
           row.pa_transactions_per_item ?? row.multiplier,
           (row.multiplier as number | undefined) ?? 1,
         );
+        const detailRaw = row.detail_label;
+        const detail_label =
+          typeof detailRaw === 'string' && detailRaw.trim() ? String(detailRaw).trim() : undefined;
         return {
           label: String(row.label ?? ''),
+          ...(detail_label ? { detail_label } : {}),
           direction: String(row.direction ?? ''),
           obligation: String(row.obligation ?? ''),
           volume: num(row.volume),
@@ -135,10 +198,7 @@ export function normalizeScenarioDetail(raw: Record<string, unknown>): ScenarioV
     extra_transactions: num(rp.excess_pa_transactions ?? rp.extra_transactions),
   };
 
-  const inputs: Record<string, number> = {};
-  for (const [k, v] of Object.entries(inputJson as Record<string, unknown>)) {
-    inputs[k] = num(v);
-  }
+  const { inputs, calculator_form } = parseScenarioInputJson(inputJson as Record<string, unknown>);
 
   const aiSummary = typeof raw.ai_summary === 'string' ? raw.ai_summary : null;
 
@@ -162,6 +222,7 @@ export function normalizeScenarioDetail(raw: Record<string, unknown>): ScenarioV
     created_by:
       typeof raw.created_by_email === 'string' ? raw.created_by_email : undefined,
     inputs,
+    calculator_form,
     transaction_breakdown: breakdown,
     total_pa_transactions: num(result.total_pa_transactions),
     plan_comparison: comparison,
@@ -187,6 +248,7 @@ export function scenarioFromLegacyDummy(d: {
   inputs: Record<string, number>;
   transaction_breakdown: Array<{
     label: string;
+    detail_label?: string;
     direction: string;
     obligation: string;
     volume: number;
@@ -227,8 +289,10 @@ export function scenarioFromLegacyDummy(d: {
     created_at: d.created_at,
     created_by: d.created_by,
     inputs: { ...d.inputs },
+    calculator_form: null,
     transaction_breakdown: d.transaction_breakdown.map((row) => ({
       label: row.label,
+      ...(row.detail_label ? { detail_label: row.detail_label } : {}),
       direction: row.direction,
       obligation: row.obligation,
       volume: row.volume,

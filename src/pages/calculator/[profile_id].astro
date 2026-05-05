@@ -8,6 +8,10 @@ import {
   DUMMY_ACTIVE_RULES,
   DUMMY_SCENARIO_RESULT,
 } from '../../lib/dummy-data';
+import {
+  buildRuleDisplayGroups,
+  type CalcRuleRow,
+} from '../../lib/calculator-rule-groups';
 
 const session = getSession(Astro.cookies);
 if (!session) return Astro.redirect('/customer/login');
@@ -57,20 +61,16 @@ let profile:
   | undefined;
 
 let calculationBasis = 'PA transactions';
-let rules: Array<{
-  input_key: string;
-  label: string;
-  direction: string;
-  obligation: string;
-  pa_transactions_per_item: number;
-  placeholder: number;
-}> = [];
+let rules: CalcRuleRow[] = [];
 
 let dummyResult = DUMMY_SCENARIO_RESULT;
 let showDummyResults = true;
 let useProxyCalculate = false;
 /** Client-visible AI summary toggle from Plan Advisor `/api/me` (ignored for internal users). */
 let clientSummaryFromApi = true;
+
+/** Client name default: companies.name via `/me` when API is available. */
+let defaultClientName = 'Acme Corp';
 
 if (liveApi && paToken && profile_id) {
   const me = await paFetchJson<{
@@ -79,13 +79,24 @@ if (liveApi && paToken && profile_id) {
     company_name?: string | null;
     client_summary_enabled?: boolean;
   }>('/me', paToken);
-  if (me.ok) {
+  if (me.ok && me.data) {
+    const md = me.data;
+    const fromCompany = md.company_name?.trim();
+    const fromPerson = md.full_name?.trim();
+    const fromEmail = (md.email?.split('@')[0] ?? '').trim();
+    if (fromCompany) {
+      defaultClientName = fromCompany;
+    } else if (fromPerson || fromEmail) {
+      defaultClientName = (fromPerson || fromEmail)!;
+    } else if (session.name?.trim()) {
+      defaultClientName = session.name.trim();
+    }
     paViewer = {
       displayName:
-        (me.data.full_name?.trim() || me.data.email || session.name)?.trim() || session.name,
-      subtitle: [me.data.email, me.data.company_name].filter(Boolean).join(' · '),
+        (md.full_name?.trim() || md.email || session.name)?.trim() || session.name,
+      subtitle: [md.email, md.company_name].filter(Boolean).join(' · '),
     };
-    if (me.data.client_summary_enabled === false) {
+    if (md.client_summary_enabled === false) {
       clientSummaryFromApi = false;
     }
   }
@@ -114,6 +125,7 @@ if (liveApi && paToken && profile_id) {
       label: inp.label,
       direction: inp.direction ?? '—',
       obligation: inp.obligation ?? '—',
+      operation_group: String(inp.operation_group ?? '').trim(),
       pa_transactions_per_item: Number(inp.pa_transactions_per_item ?? 0),
       placeholder: 0,
     }));
@@ -140,6 +152,7 @@ if (!profile) {
       label: r.label,
       direction: r.direction,
       obligation: r.obligation,
+      operation_group: r.operation_group ?? '',
       pa_transactions_per_item: r.pa_transactions_per_item,
       placeholder: Number(
         (dummyResult.inputs as Record<string, number>)[r.input_key] ?? r.placeholder ?? 0,
@@ -151,6 +164,8 @@ if (!profile) {
 if (!profile) {
   return Astro.redirect('/countries');
 }
+
+const displayGroups = buildRuleDisplayGroups(rules);
 
 const canGenerateSummary = session.role === 'internal';
 const showSummaryBtn =
@@ -199,44 +214,56 @@ const showSummaryBtn =
             name="client_name"
             class="field-input"
             placeholder="e.g. Acme Corp"
-            value="Acme Corp"
+            value={defaultClientName}
             required
           />
-          <p class="field-hint">Used to identify this scenario in your history.</p>
+          <p class="field-hint">
+            Pre-filled from your company when available (Plan Advisor profile). You can edit before saving.
+          </p>
         </div>
 
         <div class="rules-section">
           <h3 class="rules-heading">Transaction inputs</h3>
           <div class="rules-grid">
-            {rules.map((rule) => (
-              <div class="rule-input-card" data-key={rule.input_key}>
-                <div class="rule-card-top">
-                  <div class="rule-badges">
-                    <span class={`dir-badge ${rule.direction === 'Issued' ? 'dir-issued' : 'dir-received'}`}>
-                      {rule.direction}
-                    </span>
-                    <span class="obl-badge">{rule.obligation}</span>
+            {displayGroups.map((g, idx) => {
+              const lead = g.rules[0];
+              return (
+                <div
+                  class="rule-input-card"
+                  data-group-keys={g.input_keys.join(',')}
+                  data-display-label={g.displayLabel}
+                >
+                  <div class="rule-card-top">
+                    <div class="rule-badges">
+                      <span class={`dir-badge ${lead.direction === 'Issued' ? 'dir-issued' : 'dir-received'}`}>
+                        {lead.direction}
+                      </span>
+                      <span class="obl-badge">{lead.obligation}</span>
+                    </div>
+                    <span class="mult-hint">{g.multiplierHint}</span>
                   </div>
-                  <span class="mult-hint">×{rule.pa_transactions_per_item} PA</span>
+                  <label class="field-label" for={`input-group-${idx}`}>
+                    {g.displayLabel}
+                  </label>
+                  {g.rules.length > 1 &&
+                    new Set(g.rules.map((r) => r.label)).size > 1 && (
+                    <p class="group-rule-labels">{g.rules.map((r) => r.label).join(' · ')}</p>
+                  )}
+                  <div class="number-wrap">
+                    <input
+                      type="number"
+                      id={`input-group-${idx}`}
+                      class="field-input number-input group-volume-input"
+                      min="0"
+                      step="1"
+                      placeholder="0"
+                      value={g.placeholder}
+                    />
+                    <span class="unit-label">/ year</span>
+                  </div>
                 </div>
-                <label class="field-label" for={`input-${rule.input_key}`}>
-                  {rule.label}
-                </label>
-                <div class="number-wrap">
-                  <input
-                    type="number"
-                    id={`input-${rule.input_key}`}
-                    name={rule.input_key}
-                    class="field-input number-input"
-                    min="0"
-                    step="100"
-                    placeholder="0"
-                    value={rule.placeholder}
-                  />
-                  <span class="unit-label">/ year</span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
@@ -383,10 +410,26 @@ const showSummaryBtn =
       const fd = new FormData(form);
       const client_name = String(fd.get('client_name') ?? '').trim();
       const inputs: Record<string, number> = {};
-      for (const [k, v] of fd.entries()) {
-        if (k === 'client_name') continue;
-        inputs[k] = Number(v) || 0;
-      }
+      const calculator_form: {
+        groups: Array<{ display_label: string; input_keys: string[] }>;
+      } = { groups: [] };
+
+      form.querySelectorAll<HTMLElement>('[data-group-keys]').forEach((card) => {
+        const raw = card.getAttribute('data-group-keys') ?? '';
+        const keys = raw
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean);
+        const volEl = card.querySelector<HTMLInputElement>('.group-volume-input');
+        const vol = volEl ? Number(volEl.value) || 0 : 0;
+        const display_label = String(card.getAttribute('data-display-label') ?? '').trim();
+        if (display_label && keys.length) {
+          calculator_form.groups.push({ display_label, input_keys: keys });
+        }
+        for (const k of keys) {
+          inputs[k] = vol;
+        }
+      });
 
       const btn = document.getElementById('btn-calc') as HTMLButtonElement | null;
       if (btn) {
@@ -399,7 +442,12 @@ const showSummaryBtn =
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'same-origin',
-          body: JSON.stringify({ profile_id: profileId, client_name, inputs }),
+          body: JSON.stringify({
+            profile_id: profileId,
+            client_name,
+            inputs,
+            calculator_form,
+          }),
         });
         const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
         if (!res.ok) {
@@ -569,6 +617,13 @@ const showSummaryBtn =
   }
 
   .rules-section { margin-bottom: 1.25rem; }
+
+  .group-rule-labels {
+    font-size: 0.7rem;
+    color: var(--color-text-muted);
+    line-height: 1.4;
+    margin: -0.15rem 0 0.45rem;
+  }
 
   .rules-heading {
     font-size: 0.78rem;

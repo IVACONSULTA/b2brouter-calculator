@@ -4,6 +4,7 @@ import { getSession, isAdminRole } from '../../lib/session';
 import { paFetchJson } from '../../lib/pa-api';
 import { getFreshSupabaseAccessToken } from '../../lib/supabase-session';
 import { DUMMY_SCENARIOS } from '../../lib/dummy-data';
+import ScenarioDeleteModal from '../../components/ScenarioDeleteModal.astro';
 
 const session = getSession(Astro.cookies);
 if (!session) return Astro.redirect('/customer/login');
@@ -65,11 +66,30 @@ function mapDummy(rows: typeof DUMMY_SCENARIOS): ScenarioRow[] {
   }));
 }
 
+/** e.g. 05 May 2026, 14:30:45 (24h, en-GB) */
+function formatScenarioTableDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  const datePart = d.toLocaleDateString('en-GB', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+  });
+  const timePart = d.toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+  return `${datePart}, ${timePart}`;
+}
+
 const dummySubset = isInternal
   ? DUMMY_SCENARIOS
   : DUMMY_SCENARIOS.filter((_, i) => i % 2 === 0);
 
 let scenarios: ScenarioRow[] = mapDummy(dummySubset);
+let scenariosLive = false;
 
 if (!session.supabaseAccessToken) {
   paNotice =
@@ -94,6 +114,7 @@ if (!session.supabaseAccessToken) {
 
   const list = await paFetchJson<ApiScenarioListItem[]>('/scenarios', paToken);
   if (list.ok) {
+    scenariosLive = true;
     scenarios = list.data.map((r) => ({
       id: r.id,
       client_name: r.client_name ?? '—',
@@ -201,7 +222,7 @@ for (const s of scenarios) {
       <a href="/countries" class="empty-cta">Start your first calculation →</a>
     </div>
   ) : (
-    <div class="table-wrap">
+    <div class="table-wrap" id="scenarios-table-wrap" data-scenarios-live={scenariosLive ? '1' : '0'}>
       <table class="table" id="scenarios-table">
         <thead>
           <tr>
@@ -256,7 +277,7 @@ for (const s of scenarios) {
                   : <span class="summary-badge no">Pending</span>
                 }
               </td>
-              <td class="muted">{new Date(s.created_at).toLocaleDateString('en-GB', { day:'2-digit', month:'short', year:'numeric' })}</td>
+              <td class="muted date-cell">{formatScenarioTableDate(s.created_at)}</td>
               <td>
                 <div class="action-row">
                   <a href={`/scenarios/${s.id}`} class="btn-view">View</a>
@@ -265,33 +286,53 @@ for (const s of scenarios) {
                       AI Summary
                     </button>
                   )}
-                  <!-- TODO: GET /scenarios/{id}/export?format=pdf -->
-                  <button
-                    class="btn-icon"
-                    title="Export PDF"
-                    data-id={s.id}
-                    onclick={`alert('TODO: GET /scenarios/${s.id}/export?format=pdf')`}
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                      <polyline points="7 10 12 15 17 10"/>
-                      <line x1="12" y1="15" x2="12" y2="3"/>
-                    </svg>
-                  </button>
-                  <!-- TODO: DELETE /scenarios/{id} -->
-                  <button
-                    class="btn-icon btn-danger"
-                    title="Delete scenario"
-                    data-id={s.id}
-                    onclick={`alert('TODO: DELETE /scenarios/${s.id}\\nDeletes this scenario permanently')`}
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <polyline points="3 6 5 6 21 6"/>
-                      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-                      <path d="M10 11v6"/><path d="M14 11v6"/>
-                      <path d="M9 6V4h6v2"/>
-                    </svg>
-                  </button>
+                  {scenariosLive ? (
+                    <button
+                      type="button"
+                      class="btn-icon js-export-scenario"
+                      title="Download scenario (JSON)"
+                      data-scenario-id={s.id}
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="7 10 12 15 17 10"/>
+                        <line x1="12" y1="15" x2="12" y2="3"/>
+                      </svg>
+                    </button>
+                  ) : (
+                    <button type="button" class="btn-icon" disabled title="Available when signed in to Plan Advisor">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="7 10 12 15 17 10"/>
+                        <line x1="12" y1="15" x2="12" y2="3"/>
+                      </svg>
+                    </button>
+                  )}
+                  {scenariosLive ? (
+                    <button
+                      type="button"
+                      class="btn-icon btn-danger js-delete-scenario"
+                      title="Delete scenario"
+                      data-scenario-id={s.id}
+                      data-client-name={s.client_name}
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="3 6 5 6 21 6"/>
+                        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                        <path d="M10 11v6"/><path d="M14 11v6"/>
+                        <path d="M9 6V4h6v2"/>
+                      </svg>
+                    </button>
+                  ) : (
+                    <button type="button" class="btn-icon btn-danger" disabled title="Available when signed in to Plan Advisor">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="3 6 5 6 21 6"/>
+                        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                        <path d="M10 11v6"/><path d="M14 11v6"/>
+                        <path d="M9 6V4h6v2"/>
+                      </svg>
+                    </button>
+                  )}
                 </div>
               </td>
             </tr>
@@ -309,6 +350,8 @@ for (const s of scenarios) {
     <!-- TODO: POST /scenarios/bulk-export -->
     <button class="bulk-btn" onclick="alert('TODO: POST /scenarios/bulk-export?format=pdf')">Export Selected</button>
   </div>
+
+  <ScenarioDeleteModal />
 </UserLayout>
 
 <script>
@@ -379,6 +422,93 @@ for (const s of scenarios) {
         );
         btn.disabled = false;
         btn.textContent = prev ?? 'AI Summary';
+      }
+    });
+  });
+
+  async function downloadScenarioJson(id: string) {
+    const res = await fetch(
+      `/api/pa/scenarios/${encodeURIComponent(id)}/export?format=json`,
+      { credentials: 'same-origin' },
+    );
+    if (!res.ok) {
+      const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      const msg =
+        typeof data.message === 'string'
+          ? data.message
+          : typeof data.error === 'string'
+            ? data.error
+            : `HTTP ${res.status}`;
+      alert(`Download failed: ${msg}`);
+      return;
+    }
+    const blob = await res.blob();
+    const cd = res.headers.get('Content-Disposition');
+    let safeName = `scenario-${id.slice(0, 8)}.json`;
+    const quoted = cd && /filename="([^"]+)"/.exec(cd);
+    if (quoted) safeName = quoted[1] ?? safeName;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = safeName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  document.querySelectorAll<HTMLButtonElement>('.js-export-scenario').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.getAttribute('data-scenario-id');
+      if (!id) return;
+      void downloadScenarioJson(id);
+    });
+  });
+
+  document.querySelectorAll<HTMLButtonElement>('.js-delete-scenario').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const id = btn.getAttribute('data-scenario-id');
+      if (!id) return;
+      const clientName = btn.getAttribute('data-client-name') ?? undefined;
+      const w = window as Window & {
+        paScenarioDeleteConfirm?: (opts?: { clientName?: string }) => Promise<boolean>;
+        paScenarioDialogAlert?: (message: string) => Promise<void>;
+      };
+      const ok =
+        typeof w.paScenarioDeleteConfirm === 'function'
+          ? await w.paScenarioDeleteConfirm({ clientName })
+          : window.confirm('Delete this scenario permanently? This cannot be undone.');
+      if (!ok) return;
+      btn.disabled = true;
+      try {
+        const res = await fetch(`/api/pa/scenarios/${encodeURIComponent(id)}`, {
+          method: 'DELETE',
+          credentials: 'same-origin',
+        });
+        if (res.status === 204) {
+          window.location.reload();
+          return;
+        }
+        const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+        const msg =
+          typeof data.message === 'string'
+            ? data.message
+            : typeof data.error === 'string'
+              ? data.error
+              : JSON.stringify(data);
+        const detail = `Delete failed (${res.status}): ${msg}`;
+        if (typeof w.paScenarioDialogAlert === 'function') await w.paScenarioDialogAlert(detail);
+        else alert(detail);
+        btn.disabled = false;
+      } catch {
+        if (typeof w.paScenarioDialogAlert === 'function') {
+          await w.paScenarioDialogAlert(
+            'Delete request failed. Check your connection and try again.',
+          );
+        } else {
+          alert('Delete request failed. Check your connection and try again.');
+        }
+        btn.disabled = false;
       }
     });
   });
@@ -568,6 +698,10 @@ for (const s of scenarios) {
   }
 
   .table td.num { text-align: right; }
+  .table td.date-cell {
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
   .table tbody tr:last-child td { border-bottom: none; }
   .table tbody tr:hover { background: rgba(255,255,255,.018); }
 
@@ -671,6 +805,10 @@ for (const s of scenarios) {
   }
 
   .btn-icon:hover { background: var(--color-surface-2); color: var(--color-text); }
+  .btn-icon:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
   .btn-icon.btn-danger:hover { background: rgba(239,68,68,.08); color: #ef4444; border-color: rgba(239,68,68,.3); }
 
   /* Empty state */
