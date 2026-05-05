@@ -1,7 +1,11 @@
 ---
 import UserLayout from '../../layouts/UserLayout.astro';
 import { getSession, isAdminRole } from '../../lib/session';
-import { paFetchJson, paScenarioGenerateSummaryUrl } from '../../lib/pa-api';
+import {
+  canUsePlanAdvisorApi,
+  paFetchJson,
+  paScenarioGenerateSummaryProxyPath,
+} from '../../lib/pa-api';
 import { getFreshSupabaseAccessToken } from '../../lib/supabase-session';
 import { normalizeScenarioDetail, scenarioFromLegacyDummy, type ScenarioView } from '../../lib/scenario-view';
 import {
@@ -42,18 +46,27 @@ let scenarioView: ScenarioView =
     return scenarioFromLegacyDummy(DUMMY_SCENARIO_RESULT);
   })();
 
-let summaryGenerateConfig: {
-  url: string;
-  bearer: string;
-  apiKey: string;
-} | null = null;
+let summaryProxyPath: string | null = null;
 
 /** Loaded from GET /scenarios/:id (not demo fallback). */
 let scenarioFromApi = false;
 
 let clientSummaryAllowed = true;
 
+const apiReady = canUsePlanAdvisorApi(session);
+
+if (!session.supabaseAccessToken) {
+  paNotice =
+    'Demo session (no JWT). Configure Supabase sign-in + API_BASE_URL for live calculator data.';
+} else if (!(import.meta.env.API_BASE_URL ?? '').trim()) {
+  paNotice = 'Set API_BASE_URL to reach Plan Advisor from this app.';
+} else if (!paToken) {
+  paNotice =
+    'Session expired. Please sign out and sign in again so a fresh Supabase token is stored.';
+}
+
 if (
+  apiReady &&
   paToken &&
   (import.meta.env.API_BASE_URL ?? '').trim().length > 0
 ) {
@@ -82,20 +95,13 @@ if (
   if (row.ok && row.data) {
     scenarioView = normalizeScenarioDetail(row.data);
     scenarioFromApi = true;
-    const abs = paScenarioGenerateSummaryUrl(id);
-    if (abs && paToken) {
-      summaryGenerateConfig = {
-        url: abs,
-        bearer: paToken,
-        apiKey: (import.meta.env.PA_PLAN_API_KEY ?? '').trim(),
-      };
-    }
+    summaryProxyPath = paScenarioGenerateSummaryProxyPath(id);
   } else if (row.status === 403 || row.status === 404) {
     return Astro.redirect('/scenarios');
+  } else {
+    const suffix = ` Plan Advisor unreachable (HTTP ${row.status}). Showing demo scenario.`;
+    paNotice = (paNotice ? paNotice.trim() + suffix : suffix.trim());
   }
-} else {
-  paNotice =
-    'Showing demo scenario. Use Supabase sign-in + API_BASE_URL for your saved calculations.';
 }
 
 const scenario = scenarioView!;
@@ -122,8 +128,9 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
     { label: scenario.client_name },
   ]}
 >
+  <div class="page-scenario-detail">
   <!-- Scenario header -->
-  <div class="page-scenario-detail scenario-header">
+  <div class="scenario-header">
     <div class="sh-left">
       <div class="sh-meta">
         <span class="sh-id">#{scenario.id}</span>
@@ -158,7 +165,7 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
       New Calculation
     </a>
 
-    {showSummaryBtn && !scenario.has_summary && summaryGenerateConfig && (
+    {showSummaryBtn && !scenario.has_summary && summaryProxyPath && (
       <button type="button" class="btn-gen-summary js-scenario-summary">
         <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
@@ -166,11 +173,11 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
         Generate AI Summary
       </button>
     )}
-    {showSummaryBtn && !scenario.has_summary && !summaryGenerateConfig && (
+    {showSummaryBtn && !scenario.has_summary && !summaryProxyPath && (
       <button
         type="button"
         class="btn-gen-summary"
-        onclick="alert('Configure Supabase + API_BASE_URL, then reopen this scenario to generate summaries.')"
+        onclick="alert('Configure Supabase + API_BASE_URL to generate summaries.')"
       >
         <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
@@ -306,12 +313,12 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
               </svg>
               Copy Summary
             </button>
-            {showSummaryBtn && summaryGenerateConfig && (
+            {showSummaryBtn && summaryProxyPath && (
               <button type="button" class="btn-regen js-scenario-summary">
                 Regenerate
               </button>
             )}
-            {showSummaryBtn && !summaryGenerateConfig && (
+            {showSummaryBtn && !summaryProxyPath && (
               <button
                 type="button"
                 class="btn-regen"
@@ -325,7 +332,7 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
       ) : showSummaryBtn ? (
         <div class="summary-empty">
           <p class="summary-empty-text">No AI summary has been generated yet for this scenario.</p>
-          {summaryGenerateConfig ? (
+          {summaryProxyPath ? (
             <button type="button" class="btn-gen-lg js-scenario-summary">
               <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
@@ -496,10 +503,12 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
     </div>
   </div>
 
+  </div>
+
   <ScenarioDeleteModal />
 </UserLayout>
 
-<script define:vars={{ summaryGenerateConfig }}>
+<script define:vars={{ summaryProxyPath }}>
   function copySummary() {
     const text = document.getElementById('summary-text')?.innerText;
     if (!text) return;
@@ -602,13 +611,16 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
     });
   }
 
+  function resolveSummaryPostPath(): string | null {
+    return typeof summaryProxyPath === 'string' && summaryProxyPath.length > 0
+      ? summaryProxyPath
+      : null;
+  }
+
+  /** Same-origin POST to Astro BFF; handler uses `paFetchJson` with the same path as dashboard. */
   function attachSummaryGenerators() {
-    const cfg = summaryGenerateConfig as {
-      url: string;
-      bearer: string;
-      apiKey: string;
-    } | null;
-    if (!cfg?.url) return;
+    const path = resolveSummaryPostPath();
+    if (!path) return;
 
     document.querySelectorAll<HTMLButtonElement>('.js-scenario-summary').forEach((btn) => {
       btn.addEventListener('click', async () => {
@@ -616,35 +628,35 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
         const prev = btn.textContent;
         btn.textContent = '…';
         try {
-          const headers: Record<string, string> = {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${cfg.bearer}`,
-          };
-          if (cfg.apiKey) headers['X-API-Key'] = cfg.apiKey;
-
-          const res = await fetch(cfg.url, {
+          const response = await fetch(path, {
             method: 'POST',
-            headers,
+            headers: {
+              'Content-Type': 'application/json',
+            },
             body: '{}',
-            mode: 'cors',
+            credentials: 'same-origin',
           });
-          const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-          if (!res.ok) {
+
+          const data = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+
+          if (!response.ok) {
             const msg =
               typeof data.message === 'string'
                 ? data.message
                 : typeof data.error === 'string'
                   ? data.error
                   : JSON.stringify(data);
-            alert(`Summary failed (${res.status}): ${msg}`);
+            alert(`Summary failed (${response.status}): ${msg}`);
             btn.disabled = false;
             btn.textContent = prev ?? 'Generate';
             return;
           }
+
           window.location.reload();
-        } catch {
+        } catch (err) {
+          console.error(err);
           alert(
-            'Summary request failed. Check CORS (FRONTEND_URL on Plan Advisor), SUMMARY_AGENT_URL, and try again.',
+            'Summary request failed. Check your connection and Plan Advisor SUMMARY_AGENT_URL configuration.',
           );
           btn.disabled = false;
           btn.textContent = prev ?? 'Generate';
@@ -653,9 +665,15 @@ const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clien
     });
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
+  function initScenarioDetailClient() {
     attachSummaryGenerators();
     attachScenarioExportDelete();
-  });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initScenarioDetailClient);
+  } else {
+    initScenarioDetailClient();
+  }
 </script>
 

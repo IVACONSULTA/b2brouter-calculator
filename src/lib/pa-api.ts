@@ -66,6 +66,15 @@ export function paScenarioGenerateSummaryUrl(scenarioId: string): string | null 
   return paApiAbsoluteUrl(`/scenarios/${encodeURIComponent(scenarioId)}/generate-summary`);
 }
 
+/**
+ * Same-origin Astro BFF for summary generation. Browser POSTs here; the route handler uses
+ * `paFetchJson('/scenarios/:id/generate-summary', …)` — same Plan Advisor path as
+ * `paScenarioGenerateSummaryUrl`, with cookies → Bearer handled server-side.
+ */
+export function paScenarioGenerateSummaryProxyPath(scenarioId: string): string {
+  return `/api/pa/scenarios/${encodeURIComponent(scenarioId)}/generate-summary`;
+}
+
 export type PaOk<T> =
   | { ok: true; status: number; data: T }
   | { ok: false; status: number; error: unknown };
