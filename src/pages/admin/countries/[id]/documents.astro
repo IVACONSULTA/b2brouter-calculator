@@ -1,6 +1,16 @@
 ---
 import AdminLayout from '../../../../layouts/AdminLayout.astro';
 import { getSession, isAdminRole } from '../../../../lib/session';
+import {
+  canUsePlanAdvisorApi,
+  paFetchJson,
+} from '../../../../lib/pa-api';
+import { getFreshSupabaseAccessToken } from '../../../../lib/supabase-session';
+import { resolvePlanAdvisorProfileIds } from '../../../../lib/admin-resolve-profile-api';
+import {
+  readLocalDocumentsManifest,
+  useLocalDocumentStorage,
+} from '../../../../lib/admin-documents-local';
 import { DUMMY_PROFILES, DUMMY_DOCUMENTS, DOCUMENT_TYPES } from '../../../../lib/dummy-data';
 import '../../../../styles/pages/admin-country-documents.css';
 
@@ -8,31 +18,166 @@ const session = getSession(Astro.cookies);
 if (!session) return Astro.redirect('/admin/login');
 if (!isAdminRole(session.role)) return Astro.redirect('/dashboard');
 
-const { id } = Astro.params;
-const profile = DUMMY_PROFILES.find(p => p.id === id) ?? DUMMY_PROFILES[0];
-const documents = DUMMY_DOCUMENTS;
+const { id: routeProfileId } = Astro.params;
+if (!routeProfileId) return Astro.redirect('/countries');
 
-const copyrightMeta: Record<string, { label: string; cls: string; desc: string }> = {
-  pending:    { label: 'Pending',    cls: 'c-pending',    desc: 'Not yet analyzed' },
-  clear:      { label: 'Clear',      cls: 'c-clear',      desc: 'No restrictions detected' },
-  restricted: { label: 'Restricted', cls: 'c-restricted', desc: 'Verbatim extraction prohibited; factual rules only' },
-  blocked:    { label: 'Blocked',    cls: 'c-blocked',    desc: 'AI opt-out clause detected — must be reviewed manually' },
+const profile = DUMMY_PROFILES.find((p) => p.id === routeProfileId) ?? DUMMY_PROFILES[0];
+
+const localDocMode = useLocalDocumentStorage();
+
+let paToken: string | null = null;
+if (session.supabaseAccessToken?.trim()) {
+  const fresh = await getFreshSupabaseAccessToken(Astro.cookies);
+  if (fresh.ok) paToken = fresh.accessToken;
+}
+
+const apiReady = canUsePlanAdvisorApi(session);
+
+type DocRow = {
+  id: string;
+  filename: string;
+  document_type: string;
+  description?: string;
+  copyright_status: string;
+  uploaded_at: string;
+  size: string;
+  selected?: boolean;
 };
 
-const clearDocs    = documents.filter(d => d.copyright_status === 'clear' || d.copyright_status === 'restricted');
-const blockedDocs  = documents.filter(d => d.copyright_status === 'blocked');
+const copyrightMeta: Record<string, { label: string; cls: string; desc: string }> = {
+  pending: { label: 'Pending', cls: 'c-pending', desc: 'Not yet analyzed' },
+  clear: { label: 'Clear', cls: 'c-clear', desc: 'No restrictions detected' },
+  restricted: { label: 'Restricted', cls: 'c-restricted', desc: 'Verbatim extraction prohibited; factual rules only' },
+  blocked: { label: 'Blocked', cls: 'c-blocked', desc: 'AI opt-out clause detected — must be reviewed manually' },
+};
+
+function formatApiDate(raw: string): string {
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return raw;
+  return d.toLocaleDateString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+}
+
+let adminNotice: string | null = null;
+let documents: DocRow[] = DUMMY_DOCUMENTS.map((d) => ({
+  id: d.id,
+  filename: d.filename,
+  document_type: d.document_type,
+  description: d.description,
+  copyright_status: d.copyright_status,
+  uploaded_at: d.uploaded_at,
+  size: d.size,
+  selected: d.selected,
+}));
+
+let apiTarget: {
+  profile_id: string;
+  country_id: string;
+  provider_id: string;
+} | null = null;
+
+if (localDocMode) {
+  const local = readLocalDocumentsManifest(routeProfileId);
+  documents = local.map((item) => ({
+    id: item.id,
+    filename: item.filename,
+    document_type: item.document_type,
+    description: item.description ?? undefined,
+    copyright_status: item.copyright_status,
+    uploaded_at: formatApiDate(item.created_at),
+    size: item.size_label,
+    selected: item.copyright_status !== 'blocked',
+  }));
+  adminNotice =
+    'Local document storage (PA_LOCAL_DOCUMENT_STORAGE): files save under docs/uploads/ and are not sent to Railway.';
+} else if (apiReady && paToken && (import.meta.env.API_BASE_URL ?? '').trim()) {
+  const resolved = await resolvePlanAdvisorProfileIds(paToken, {
+    countryCode: profile.country.code,
+    providerName: profile.provider.name,
+    version: profile.version,
+  });
+  if (resolved) {
+    apiTarget = {
+      profile_id: resolved.id,
+      country_id: resolved.country_id,
+      provider_id: resolved.provider_id,
+    };
+    const list = await paFetchJson<
+      Array<{
+        id: string;
+        filename: string;
+        document_type: string;
+        description?: string | null;
+        copyright_status: string;
+        created_at: string;
+      }>
+    >(`/admin/documents?profile_id=${encodeURIComponent(resolved.id)}`, paToken);
+    if (list.ok && Array.isArray(list.data)) {
+      documents = list.data.map((r) => ({
+        id: r.id,
+        filename: r.filename,
+        document_type: r.document_type,
+        description: r.description ?? undefined,
+        copyright_status: r.copyright_status,
+        uploaded_at: formatApiDate(r.created_at),
+        size: '—',
+        selected: r.copyright_status !== 'blocked',
+      }));
+    } else if (!list.ok) {
+      const suffix = ` Could not load documents (HTTP ${list.status}). Showing demo list.`;
+      const noticeBefore: string | null = adminNotice;
+      adminNotice = `${noticeBefore ?? ''}${suffix}`.trim();
+    }
+  } else {
+    adminNotice =
+      'No matching calculation profile in Plan Advisor for this country/provider/version. Upload is disabled until the profile exists, or enable PA_LOCAL_DOCUMENT_STORAGE for local docs.';
+  }
+} else if (!session.supabaseAccessToken) {
+  adminNotice = 'Demo session (no JWT). Sign in with Supabase + set API_BASE_URL for live uploads.';
+} else if (!(import.meta.env.API_BASE_URL ?? '').trim()) {
+  adminNotice = 'Set API_BASE_URL or PA_LOCAL_DOCUMENT_STORAGE=1 for document uploads.';
+}
+
+const clearDocs = documents.filter((d) => d.copyright_status === 'clear' || d.copyright_status === 'restricted');
+const blockedDocs = documents.filter((d) => d.copyright_status === 'blocked');
+
+const analysisHref = profile.analysis_id
+  ? `/admin/analyses/${profile.analysis_id}`
+  : '/admin/analyses';
+
+const canUpload = localDocMode || Boolean(apiTarget);
+
+const uploadConfig = {
+  profileSlug: routeProfileId,
+  localMode: localDocMode,
+  countryId: apiTarget?.country_id ?? '',
+  providerId: apiTarget?.provider_id ?? '',
+  profileId: apiTarget?.profile_id ?? '',
+  canUpload,
+};
+
+const metaFor = (status: string) =>
+  copyrightMeta[status] ?? copyrightMeta.pending;
 ---
 
 <AdminLayout
   title={`Documents — ${profile.country.name} / ${profile.provider.name}`}
+  notice={adminNotice}
   breadcrumbs={[
     { label: 'Countries', href: '/countries' },
     { label: `${profile.country.name} / ${profile.provider.name}`, href: `/admin/countries/${profile.id}/setup` },
     { label: 'Documents' },
   ]}
 >
+  <div class="page-admin-country-documents">
   <!-- Step bar -->
-  <div class="page-admin-country-documents step-bar">
+  <div class="step-bar">
     <a href={`/admin/countries/${profile.id}/setup`} class="step-tab">
       <span class="step-num done">✓</span> Profile Setup
     </a>
@@ -59,18 +204,6 @@ const blockedDocs  = documents.filter(d => d.copyright_status === 'blocked');
             <h2 class="panel-title">Uploaded Documents</h2>
             <p class="panel-subtitle">{documents.length} documents · {clearDocs.length} processable · {blockedDocs.length} blocked</p>
           </div>
-          <!-- TODO: POST /admin/documents/analyze via App 2 API → App 3 CrewAI -->
-          <button
-            id="analyze-btn"
-            class="btn-analyze"
-            onclick="handleAnalyze()"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 2a10 10 0 1 0 10 10"/><path d="M12 6v6l4 2"/>
-              <path d="M18 2l4 4-4 4"/><path d="M22 2v8h-8"/>
-            </svg>
-            Analyze selected with AI
-          </button>
         </div>
 
         {blockedDocs.length > 0 && (
@@ -100,8 +233,8 @@ const blockedDocs  = documents.filter(d => d.copyright_status === 'blocked');
             </tr>
           </thead>
           <tbody>
-            {documents.map(doc => {
-              const meta = copyrightMeta[doc.copyright_status];
+            {documents.map((doc) => {
+              const meta = metaFor(doc.copyright_status);
               return (
                 <tr class={doc.copyright_status === 'blocked' ? 'row-blocked' : ''}>
                   <td>
@@ -109,13 +242,13 @@ const blockedDocs  = documents.filter(d => d.copyright_status === 'blocked');
                       type="checkbox"
                       class="doc-checkbox"
                       data-doc-id={doc.id}
-                      checked={doc.selected && doc.copyright_status !== 'blocked'}
+                      checked={doc.selected !== false && doc.copyright_status !== 'blocked'}
                       disabled={doc.copyright_status === 'blocked'}
                     />
                   </td>
                   <td>
                     <div class="file-cell">
-                      <div class={`file-icon fi-${doc.copyright_status}`}>
+                      <div class={`file-icon fi-${doc.copyright_status === 'restricted' ? 'restricted' : doc.copyright_status === 'blocked' ? 'blocked' : doc.copyright_status === 'clear' ? 'clear' : 'pending'}`}>
                         <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                           <polyline points="14 2 14 8 20 8"/>
@@ -129,7 +262,7 @@ const blockedDocs  = documents.filter(d => d.copyright_status === 'blocked');
                   </td>
                   <td>
                     <span class="type-label">
-                      {DOCUMENT_TYPES.find(t => t.value === doc.document_type)?.label ?? doc.document_type}
+                      {DOCUMENT_TYPES.find((t) => t.value === doc.document_type)?.label ?? doc.document_type}
                     </span>
                   </td>
                   <td>
@@ -141,15 +274,13 @@ const blockedDocs  = documents.filter(d => d.copyright_status === 'blocked');
                   <td class="muted">{doc.uploaded_at}</td>
                   <td>
                     <div class="row-actions">
-                      <!-- TODO: GET /admin/documents/{doc.id}/download via App 2 API -->
-                      <button class="btn-icon" title="Download" onclick={`alert('TODO: download ${doc.filename}')`}>
+                      <button class="btn-icon" title="Download" type="button" onclick={`alert('Download is not implemented yet for ${doc.filename}')`}>
                         <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                           <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
                         </svg>
                       </button>
-                      <!-- TODO: DELETE /admin/documents/{doc.id} via App 2 API -->
-                      <button class="btn-icon btn-danger" title="Delete" onclick={`alert('TODO: delete ${doc.filename}')`}>
+                      <button class="btn-icon btn-danger" title="Delete" type="button" onclick={`alert('Delete is not implemented yet for ${doc.filename}')`}>
                         <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                           <polyline points="3 6 5 6 21 6"/>
                           <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
@@ -171,10 +302,18 @@ const blockedDocs  = documents.filter(d => d.copyright_status === 'blocked');
     <div class="right-col">
       <div class="panel">
         <h2 class="panel-title">Upload Document</h2>
-        <p class="panel-subtitle" style="margin-bottom:1rem">PDF, DOCX, XLSX, CSV, TXT, MD — max 20 MB</p>
+        <p class="panel-subtitle" style="margin-bottom:1rem">PDF, DOCX, XLSX, CSV, TXT, MD — max 50 MB</p>
 
-        <!-- TODO: POST /admin/documents/upload via App 2 API → saves to Railway Volume + DB -->
-        <form id="upload-form" class="upload-form" action="#" method="POST" enctype="multipart/form-data">
+        <form id="upload-form" class="upload-form" action="/api/pa/admin/documents/upload" method="POST" enctype="multipart/form-data">
+          <input type="hidden" name="profile_slug" value={routeProfileId} />
+          {apiTarget && (
+            <>
+              <input type="hidden" name="country_id" value={apiTarget.country_id} />
+              <input type="hidden" name="provider_id" value={apiTarget.provider_id} />
+              <input type="hidden" name="profile_id" value={apiTarget.profile_id} />
+            </>
+          )}
+
           <div class="drop-zone" id="drop-zone">
             <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -188,7 +327,7 @@ const blockedDocs  = documents.filter(d => d.copyright_status === 'blocked');
             <label for="doc_type">Document Type <span class="required">*</span></label>
             <select id="doc_type" name="document_type" required>
               <option value="" disabled selected>Select type…</option>
-              {DOCUMENT_TYPES.map(t => (
+              {DOCUMENT_TYPES.map((t) => (
                 <option value={t.value}>{t.label}</option>
               ))}
             </select>
@@ -199,12 +338,12 @@ const blockedDocs  = documents.filter(d => d.copyright_status === 'blocked');
             <textarea id="description" name="description" rows="2" placeholder="Brief description of this document…"></textarea>
           </div>
 
-          <button type="submit" class="btn-upload">
+          <button type="submit" class="btn-upload" id="upload-submit" disabled={!canUpload}>
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
             </svg>
-            Upload Document
+            {canUpload ? 'Upload Document' : 'Upload unavailable'}
           </button>
         </form>
       </div>
@@ -212,7 +351,7 @@ const blockedDocs  = documents.filter(d => d.copyright_status === 'blocked');
       <!-- Copyright legend -->
       <div class="panel legend-panel">
         <h3 class="legend-title">Copyright status legend</h3>
-        {Object.entries(copyrightMeta).map(([key, meta]) => (
+        {Object.entries(copyrightMeta).map(([, meta]) => (
           <div class="legend-row">
             <span class={`c-badge ${meta.cls}`}>{meta.label}</span>
             <span class="legend-desc">{meta.desc}</span>
@@ -221,55 +360,101 @@ const blockedDocs  = documents.filter(d => d.copyright_status === 'blocked');
       </div>
     </div>
   </div>
+
+  <div class="documents-footer-actions">
+    <a href={analysisHref} class="btn-go-analysis">
+      Go to Analysis
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M5 12h14M12 5l7 7-7 7"/>
+      </svg>
+    </a>
+  </div>
+  </div>
 </AdminLayout>
 
-<script>
-  // Select all checkbox
-  const selectAll = document.getElementById('select-all') as HTMLInputElement;
-  const checkboxes = document.querySelectorAll<HTMLInputElement>('.doc-checkbox:not(:disabled)');
+<script define:vars={{ uploadConfig }}>
+  const selectAll = document.getElementById('select-all');
+  const checkboxes = document.querySelectorAll('.doc-checkbox:not(:disabled)');
 
-  selectAll.addEventListener('change', () => {
-    checkboxes.forEach(cb => cb.checked = selectAll.checked);
+  selectAll?.addEventListener('change', () => {
+    const on = selectAll.checked;
+    checkboxes.forEach((cb) => {
+      cb.checked = on;
+    });
   });
 
-  // Drag-and-drop visual
-  const dropZone = document.getElementById('drop-zone')!;
-  const fileInput = document.getElementById('file-input') as HTMLInputElement;
+  const dropZone = document.getElementById('drop-zone');
+  const fileInput = document.getElementById('file-input');
+  const uploadForm = document.getElementById('upload-form');
+  const uploadSubmit = document.getElementById('upload-submit');
 
-  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
-  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
-  dropZone.addEventListener('drop', e => {
-    e.preventDefault();
-    dropZone.classList.remove('drag-over');
-    const files = e.dataTransfer?.files;
-    if (files?.[0]) {
-      dropZone.querySelector('.drop-label')!.textContent = `Selected: ${files[0].name}`;
-    }
-  });
-
-  fileInput.addEventListener('change', () => {
-    if (fileInput.files?.[0]) {
-      dropZone.querySelector('.drop-label')!.innerHTML = `Selected: <strong>${fileInput.files[0].name}</strong>`;
-    }
-  });
-
-  // Upload form submit
-  document.getElementById('upload-form')!.addEventListener('submit', e => {
-    e.preventDefault();
-    alert('TODO: POST to API_BASE_URL/admin/documents/upload');
-  });
-
-  // Analyze button
-  function handleAnalyze() {
-    const selected = Array.from(document.querySelectorAll<HTMLInputElement>('.doc-checkbox:checked'))
-      .map(cb => cb.dataset.docId);
-    if (selected.length === 0) {
-      alert('Please select at least one document to analyze.');
-      return;
-    }
-    alert(`TODO: POST to API_BASE_URL/admin/documents/analyze\nDocuments: ${selected.join(', ')}`);
+  function setFileInput(files) {
+    const file = files instanceof FileList ? files[0] : files[0];
+    if (!file || !fileInput || !dropZone) return;
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    fileInput.files = dt.files;
+    const label = dropZone.querySelector('.drop-label');
+    if (label) label.innerHTML = 'Selected: <strong>' + file.name + '</strong>';
   }
 
-  (window as any).handleAnalyze = handleAnalyze;
-</script>
+  if (dropZone && fileInput && uploadForm && uploadSubmit) {
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.classList.add('drag-over');
+    });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('drag-over');
+      const f = e.dataTransfer && e.dataTransfer.files;
+      if (f && f.length) setFileInput(f);
+    });
 
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files && fileInput.files.length) setFileInput(fileInput.files);
+    });
+
+    uploadForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!uploadConfig.canUpload) {
+        alert('Upload is not available until the profile exists in Plan Advisor, or set PA_LOCAL_DOCUMENT_STORAGE=1 for local dev.');
+        return;
+      }
+      if (!fileInput.files || !fileInput.files.length) {
+        alert('Choose a file to upload.');
+        return;
+      }
+      var max = 50 * 1024 * 1024;
+      if (fileInput.files[0].size > max) {
+        alert('File is too large (max 50 MB).');
+        return;
+      }
+
+      var fd = new FormData(uploadForm);
+      var prevText = uploadSubmit.innerHTML;
+      uploadSubmit.disabled = true;
+      uploadSubmit.textContent = 'Uploading…';
+
+      try {
+        var res = await fetch('/api/pa/admin/documents/upload', {
+          method: 'POST',
+          body: fd,
+        });
+        var data = await res.json().catch(function () { return {}; });
+        if (!res.ok) {
+          var msg = typeof data.error === 'string' ? data.error : res.statusText;
+          alert('Upload failed: ' + msg);
+          uploadSubmit.innerHTML = prevText;
+          uploadSubmit.disabled = false;
+          return;
+        }
+        window.location.reload();
+      } catch (err) {
+        alert(err && err.message ? err.message : 'Upload failed.');
+        uploadSubmit.innerHTML = prevText;
+        uploadSubmit.disabled = false;
+      }
+    });
+  }
+</script>

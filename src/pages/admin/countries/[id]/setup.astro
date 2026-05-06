@@ -20,8 +20,9 @@ const profile = DUMMY_PROFILES.find(p => p.id === id) ?? DUMMY_PROFILES[2]; // f
     { label: 'Setup' },
   ]}
 >
+  <div class="page-admin-country-setup">
   <!-- Step tabs -->
-  <div class="page-admin-country-setup step-bar">
+  <div class="step-bar">
     <a href={`/admin/countries/${profile.id}/setup`} class="step-tab active">
       <span class="step-num">1</span> Profile Setup
     </a>
@@ -132,6 +133,7 @@ const profile = DUMMY_PROFILES.find(p => p.id === id) ?? DUMMY_PROFILES[2]; // f
         </div>
       </div>
     </aside>
+  </div>
   </div>
 </AdminLayout>
 

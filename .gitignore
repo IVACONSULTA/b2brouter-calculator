@@ -18,6 +18,10 @@ dist
 # Astro file-based sessions (local dev when NETLIFY_DEV=1)
 .astro/session
 
+# Local-only admin document uploads (PA_LOCAL_DOCUMENT_STORAGE); keep folder in git
+docs/uploads/*
+!docs/uploads/.gitkeep
+
 # Editor / OS
 .DS_Store
 *.pem
