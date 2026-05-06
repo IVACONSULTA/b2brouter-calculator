@@ -28,7 +28,12 @@ const fullAnalysisHref = profile.analysis_id
     { label: 'AI analysis' },
   ]}
 >
-  <div class="page-admin-country-ai-analysis">
+  <div
+    class="page-admin-country-ai-analysis"
+    data-profile-id={profile.id}
+    data-country={profile.country.name}
+    data-provider={profile.provider.name}
+  >
     <div class="step-bar">
       <a href={`/admin/countries/${profile.id}/setup`} class="step-tab">
         <span class="step-num done">✓</span>

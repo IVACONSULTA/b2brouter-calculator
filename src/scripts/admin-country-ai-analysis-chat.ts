@@ -170,7 +170,23 @@ function renderRuleCard(r: ExtractedRule): HTMLElement {
   return card;
 }
 
+type ChatContext = {
+  profileId: string;
+  countryName: string;
+  providerName: string;
+};
+
+function readChatContext(root: HTMLElement | null): ChatContext {
+  const profileId = root?.dataset.profileId ?? '';
+  const countryName = root?.dataset.country ?? '';
+  const providerName = root?.dataset.provider ?? '';
+  return { profileId, countryName, providerName };
+}
+
 export function initAdminCountryAiAnalysisChat(): void {
+  const pageRoot = document.querySelector<HTMLElement>('.page-admin-country-ai-analysis');
+  const ctx = readChatContext(pageRoot);
+
   const messagesEl = document.getElementById('chat-messages');
   const rulesEmptyEl = document.getElementById('rules-empty');
   const rulesListEl = document.getElementById('rules-list');
@@ -223,6 +239,13 @@ export function initAdminCountryAiAnalysisChat(): void {
     }
   }
 
+  function playCannedTurn(): void {
+    const turn = cannedTurns[Math.min(turnIndex, cannedTurns.length - 1)];
+    turnIndex += 1;
+    addBubble('assistant', simpleMarkdownToHtml(turn.assistant));
+    mergeRules(turn.rules);
+  }
+
   form.addEventListener('submit', (e) => {
     e.preventDefault();
     const text = input.value.trim();
@@ -232,14 +255,49 @@ export function initAdminCountryAiAnalysisChat(): void {
     input.value = '';
     sendBtn.disabled = true;
 
-    const turn = cannedTurns[Math.min(turnIndex, cannedTurns.length - 1)];
-    turnIndex += 1;
+    void (async () => {
+      try {
+        const res = await fetch('/api/pa/admin/ai-analysis/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: text,
+            profileId: ctx.profileId,
+            countryName: ctx.countryName || undefined,
+            providerName: ctx.providerName || undefined,
+          }),
+        });
+        const data = (await res.json().catch(() => ({}))) as {
+          demo?: boolean;
+          assistant?: string;
+          rules?: ExtractedRule[];
+          message?: string;
+        };
 
-    window.setTimeout(() => {
-      addBubble('assistant', simpleMarkdownToHtml(turn.assistant));
-      mergeRules(turn.rules);
-      sendBtn.disabled = false;
-      input.focus();
-    }, 550);
+        if (res.ok && typeof data.assistant === 'string') {
+          addBubble('assistant', simpleMarkdownToHtml(data.assistant));
+          mergeRules(Array.isArray(data.rules) ? data.rules : []);
+        } else if (res.status === 503 && data.demo) {
+          playCannedTurn();
+        } else {
+          const hint =
+            typeof data.message === 'string'
+              ? data.message
+              : typeof (data as { error?: string }).error === 'string'
+                ? (data as { error?: string }).error!
+                : res.statusText;
+          addBubble(
+            'assistant',
+            escapeText('Could not reach the Crew service: ' + hint).replace(/\n/g, '<br/>'),
+          );
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        addBubble('assistant', escapeText('Request failed: ' + msg).replace(/\n/g, '<br/>'));
+      } finally {
+        sendBtn.disabled = false;
+        input.focus();
+      }
+    })();
   });
 }

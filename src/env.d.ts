@@ -10,8 +10,8 @@ interface ImportMetaEnv {
   readonly PUBLIC_SUPABASE_ANON_KEY?: string;
   /** Plan Advisor Express API (Railway), e.g. http://localhost:3000 — no trailing slash required. */
   readonly API_BASE_URL: string;
-  /** When "1"/"true", uploads save under repo `docs/uploads/` (no Plan Advisor call). Local dev only. */
-  readonly PA_LOCAL_DOCUMENT_STORAGE?: string;
+  /** AgenteDocumental crew base URL (CrewAI FastAPI), e.g. http://127.0.0.1:8788 */
+  readonly PLAN_ADVISOR_CREW_URL?: string;
 }
 
 interface ImportMeta {
