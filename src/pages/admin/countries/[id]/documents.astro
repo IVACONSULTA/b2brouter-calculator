@@ -8,7 +8,8 @@ import {
 import { getFreshSupabaseAccessToken } from '../../../../lib/supabase-session';
 import { resolvePlanAdvisorProfileIds } from '../../../../lib/admin-resolve-profile-api';
 import {
-  readLocalDocumentsManifest,
+  hasLocalDocumentFiles,
+  readLocalDocumentsCombined,
   useLocalDocumentStorage,
 } from '../../../../lib/admin-documents-local';
 import { DUMMY_PROFILES, DUMMY_DOCUMENTS, DOCUMENT_TYPES } from '../../../../lib/dummy-data';
@@ -24,6 +25,9 @@ if (!routeProfileId) return Astro.redirect('/countries');
 const profile = DUMMY_PROFILES.find((p) => p.id === routeProfileId) ?? DUMMY_PROFILES[0];
 
 const localDocMode = useLocalDocumentStorage();
+const devLocalFolder =
+  import.meta.env.DEV && hasLocalDocumentFiles(routeProfileId);
+const useLocalDocumentsListing = localDocMode || devLocalFolder;
 
 let paToken: string | null = null;
 if (session.supabaseAccessToken?.trim()) {
@@ -82,8 +86,8 @@ let apiTarget: {
   provider_id: string;
 } | null = null;
 
-if (localDocMode) {
-  const local = readLocalDocumentsManifest(routeProfileId);
+if (useLocalDocumentsListing) {
+  const local = readLocalDocumentsCombined(routeProfileId);
   documents = local.map((item) => ({
     id: item.id,
     filename: item.filename,
@@ -94,8 +98,15 @@ if (localDocMode) {
     size: item.size_label,
     selected: item.copyright_status !== 'blocked',
   }));
-  adminNotice =
-    'Local document storage (PA_LOCAL_DOCUMENT_STORAGE): files save under docs/uploads/ and are not sent to Railway.';
+  if (localDocMode) {
+    adminNotice =
+      'Local document storage (PA_LOCAL_DOCUMENT_STORAGE): files in docs/uploads/ are not sent to Railway.';
+  } else if (devLocalFolder) {
+    adminNotice =
+      'Development: listing files from docs/uploads/' +
+      routeProfileId +
+      '/. Set PA_LOCAL_DOCUMENT_STORAGE=1 to upload here without the API.';
+  }
 } else if (apiReady && paToken && (import.meta.env.API_BASE_URL ?? '').trim()) {
   const resolved = await resolvePlanAdvisorProfileIds(paToken, {
     countryCode: profile.country.code,
@@ -295,6 +306,15 @@ const metaFor = (status: string) =>
             })}
           </tbody>
         </table>
+
+        <div class="documents-footer-actions">
+          <a href={analysisHref} class="btn-go-analysis">
+            Go to Analysis
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M5 12h14M12 5l7 7-7 7"/>
+            </svg>
+          </a>
+        </div>
       </div>
     </div>
 
@@ -359,15 +379,6 @@ const metaFor = (status: string) =>
         ))}
       </div>
     </div>
-  </div>
-
-  <div class="documents-footer-actions">
-    <a href={analysisHref} class="btn-go-analysis">
-      Go to Analysis
-      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M5 12h14M12 5l7 7-7 7"/>
-      </svg>
-    </a>
   </div>
   </div>
 </AdminLayout>
