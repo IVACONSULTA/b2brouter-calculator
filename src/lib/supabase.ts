@@ -12,20 +12,28 @@ function envFromProcess(key: string): string {
   return typeof v === 'string' ? v.trim() : '';
 }
 
+/** Canonical server secrets plus optional `PUBLIC_*` overrides (Astro / Netlify env). */
 function readCredentials(): { url: string; anonKey: string } {
   const url = (
     getSecret('SUPABASE_URL') ||
     envFromProcess('SUPABASE_URL') ||
+    envFromProcess('PUBLIC_SUPABASE_URL') ||
     import.meta.env.SUPABASE_URL ||
+    import.meta.env.PUBLIC_SUPABASE_URL ||
     ''
   ).trim();
 
   const anonKey = (
     getSecret('SUPABASE_ANON_KEY') ||
     envFromProcess('SUPABASE_ANON_KEY') ||
+    envFromProcess('PUBLIC_SUPABASE_ANON_KEY') ||
     import.meta.env.SUPABASE_ANON_KEY ||
+    import.meta.env.PUBLIC_SUPABASE_ANON_KEY ||
     (import.meta.env.DEV
-      ? getSecret('SUPABASE_KEY') || import.meta.env.SUPABASE_KEY || ''
+      ? getSecret('SUPABASE_KEY') ||
+          envFromProcess('SUPABASE_KEY') ||
+          import.meta.env.SUPABASE_KEY ||
+          ''
       : '') ||
     ''
   ).trim();
