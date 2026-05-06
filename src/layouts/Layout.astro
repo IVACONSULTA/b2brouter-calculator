@@ -1,5 +1,6 @@
 ---
 import '../styles/global.css';
+import { getSession, isAdminRole, canAccessUserPortal } from '../lib/session';
 
 interface Props {
   title: string;
@@ -9,6 +10,18 @@ interface Props {
 
 const { title, siteChrome = true } = Astro.props;
 const year = new Date().getFullYear();
+
+const session = siteChrome ? getSession(Astro.cookies) : null;
+let logoutFrom = '';
+let signedInHref = '/dashboard';
+if (session) {
+  if (isAdminRole(session.role)) {
+    logoutFrom = 'admin';
+    signedInHref = '/admin/dashboard';
+  } else if (canAccessUserPortal(session.role)) {
+    logoutFrom = 'customer';
+  }
+}
 ---
 
 <!doctype html>
@@ -160,6 +173,40 @@ const year = new Date().getFullYear();
         background: var(--site-chrome-hover);
       }
 
+      .site-nav-form {
+        display: inline;
+        margin: 0;
+        padding: 0;
+      }
+
+      .site-nav button.site-nav-action {
+        padding: 0.4rem 0.75rem;
+        border-radius: 6px;
+        font-size: 0.78rem;
+        font-weight: 600;
+        color: var(--site-chrome-muted);
+        background: transparent;
+        border: none;
+        font-family: inherit;
+        cursor: pointer;
+        transition: color 0.15s, background 0.15s;
+      }
+
+      .site-nav button.site-nav-action:hover {
+        color: var(--site-chrome-text);
+        background: var(--site-chrome-hover);
+      }
+
+      .site-nav-signed-in {
+        font-size: 0.72rem;
+        color: var(--site-chrome-faint);
+        padding: 0 0.35rem;
+        max-width: 12rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
       .site-main {
         flex: 1;
         min-height: 0;
@@ -263,9 +310,21 @@ const year = new Date().getFullYear();
             </a>
             <nav class="site-nav" aria-label="Site">
               <a href="/">Home</a>
-              <a href="/admin/login">Admin</a>
-              <a href="/customer/login">Customer</a>
-              <a href="/login">Sign in</a>
+              {session ? (
+                <>
+                  <a href={signedInHref}>App</a>
+                  <span class="site-nav-signed-in" title={session.email}>{session.email}</span>
+                  <form class="site-nav-form" action={`/api/auth/logout${logoutFrom ? `?from=${logoutFrom}` : ''}`} method="POST">
+                    <button type="submit" class="site-nav-action">Sign out</button>
+                  </form>
+                </>
+              ) : (
+                <>
+                  <a href="/admin/login">Admin</a>
+                  <a href="/customer/login">Customer</a>
+                  <a href="/login">Sign in</a>
+                </>
+              )}
             </nav>
           </div>
         </header>
