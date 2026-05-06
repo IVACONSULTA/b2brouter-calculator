@@ -31,9 +31,9 @@ const profile = DUMMY_PROFILES.find(p => p.id === id) ?? DUMMY_PROFILES[2]; // f
       <span class="step-num">2</span> Documents
     </a>
     <div class="step-connector"></div>
-    <span class="step-tab disabled">
+    <a href={`/admin/countries/${profile.id}/ai-analysis`} class="step-tab">
       <span class="step-num">3</span> AI Analysis
-    </span>
+    </a>
     <div class="step-connector"></div>
     <span class="step-tab disabled">
       <span class="step-num">4</span> Activate

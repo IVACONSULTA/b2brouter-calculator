@@ -1,0 +1,144 @@
+---
+import AdminLayout from '../../../../layouts/AdminLayout.astro';
+import { getSession, isAdminRole } from '../../../../lib/session';
+import { DUMMY_PROFILES } from '../../../../lib/dummy-data';
+import '../../../../styles/pages/admin-country-ai-analysis.css';
+
+const session = getSession(Astro.cookies);
+if (!session) return Astro.redirect('/admin/login');
+if (!isAdminRole(session.role)) return Astro.redirect('/dashboard');
+
+const { id: routeProfileId } = Astro.params;
+if (!routeProfileId) return Astro.redirect('/countries');
+
+const profile = DUMMY_PROFILES.find((p) => p.id === routeProfileId) ?? DUMMY_PROFILES[0];
+const fullAnalysisHref = profile.analysis_id
+  ? `/admin/analyses/${profile.analysis_id}`
+  : null;
+---
+
+<AdminLayout
+  title={`AI analysis — ${profile.country.name} / ${profile.provider.name}`}
+  breadcrumbs={[
+    { label: 'Countries', href: '/countries' },
+    {
+      label: `${profile.country.name} / ${profile.provider.name}`,
+      href: `/admin/countries/${profile.id}/setup`,
+    },
+    { label: 'AI analysis' },
+  ]}
+>
+  <div class="page-admin-country-ai-analysis">
+    <div class="step-bar">
+      <a href={`/admin/countries/${profile.id}/setup`} class="step-tab">
+        <span class="step-num done">✓</span>
+        Profile Setup
+      </a>
+      <div class="step-connector"></div>
+      <a href={`/admin/countries/${profile.id}/documents`} class="step-tab">
+        <span class="step-num done">✓</span>
+        Documents
+      </a>
+      <div class="step-connector"></div>
+      <span class="step-tab active">
+        <span class="step-num">3</span>
+        AI Analysis
+      </span>
+      <div class="step-connector"></div>
+      <span class="step-tab disabled">
+        <span class="step-num">4</span>
+        Activate
+      </span>
+    </div>
+
+    <div class="analysis-split">
+      <section class="chat-panel panel-surface" aria-label="Analysis assistant chat">
+        <div class="panel-head">
+          <h2>Assistant</h2>
+          <p>
+            Discuss uploaded pricing and regulatory documents. Each reply can include structured rule
+            extractions; they appear as editable fields on the right.
+          </p>
+        </div>
+        <div id="chat-messages" class="chat-messages">
+          <div class="chat-bubble assistant">
+            <div class="bubble-role">Assistant</div>
+            <p style="margin:0">
+              I am ready to help refine transaction rules for <strong>{profile.country.name}</strong> /
+              <strong>{profile.provider.name}</strong>. Ask a question or describe a document scenario,
+              and I will propose extractions you can review in the panel on the right.
+            </p>
+          </div>
+        </div>
+        <form id="chat-form" class="chat-input-row">
+          <label for="chat-input" class="visually-hidden">Message</label>
+          <textarea
+            id="chat-input"
+            name="message"
+            rows="2"
+            placeholder="e.g. How should we count PA transactions for issued e-invoices?"
+            autocomplete="off"
+          ></textarea>
+          <button type="submit" class="btn-send" id="chat-send">Send</button>
+        </form>
+      </section>
+
+      <section class="rules-panel panel-surface" aria-label="Extracted rules">
+        <div class="panel-head">
+          <h2>Extracted rules</h2>
+          <p>
+            Fields are populated from JSON payloads embedded in assistant replies (demo: canned
+            extractions per turn). Edit values before sending them to your downstream API.
+          </p>
+        </div>
+        <div class="rules-scroll">
+          <div id="rules-empty" class="rules-empty">
+            No rules extracted yet. Send a message in the chat; when the assistant returns structured
+            data, rule forms will appear here.
+          </div>
+          <div id="rules-list" class="rules-list" hidden></div>
+        </div>
+      </section>
+    </div>
+
+    <div class="analysis-footer">
+      <a href={`/admin/countries/${profile.id}/documents`} class="btn-secondary">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M19 12H5M12 19l-7-7 7-7"/>
+        </svg>
+        Back to Documents
+      </a>
+      {fullAnalysisHref ? (
+        <a href={fullAnalysisHref} class="btn-primary-link">
+          Open full analysis review
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M5 12h14M12 5l7 7-7 7"/>
+          </svg>
+        </a>
+      ) : (
+        <span class="rules-empty" style="padding:0;margin:0;text-align:right;flex:1;font-size:0.78rem">
+          No linked analysis record for this profile yet.
+        </span>
+      )}
+    </div>
+  </div>
+</AdminLayout>
+
+<style is:global>
+  .page-admin-country-ai-analysis .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+</style>
+
+<script>
+  import { initAdminCountryAiAnalysisChat } from '../../../../scripts/admin-country-ai-analysis-chat';
+  initAdminCountryAiAnalysisChat();
+</script>

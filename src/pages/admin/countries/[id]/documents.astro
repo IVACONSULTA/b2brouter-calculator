@@ -158,9 +158,7 @@ if (useLocalDocumentsListing) {
 const clearDocs = documents.filter((d) => d.copyright_status === 'clear' || d.copyright_status === 'restricted');
 const blockedDocs = documents.filter((d) => d.copyright_status === 'blocked');
 
-const analysisHref = profile.analysis_id
-  ? `/admin/analyses/${profile.analysis_id}`
-  : '/admin/analyses';
+const aiAnalysisHref = `/admin/countries/${routeProfileId}/ai-analysis`;
 
 const canUpload = localDocMode || Boolean(apiTarget);
 
@@ -197,14 +195,16 @@ const metaFor = (status: string) =>
       <span class="step-num">2</span> Documents
     </a>
     <div class="step-connector"></div>
-    <span class="step-tab disabled">
+    <a href={aiAnalysisHref} class="step-tab">
       <span class="step-num">3</span> AI Analysis
-    </span>
+    </a>
     <div class="step-connector"></div>
     <span class="step-tab disabled">
       <span class="step-num">4</span> Activate
     </span>
   </div>
+
+
 
   <div class="two-col">
     <!-- Left: existing docs -->
@@ -307,8 +307,16 @@ const metaFor = (status: string) =>
           </tbody>
         </table>
 
+       
         <div class="documents-footer-actions">
-          <a href={analysisHref} class="btn-go-analysis">
+          <a href={`/admin/countries/${profile.id}/setup`} class="btn-secondary">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M19 12H5M12 19l-7-7 7-7"/>
+            </svg>
+            Back to Profile setup
+          </a>
+
+          <a href={aiAnalysisHref} class="btn-go-analysis">
             Go to Analysis
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M5 12h14M12 5l7 7-7 7"/>
