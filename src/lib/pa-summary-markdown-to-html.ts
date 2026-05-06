@@ -3,7 +3,7 @@
  * Handles the common shape: ### headings, **bold**, and * … lists where list items
  * start with * **Plan….
  *
- * Escapes all user/agent text; only emits a fixed set of tags (h3, p, ul, li, strong, br).
+ * Escapes all user/agent text; only emits a fixed set of tags (h3, p, ul, ol, li, strong).
  */
 
 function escapeHtml(text: string): string {
@@ -18,19 +18,11 @@ function escapeHtml(text: string): string {
 /** Turn **segments** into <strong>; every other segment is escaped plain text. */
 export function summaryMarkdownInlineToHtml(text: string): string {
   const parts = text.split(/\*\*/);
-  let html = "";
-  for (let i = 0; i < parts.length; i++) {
-    const chunk = parts[i] ?? "";
-    if (i % 2 === 0) {
-      html += escapeHtml(chunk);
-    } else {
-      const inner = escapeHtml(chunk);
-      if (!inner) continue;
-      const br = html.length > 0 ? "<br />" : "";
-      html += `${br}<strong>${inner}</strong>`;
-    }
-  }
-  return html;
+  return parts
+    .map((chunk, i) =>
+      i % 2 === 0 ? escapeHtml(chunk) : `<strong>${escapeHtml(chunk)}</strong>`,
+    )
+    .join("");
 }
 
 /** Heading line: first word Title-case, optional following words all lowercase (e.g. Top three options). */
@@ -38,9 +30,22 @@ const HEADING_BODY = /^([A-Z][a-z]+(?:\s+[a-z]+)*)\s+([\s\S]+)$/;
 
 const LIST_MARK_BEFORE_BOLD = /\s\*\s+\*\*/;
 
-/**
- * Convert AI summary markdown to a safe HTML fragment (no outer wrapper).
- */
+/** Body starting with "1. …" with further "2. " / "3. " items → ordered list segments. */
+function trySplitNumberedListItems(body: string): string[] | null {
+  const t = body.trim();
+  if (!/^\d+\.\s/.test(t)) return null;
+  const items = t
+    .split(/\s+(?=\d+\.\s)/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return items.length > 0 ? items : null;
+}
+
+/** Remove "1. " / "2. " prefix — `<ol>` supplies markers. */
+function stripLeadingNumberMarker(item: string): string {
+  return item.replace(/^\d+\.\s*/, "").trim();
+}
+
 export function summaryMarkdownToHtml(markdown: string): string {
   const raw = markdown.trim();
   if (!raw) return "";
@@ -52,7 +57,9 @@ export function summaryMarkdownToHtml(markdown: string): string {
     if (!chunk) continue;
 
     if (!chunk.startsWith("###")) {
-      out.push(`<p class="summary-md-p">${summaryMarkdownInlineToHtml(chunk)}</p>`);
+      out.push(
+        `<p class="summary-md-p">${summaryMarkdownInlineToHtml(chunk)}</p>`,
+      );
       continue;
     }
 
@@ -97,9 +104,22 @@ export function summaryMarkdownToHtml(markdown: string): string {
         .join("");
       out.push(`<ul class="summary-md-ul">${lis}</ul>`);
     } else {
-      out.push(
-        `<p class="summary-md-p">${summaryMarkdownInlineToHtml(bodyTrim)}</p>`,
-      );
+      const numberedItems = trySplitNumberedListItems(bodyTrim);
+      if (numberedItems) {
+        const lis = numberedItems
+          .map((item) => stripLeadingNumberMarker(item))
+          .filter(Boolean)
+          .map(
+            (item) =>
+              `<li class="summary-md-li">${summaryMarkdownInlineToHtml(item)}</li>`,
+          )
+          .join("");
+        out.push(`<ol class="summary-md-ol">${lis}</ol>`);
+      } else {
+        out.push(
+          `<p class="summary-md-p">${summaryMarkdownInlineToHtml(bodyTrim)}</p>`,
+        );
+      }
     }
   }
 

@@ -505,10 +505,16 @@
       padding-left: 1.15rem;
       list-style: disc;
     }
+    .summary-text-md .summary-md-ol {
+      margin: 0 0 0.65rem;
+      padding-left: 1.35rem;
+      list-style: decimal;
+    }
     .summary-text-md .summary-md-li { margin-bottom: 0.45rem; }
     .summary-text-md .summary-md-li:last-child { margin-bottom: 0; }
 
-    .summary-text-md .summary-md-ul + .summary-md-p { margin-top: 0.35rem; }
+    .summary-text-md .summary-md-ul + .summary-md-p,
+    .summary-text-md .summary-md-ol + .summary-md-p { margin-top: 0.35rem; }
 
     .summary-text-md > *:last-child {
       margin-bottom: 0;
