@@ -1,0 +1,280 @@
+---
+/** Themed confirm + alert dialogs for scenario deletion (replaces native confirm/alert). */
+---
+
+<div
+  id="pa-scenario-dialog"
+  class="pa-sd"
+  aria-hidden="true"
+  inert
+>
+  <div class="pa-sd__backdrop" data-pa-sd-backdrop></div>
+  <div
+    class="pa-sd__panel"
+    role="alertdialog"
+    aria-modal="true"
+    aria-labelledby="pa-sd-title"
+    aria-describedby="pa-sd-body"
+  >
+    <h2 id="pa-sd-title" class="pa-sd__title">Delete this scenario?</h2>
+    <p id="pa-sd-body" class="pa-sd__body"></p>
+    <div class="pa-sd__footer" id="pa-sd-footer-confirm">
+      <button type="button" class="pa-sd__btn pa-sd__btn--ghost" id="pa-sd-btn-cancel">Cancel</button>
+      <button type="button" class="pa-sd__btn pa-sd__btn--danger" id="pa-sd-btn-delete">Delete</button>
+    </div>
+    <div class="pa-sd__footer pa-sd__footer--single" id="pa-sd-footer-alert" hidden>
+      <button type="button" class="pa-sd__btn pa-sd__btn--primary" id="pa-sd-btn-ok">OK</button>
+    </div>
+  </div>
+</div>
+
+<script is:inline>
+  (function () {
+    var root;
+    var resolveFn;
+
+    function qs(id) {
+      return document.getElementById(id);
+    }
+
+    function show() {
+      root = qs('pa-scenario-dialog');
+      if (!root) return;
+      root.removeAttribute('inert');
+      root.setAttribute('aria-hidden', 'false');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function hide() {
+      if (!root) return;
+      root.setAttribute('aria-hidden', 'true');
+      root.setAttribute('inert', '');
+      document.body.style.overflow = '';
+    }
+
+    function finishConfirm(ok) {
+      hide();
+      if (resolveFn) {
+        resolveFn(ok);
+        resolveFn = null;
+      }
+    }
+
+    function finishAlert() {
+      hide();
+      if (resolveFn) {
+        resolveFn();
+        resolveFn = null;
+      }
+    }
+
+    window.paScenarioDeleteConfirm = function (opts) {
+      opts = opts || {};
+      return new Promise(function (resolve) {
+        root = qs('pa-scenario-dialog');
+        if (!root) {
+          resolve(
+            typeof window.confirm === 'function'
+              ? window.confirm('Delete this scenario permanently? This cannot be undone.')
+              : false,
+          );
+          return;
+        }
+        resolveFn = resolve;
+        root.dataset.mode = 'confirm';
+        qs('pa-sd-title').textContent = 'Delete this scenario?';
+        var name = opts.clientName && String(opts.clientName).trim();
+        qs('pa-sd-body').textContent = name
+          ? '“' + name + '” will be removed permanently. This cannot be undone.'
+          : 'This scenario will be removed permanently. You cannot restore it after deletion.';
+        qs('pa-sd-footer-confirm').hidden = false;
+        qs('pa-sd-footer-alert').hidden = true;
+        show();
+        var delBtn = qs('pa-sd-btn-delete');
+        if (delBtn) delBtn.focus();
+      });
+    };
+
+    window.paScenarioDialogAlert = function (message) {
+      return new Promise(function (resolve) {
+        root = qs('pa-scenario-dialog');
+        if (!root) {
+          if (typeof window.alert === 'function') window.alert(message);
+          resolve();
+          return;
+        }
+        resolveFn = resolve;
+        root.dataset.mode = 'alert';
+        qs('pa-sd-title').textContent = 'Something went wrong';
+        qs('pa-sd-body').textContent = message || 'Please try again.';
+        qs('pa-sd-footer-confirm').hidden = true;
+        qs('pa-sd-footer-alert').hidden = false;
+        show();
+        var okBtn = qs('pa-sd-btn-ok');
+        if (okBtn) okBtn.focus();
+      });
+    };
+
+    document.addEventListener('DOMContentLoaded', function () {
+      root = qs('pa-scenario-dialog');
+      if (!root) return;
+
+      var backdrop = root.querySelector('[data-pa-sd-backdrop]');
+      if (backdrop) {
+        backdrop.addEventListener('click', function () {
+          if (root.dataset.mode === 'confirm') finishConfirm(false);
+        });
+      }
+
+      qs('pa-sd-btn-cancel').addEventListener('click', function () {
+        finishConfirm(false);
+      });
+
+      qs('pa-sd-btn-delete').addEventListener('click', function () {
+        finishConfirm(true);
+      });
+
+      qs('pa-sd-btn-ok').addEventListener('click', function () {
+        finishAlert();
+      });
+
+      document.addEventListener('keydown', function (e) {
+        if (!root || root.getAttribute('aria-hidden') === 'true') return;
+        if (e.key !== 'Escape') return;
+        if (root.dataset.mode === 'alert') finishAlert();
+        else finishConfirm(false);
+      });
+    });
+  })();
+</script>
+
+<style>
+  .pa-sd {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    opacity: 0;
+    visibility: hidden;
+    transition:
+      opacity 0.18s ease,
+      visibility 0.18s ease;
+  }
+
+  .pa-sd[aria-hidden='false'] {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+  }
+
+  .pa-sd[aria-hidden='true'] {
+    pointer-events: none;
+  }
+
+  .pa-sd__backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(25, 42, 61, 0.48);
+    backdrop-filter: blur(4px);
+  }
+
+  .pa-sd__panel {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 420px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-card), 0 24px 48px rgba(34, 56, 101, 0.12);
+    padding: 1.35rem 1.4rem 1.2rem;
+  }
+
+  .pa-sd__title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--color-text);
+    margin-bottom: 0.55rem;
+    letter-spacing: -0.02em;
+    line-height: 1.3;
+  }
+
+  .pa-sd__body {
+    font-size: 0.86rem;
+    line-height: 1.55;
+    color: var(--color-text-muted);
+    margin-bottom: 1.25rem;
+  }
+
+  .pa-sd__footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.55rem;
+    flex-wrap: wrap;
+  }
+
+  .pa-sd__footer--single {
+    justify-content: stretch;
+  }
+
+  .pa-sd__footer--single .pa-sd__btn {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .pa-sd__btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.52rem 1.1rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.84rem;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    border: none;
+    transition:
+      background 0.13s ease,
+      color 0.13s ease,
+      box-shadow 0.13s ease,
+      transform 0.1s ease;
+  }
+
+  .pa-sd__btn:active {
+    transform: translateY(1px);
+  }
+
+  .pa-sd__btn--ghost {
+    background: var(--color-surface-2);
+    color: var(--color-text);
+    border: 1px solid var(--color-border);
+  }
+
+  .pa-sd__btn--ghost:hover {
+    background: var(--color-border);
+    border-color: var(--color-text-muted);
+  }
+
+  .pa-sd__btn--danger {
+    background: #dc2626;
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(220, 38, 38, 0.25);
+  }
+
+  .pa-sd__btn--danger:hover {
+    background: #b91c1c;
+    box-shadow: 0 4px 14px rgba(220, 38, 38, 0.35);
+  }
+
+  .pa-sd__btn--primary {
+    background: var(--color-customer);
+    color: #fff;
+  }
+
+  .pa-sd__btn--primary:hover {
+    background: var(--color-customer-hover);
+  }
+</style>

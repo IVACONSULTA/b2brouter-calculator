@@ -6,6 +6,8 @@ export interface Session {
   name: string;
   /** Present after real Supabase login. Used to authenticate backend API calls. */
   supabaseAccessToken?: string;
+  /** Used server-side to obtain a new access token before JWT expiry (~1h). */
+  supabaseRefreshToken?: string;
   loggedInAt: string;
 }
 

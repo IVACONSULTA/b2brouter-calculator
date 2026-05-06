@@ -2,5 +2,11 @@
   publish = "dist"
   command = "npm run build"
 
+# Real auth on Netlify requires these in Site settings → Environment variables
+# (scope to Production + Previews / “All scopes”):
+#   SUPABASE_URL, SUPABASE_ANON_KEY (optional: PUBLIC_SUPABASE_URL / PUBLIC_SUPABASE_ANON_KEY),
+#   API_BASE_URL, SESSION_SECRET, PA_PLAN_API_KEY (if API gated)
+# Dummy password-less login is disabled in production builds — only Supabase sign-in runs.
+
 [build.environment]
   NODE_VERSION = "22"

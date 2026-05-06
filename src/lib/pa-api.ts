@@ -2,8 +2,45 @@
 
 import type { Session } from './session';
 
+/**
+ * Base URL for Plan Advisor (no trailing slash).
+ * `0.0.0.0` is only valid for **binding** a server; outbound HTTP clients must use loopback.
+ */
 export function planAdvisorApiBase(): string {
-  return (import.meta.env.API_BASE_URL ?? '').trim().replace(/\/$/, '');
+  const base = (import.meta.env.API_BASE_URL ?? '').trim().replace(/\/$/, '');
+  if (!base) return '';
+  // `0.0.0.0` is valid for binding a server, not as an outbound HTTP target from Node/fetch.
+  return base.replace(/\b0\.0\.0\.0\b/g, '127.0.0.1');
+}
+
+/** Shared secret for Plan Advisor API (Railway `PA_PLAN_API_KEY`). Sent as `X-API-Key` when set. */
+export function planAdvisorApiKey(): string {
+  return (import.meta.env.PA_PLAN_API_KEY ?? '').trim();
+}
+
+function headersInitToRecord(init?: HeadersInit): Record<string, string> {
+  if (!init) return {};
+  if (init instanceof Headers) {
+    const o: Record<string, string> = {};
+    init.forEach((v, k) => {
+      o[k] = v;
+    });
+    return o;
+  }
+  if (Array.isArray(init)) {
+    return Object.fromEntries(init);
+  }
+  return { ...init };
+}
+
+export function paAuthHeaders(token: string, extra?: HeadersInit): Record<string, string> {
+  const key = planAdvisorApiKey();
+  return {
+    ...headersInitToRecord(extra),
+    Authorization: `Bearer ${token}`,
+    Accept: 'application/json',
+    ...(key ? { 'X-API-Key': key } : {}),
+  };
 }
 
 /** True when we can attempt authenticated backend calls after Supabase login. */
@@ -24,6 +61,20 @@ export function paApiAbsoluteUrl(apiPath: string): string | null {
   return `${base}/api${suffix}`;
 }
 
+/** POST target for AI summary — same rules as `paApiAbsoluteUrl`. */
+export function paScenarioGenerateSummaryUrl(scenarioId: string): string | null {
+  return paApiAbsoluteUrl(`/scenarios/${encodeURIComponent(scenarioId)}/generate-summary`);
+}
+
+/**
+ * Same-origin Astro BFF for summary generation. Browser POSTs here; the route handler uses
+ * `paFetchJson('/scenarios/:id/generate-summary', …)` — same Plan Advisor path as
+ * `paScenarioGenerateSummaryUrl`, with cookies → Bearer handled server-side.
+ */
+export function paScenarioGenerateSummaryProxyPath(scenarioId: string): string {
+  return `/api/pa/scenarios/${encodeURIComponent(scenarioId)}/generate-summary`;
+}
+
 export type PaOk<T> =
   | { ok: true; status: number; data: T }
   | { ok: false; status: number; error: unknown };
@@ -42,9 +93,7 @@ export async function paFetchJson<T>(
     const res = await fetch(url, {
       ...init,
       headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/json',
-        ...(init?.headers as Record<string, string>),
+        ...paAuthHeaders(token, init?.headers),
       },
     });
 

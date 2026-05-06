@@ -4,8 +4,10 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "astro dev",
+    "dev": "cross-env NETLIFY_DEV=1 astro dev",
     "seed:users": "node --env-file=.env scripts/seed-local-users.mjs",
+    "sync:auth:prod-to-local": "node --env-file=.env scripts/sync-prod-auth-to-local.mjs",
+    "auth:set-local-passwords": "node --env-file=.env scripts/set-local-user-passwords.mjs",
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro"
@@ -23,11 +25,21 @@
   },
   "homepage": "https://github.com/IVACONSULTA/b2brouter-calculator#readme",
   "dependencies": {
+    "@astrojs/check": "^0.9.9",
     "@astrojs/netlify": "^7.0.8",
     "@astrojs/node": "^10.0.6",
+    "@astrojs/react": "^5.0.4",
     "@supabase/supabase-js": "^2.104.1",
     "@tailwindcss/vite": "^4.2.4",
     "astro": "^6.1.9",
-    "tailwindcss": "^4.2.4"
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "tailwindcss": "^4.2.4",
+    "typescript": "^5.9.3"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "cross-env": "^7.0.3"
   }
 }

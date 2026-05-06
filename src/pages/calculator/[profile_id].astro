@@ -1,16 +1,28 @@
 ---
 import UserLayout from '../../layouts/UserLayout.astro';
+import '../../styles/pages/calculator-profile.css';
 import { getSession, isAdminRole } from '../../lib/session';
-import { canUsePlanAdvisorApi, paFetchJson } from '../../lib/pa-api';
+import { paFetchJson } from '../../lib/pa-api';
+import { getFreshSupabaseAccessToken } from '../../lib/supabase-session';
 import {
   DUMMY_PROFILES,
   DUMMY_ACTIVE_RULES,
   DUMMY_SCENARIO_RESULT,
 } from '../../lib/dummy-data';
+import {
+  buildRuleDisplayGroups,
+  type CalcRuleRow,
+} from '../../lib/calculator-rule-groups';
 
 const session = getSession(Astro.cookies);
 if (!session) return Astro.redirect('/customer/login');
 if (isAdminRole(session.role)) return Astro.redirect('/admin/dashboard');
+
+let paToken: string | null = null;
+if (session.supabaseAccessToken?.trim()) {
+  const fresh = await getFreshSupabaseAccessToken(Astro.cookies);
+  if (fresh.ok) paToken = fresh.accessToken;
+}
 
 const { profile_id } = Astro.params;
 
@@ -35,7 +47,9 @@ type ApiProfile = {
   }>;
 };
 
-const liveApi = canUsePlanAdvisorApi(session) && !!session.supabaseAccessToken;
+const liveApi =
+  !!paToken &&
+  (import.meta.env.API_BASE_URL ?? '').trim().length > 0;
 
 let profile:
   | {
@@ -48,14 +62,7 @@ let profile:
   | undefined;
 
 let calculationBasis = 'PA transactions';
-let rules: Array<{
-  input_key: string;
-  label: string;
-  direction: string;
-  obligation: string;
-  pa_transactions_per_item: number;
-  placeholder: number;
-}> = [];
+let rules: CalcRuleRow[] = [];
 
 let dummyResult = DUMMY_SCENARIO_RESULT;
 let showDummyResults = true;
@@ -63,27 +70,39 @@ let useProxyCalculate = false;
 /** Client-visible AI summary toggle from Plan Advisor `/api/me` (ignored for internal users). */
 let clientSummaryFromApi = true;
 
-if (liveApi && session.supabaseAccessToken && profile_id) {
-  const tok = session.supabaseAccessToken;
+/** Client name default: companies.name via `/me` when API is available. */
+let defaultClientName = 'Acme Corp';
 
+if (liveApi && paToken && profile_id) {
   const me = await paFetchJson<{
     full_name?: string | null;
     email?: string;
     company_name?: string | null;
     client_summary_enabled?: boolean;
-  }>('/me', tok);
-  if (me.ok) {
+  }>('/me', paToken);
+  if (me.ok && me.data) {
+    const md = me.data;
+    const fromCompany = md.company_name?.trim();
+    const fromPerson = md.full_name?.trim();
+    const fromEmail = (md.email?.split('@')[0] ?? '').trim();
+    if (fromCompany) {
+      defaultClientName = fromCompany;
+    } else if (fromPerson || fromEmail) {
+      defaultClientName = (fromPerson || fromEmail)!;
+    } else if (session.name?.trim()) {
+      defaultClientName = session.name.trim();
+    }
     paViewer = {
       displayName:
-        (me.data.full_name?.trim() || me.data.email || session.name)?.trim() || session.name,
-      subtitle: [me.data.email, me.data.company_name].filter(Boolean).join(' · '),
+        (md.full_name?.trim() || md.email || session.name)?.trim() || session.name,
+      subtitle: [md.email, md.company_name].filter(Boolean).join(' · '),
     };
-    if (me.data.client_summary_enabled === false) {
+    if (md.client_summary_enabled === false) {
       clientSummaryFromApi = false;
     }
   }
 
-  const loaded = await paFetchJson<ApiProfile>(`/calculator/profile/${profile_id}`, tok);
+  const loaded = await paFetchJson<ApiProfile>(`/calculator/profile/${profile_id}`, paToken);
   if (loaded.ok && loaded.data) {
     useProxyCalculate = true;
     showDummyResults = false;
@@ -107,6 +126,7 @@ if (liveApi && session.supabaseAccessToken && profile_id) {
       label: inp.label,
       direction: inp.direction ?? '—',
       obligation: inp.obligation ?? '—',
+      operation_group: String(inp.operation_group ?? '').trim(),
       pa_transactions_per_item: Number(inp.pa_transactions_per_item ?? 0),
       placeholder: 0,
     }));
@@ -133,6 +153,7 @@ if (!profile) {
       label: r.label,
       direction: r.direction,
       obligation: r.obligation,
+      operation_group: r.operation_group ?? '',
       pa_transactions_per_item: r.pa_transactions_per_item,
       placeholder: Number(
         (dummyResult.inputs as Record<string, number>)[r.input_key] ?? r.placeholder ?? 0,
@@ -144,6 +165,8 @@ if (!profile) {
 if (!profile) {
   return Astro.redirect('/countries');
 }
+
+const displayGroups = buildRuleDisplayGroups(rules);
 
 const canGenerateSummary = session.role === 'internal';
 const showSummaryBtn =
@@ -160,7 +183,8 @@ const showSummaryBtn =
     { label: `${profile.country.name} / ${profile.provider.name}` },
   ]}
 >
-  <div class="profile-header">
+  <div class="page-calculator-profile">
+  <div class="calc-profile-header">
     <div class="ph-info">
       <div class="ph-flag">
         <span class="ph-code">{profile.country.code}</span>
@@ -192,44 +216,56 @@ const showSummaryBtn =
             name="client_name"
             class="field-input"
             placeholder="e.g. Acme Corp"
-            value="Acme Corp"
+            value={defaultClientName}
             required
           />
-          <p class="field-hint">Used to identify this scenario in your history.</p>
+          <p class="field-hint">
+            Pre-filled from your company when available (Plan Advisor profile). You can edit before saving.
+          </p>
         </div>
 
         <div class="rules-section">
           <h3 class="rules-heading">Transaction inputs</h3>
           <div class="rules-grid">
-            {rules.map((rule) => (
-              <div class="rule-input-card" data-key={rule.input_key}>
-                <div class="rule-card-top">
-                  <div class="rule-badges">
-                    <span class={`dir-badge ${rule.direction === 'Issued' ? 'dir-issued' : 'dir-received'}`}>
-                      {rule.direction}
-                    </span>
-                    <span class="obl-badge">{rule.obligation}</span>
+            {displayGroups.map((g, idx) => {
+              const lead = g.rules[0];
+              return (
+                <div
+                  class="rule-input-card"
+                  data-group-keys={g.input_keys.join(',')}
+                  data-display-label={g.displayLabel}
+                >
+                  <div class="rule-card-top">
+                    <div class="rule-badges">
+                      <span class={`dir-badge ${lead.direction === 'Issued' ? 'dir-issued' : 'dir-received'}`}>
+                        {lead.direction}
+                      </span>
+                      <span class="obl-badge">{lead.obligation}</span>
+                    </div>
+                    <span class="mult-hint">{g.multiplierHint}</span>
                   </div>
-                  <span class="mult-hint">×{rule.pa_transactions_per_item} PA</span>
+                  <label class="field-label" for={`input-group-${idx}`}>
+                    {g.displayLabel}
+                  </label>
+                  {g.rules.length > 1 &&
+                    new Set(g.rules.map((r) => r.label)).size > 1 && (
+                    <p class="group-rule-labels">{g.rules.map((r) => r.label).join(' · ')}</p>
+                  )}
+                  <div class="number-wrap">
+                    <input
+                      type="number"
+                      id={`input-group-${idx}`}
+                      class="field-input number-input group-volume-input"
+                      min="0"
+                      step="1"
+                      placeholder="0"
+                      value={g.placeholder}
+                    />
+                    <span class="unit-label">/ year</span>
+                  </div>
                 </div>
-                <label class="field-label" for={`input-${rule.input_key}`}>
-                  {rule.label}
-                </label>
-                <div class="number-wrap">
-                  <input
-                    type="number"
-                    id={`input-${rule.input_key}`}
-                    name={rule.input_key}
-                    class="field-input number-input"
-                    min="0"
-                    step="100"
-                    placeholder="0"
-                    value={rule.placeholder}
-                  />
-                  <span class="unit-label">/ year</span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
@@ -351,6 +387,7 @@ const showSummaryBtn =
       </section>
     )}
   </div>
+  </div>
 </UserLayout>
 
 <script>
@@ -376,10 +413,26 @@ const showSummaryBtn =
       const fd = new FormData(form);
       const client_name = String(fd.get('client_name') ?? '').trim();
       const inputs: Record<string, number> = {};
-      for (const [k, v] of fd.entries()) {
-        if (k === 'client_name') continue;
-        inputs[k] = Number(v) || 0;
-      }
+      const calculator_form: {
+        groups: Array<{ display_label: string; input_keys: string[] }>;
+      } = { groups: [] };
+
+      form.querySelectorAll<HTMLElement>('[data-group-keys]').forEach((card) => {
+        const raw = card.getAttribute('data-group-keys') ?? '';
+        const keys = raw
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean);
+        const volEl = card.querySelector<HTMLInputElement>('.group-volume-input');
+        const vol = volEl ? Number(volEl.value) || 0 : 0;
+        const display_label = String(card.getAttribute('data-display-label') ?? '').trim();
+        if (display_label && keys.length) {
+          calculator_form.groups.push({ display_label, input_keys: keys });
+        }
+        for (const k of keys) {
+          inputs[k] = vol;
+        }
+      });
 
       const btn = document.getElementById('btn-calc') as HTMLButtonElement | null;
       if (btn) {
@@ -392,7 +445,12 @@ const showSummaryBtn =
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'same-origin',
-          body: JSON.stringify({ profile_id: profileId, client_name, inputs }),
+          body: JSON.stringify({
+            profile_id: profileId,
+            client_name,
+            inputs,
+            calculator_form,
+          }),
         });
         const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
         if (!res.ok) {
@@ -422,400 +480,3 @@ const showSummaryBtn =
     });
   });
 </script>
-
-<style>
-  .live-hint {
-    font-size: 0.75rem;
-    color: var(--color-text-muted);
-    margin-top: 0.5rem;
-  }
-
-  .results-placeholder .live-copy {
-    font-size: 0.85rem;
-    color: var(--color-text-muted);
-    line-height: 1.55;
-    max-width: 420px;
-  }
-
-  .results-placeholder .live-muted {
-    margin-top: 0.85rem;
-    font-size: 0.78rem;
-    color: var(--color-text-muted);
-    font-style: italic;
-  }
-
-  /* Profile header */
-  .profile-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius);
-    padding: 1rem 1.25rem;
-    margin-bottom: 1.25rem;
-    gap: 1rem;
-  }
-
-  .ph-flag { display: flex; align-items: center; gap: 0.85rem; }
-
-  .ph-code {
-    font-size: 0.8rem;
-    font-weight: 800;
-    color: var(--color-customer);
-    background: var(--color-customer-soft);
-    border-radius: 7px;
-    padding: 0.35rem 0.6rem;
-    letter-spacing: 0.05em;
-  }
-
-  .ph-country {
-    font-size: 0.92rem;
-    font-weight: 700;
-    color: var(--color-text);
-    margin-bottom: 0.15rem;
-  }
-
-  .ph-meta { font-size: 0.75rem; color: var(--color-text-muted); }
-
-  .active-badge {
-    font-size: 0.7rem;
-    font-weight: 700;
-    background: var(--color-success-soft);
-    color: var(--color-success);
-    padding: 0.25rem 0.65rem;
-    border-radius: 100px;
-    white-space: nowrap;
-    flex-shrink: 0;
-  }
-
-  .calc-layout {
-    display: grid;
-    grid-template-columns: 420px 1fr;
-    gap: 1.25rem;
-    align-items: start;
-  }
-
-  @media (max-width: 1100px) {
-    .calc-layout { grid-template-columns: 1fr; }
-  }
-
-  .calc-form-wrap {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius);
-    padding: 1.25rem;
-    position: sticky;
-    top: 1rem;
-  }
-
-  .form-header { margin-bottom: 1.25rem; }
-
-  .form-title {
-    font-size: 0.95rem;
-    font-weight: 700;
-    color: var(--color-text);
-    margin-bottom: 0.35rem;
-  }
-
-  .form-sub {
-    font-size: 0.78rem;
-    color: var(--color-text-muted);
-    line-height: 1.5;
-  }
-
-  .form-field { margin-bottom: 1rem; }
-
-  .field-label {
-    display: block;
-    font-size: 0.78rem;
-    font-weight: 600;
-    color: var(--color-text);
-    margin-bottom: 0.35rem;
-  }
-
-  .req { color: #ef4444; }
-
-  .field-input {
-    width: 100%;
-    background: var(--color-surface-2);
-    border: 1px solid var(--color-border);
-    border-radius: 7px;
-    padding: 0.55rem 0.75rem;
-    font-size: 0.85rem;
-    color: var(--color-text);
-    font-family: inherit;
-    outline: none;
-    box-sizing: border-box;
-    transition: border-color 0.13s;
-  }
-
-  .field-input:focus {
-    border-color: var(--color-customer);
-    box-shadow: 0 0 0 2px var(--color-success-soft);
-  }
-
-  .field-hint {
-    font-size: 0.72rem;
-    color: var(--color-text-muted);
-    margin-top: 0.3rem;
-  }
-
-  .rules-section { margin-bottom: 1.25rem; }
-
-  .rules-heading {
-    font-size: 0.78rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--color-text-muted);
-    margin-bottom: 0.75rem;
-    padding-bottom: 0.4rem;
-    border-bottom: 1px solid var(--color-border);
-  }
-
-  .rules-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 0.65rem;
-  }
-
-  .rule-input-card {
-    background: var(--color-surface-2);
-    border: 1px solid var(--color-border);
-    border-radius: 9px;
-    padding: 0.75rem;
-  }
-
-  .rule-card-top {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 0.5rem;
-  }
-
-  .rule-badges { display: flex; gap: 0.35rem; }
-
-  .dir-badge, .obl-badge, .dir-mini, .obl-mini {
-    font-size: 0.62rem;
-    font-weight: 700;
-    border-radius: 4px;
-    padding: 0.1rem 0.35rem;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-  }
-
-  .dir-issued   { background: rgba(88,119,152,.12); color: var(--color-admin); }
-  .dir-received { background: rgba(168,85,247,.12); color: #a855f7; }
-  .obl-badge    { background: var(--color-surface); color: var(--color-text-muted); border: 1px solid var(--color-border); }
-  .dir-mini     { font-size: 0.58rem; }
-  .obl-mini     { font-size: 0.58rem; background: var(--color-surface-2); color: var(--color-text-muted); }
-
-  .mult-hint {
-    font-size: 0.7rem;
-    font-weight: 700;
-    color: var(--color-customer);
-    background: var(--color-customer-soft);
-    padding: 0.1rem 0.4rem;
-    border-radius: 4px;
-    font-family: 'SF Mono', ui-monospace, monospace;
-  }
-
-  .number-wrap {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-
-  .number-input { flex: 1; }
-
-  .unit-label {
-    font-size: 0.72rem;
-    color: var(--color-text-muted);
-    white-space: nowrap;
-    flex-shrink: 0;
-  }
-
-  .form-actions {
-    display: flex;
-    gap: 0.6rem;
-    align-items: center;
-    flex-wrap: wrap;
-  }
-
-  .btn-calculate {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.65rem 1.25rem;
-    background: var(--color-customer);
-    color: #fff;
-    border: none;
-    border-radius: 9px;
-    font-size: 0.88rem;
-    font-weight: 700;
-    cursor: pointer;
-    transition: all 0.13s;
-    font-family: inherit;
-    flex: 1;
-    justify-content: center;
-  }
-
-  .btn-calculate:hover {
-    background: var(--color-customer-hover);
-    box-shadow: 0 4px 18px rgba(29,111,92,.35);
-    transform: translateY(-1px);
-  }
-
-  .btn-reset {
-    padding: 0.65rem 0.9rem;
-    background: none;
-    border: 1px solid var(--color-border);
-    border-radius: 9px;
-    font-size: 0.82rem;
-    color: var(--color-text-muted);
-    cursor: pointer;
-    font-family: inherit;
-    transition: all 0.13s;
-  }
-
-  .btn-reset:hover { background: var(--color-surface-2); color: var(--color-text); }
-
-  .results-panel {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius);
-    padding: 1.25rem;
-    display: flex;
-    flex-direction: column;
-    gap: 1.25rem;
-  }
-
-  .results-placeholder { min-height: 120px; }
-
-  .results-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding-bottom: 0.75rem;
-    border-bottom: 1px solid var(--color-border);
-  }
-
-  .results-title {
-    font-size: 0.95rem;
-    font-weight: 700;
-    color: var(--color-text);
-  }
-
-  .results-client {
-    font-size: 0.78rem;
-    color: var(--color-text-muted);
-    background: var(--color-surface-2);
-    border-radius: 6px;
-    padding: 0.2rem 0.55rem;
-  }
-
-  .block-title {
-    font-size: 0.78rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--color-text-muted);
-    margin-bottom: 0.65rem;
-  }
-
-  .result-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.82rem;
-  }
-
-  .result-table th {
-    padding: 0.5rem 0.75rem;
-    text-align: left;
-    font-size: 0.68rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--color-text-muted);
-    background: var(--color-surface-2);
-    border-bottom: 1px solid var(--color-border);
-  }
-
-  .result-table th.num, .result-table td.num { text-align: right; }
-
-  .result-table td {
-    padding: 0.65rem 0.75rem;
-    border-bottom: 1px solid var(--color-border);
-    color: var(--color-text);
-    vertical-align: middle;
-  }
-
-  .result-table tbody tr:last-child td { border-bottom: 1px solid var(--color-border); }
-  .breakdown-label { display: flex; flex-direction: column; gap: 0.3rem; }
-  .breakdown-text  { font-size: 0.82rem; font-weight: 500; }
-  .breakdown-tags  { display: flex; gap: 0.3rem; }
-
-  .multiplier {
-    font-family: 'SF Mono', ui-monospace, monospace;
-    font-size: 0.78rem;
-    font-weight: 700;
-    color: var(--color-customer);
-    background: var(--color-customer-soft);
-    padding: 0.1rem 0.35rem;
-    border-radius: 4px;
-  }
-
-  .muted  { color: var(--color-text-muted); }
-  .strong { font-weight: 700; }
-
-  .total-row td {
-    background: var(--color-surface-2);
-    padding: 0.6rem 0.75rem;
-    border-bottom: none;
-  }
-
-  .total-label {
-    font-size: 0.78rem;
-    font-weight: 700;
-    color: var(--color-text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-  }
-
-  .total-val {
-    font-size: 1rem;
-    font-weight: 800;
-    color: var(--color-text);
-    text-align: right;
-  }
-
-  .plan-row td { background: transparent; }
-  .plan-recommended td {
-    background: rgba(29,111,92,.04);
-    border-color: var(--color-success-soft);
-  }
-
-  .plan-name-cell {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-
-  .rec-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    font-size: 0.62rem;
-    font-weight: 700;
-    background: var(--color-success-soft);
-    color: var(--color-success);
-    padding: 0.12rem 0.4rem;
-    border-radius: 4px;
-    white-space: nowrap;
-  }
-
-  .plan-name { font-weight: 500; }
-  .plan-name.rec { font-weight: 700; color: var(--color-text); }
-  .rec-cost { color: var(--color-success); font-size: 0.9rem; }
-</style>

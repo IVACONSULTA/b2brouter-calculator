@@ -1,6 +1,8 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import { getSession, isAdminRole, canAccessUserPortal } from '../lib/session';
+import { isDemoAuthMode } from '../lib/supabase';
+import '../styles/pages/login.css';
 
 const session = getSession(Astro.cookies);
 const from = Astro.url.searchParams.get('from') ?? '';
@@ -18,7 +20,10 @@ if (session) {
 }
 
 const errorMessages: Record<string, string> = {
-  invalid_credentials: 'Incorrect email or password. Please try again.',
+  invalid_credentials:
+    'Incorrect email or password, or no user in this Supabase project. Use Dashboard → Authentication to add or reset the user; locally run npm run seed:users if needed.',
+  email_not_confirmed:
+    'Confirm your email (check inbox), or change email confirmation under Supabase Auth settings.',
   missing_fields: 'Please enter your email and password.',
   session_expired: 'Your session has expired. Please sign in again.',
   unauthorized: 'You do not have access to that page.',
@@ -32,13 +37,12 @@ const errorMessages: Record<string, string> = {
 const errorKey = Astro.url.searchParams.get('error') ?? '';
 const errorMsg = errorMessages[errorKey] ?? '';
 
-// Demo mode hint: shown when SUPABASE_URL is still the placeholder
-const isDemoMode = import.meta.env.SUPABASE_URL === 'https://placeholder.supabase.co' ||
-                   !import.meta.env.SUPABASE_URL;
+// Dummy shortcut UI only in local dev when Supabase URL is missing / placeholder.
+const isDemoMode = isDemoAuthMode();
 ---
 
-<Layout title="Sign In — PA Plan Advisor">
-  <main class="login-page">
+<Layout title="Sign in">
+  <main class="page-login login-page">
     <div class="login-card">
 
       <!-- Brand -->
@@ -110,12 +114,12 @@ const isDemoMode = import.meta.env.SUPABASE_URL === 'https://placeholder.supabas
         </div>
 
         <button type="submit" class="btn-submit" id="btn-submit">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
             <polyline points="10 17 15 12 10 7"/>
             <line x1="15" y1="12" x2="3" y2="12"/>
           </svg>
-          Sign in
+          <span class="btn-submit-text">Sign in</span>
         </button>
       </form>
 
@@ -160,246 +164,9 @@ const isDemoMode = import.meta.env.SUPABASE_URL === 'https://placeholder.supabas
   // Show loading state on submit
   document.getElementById('login-form')?.addEventListener('submit', () => {
     const btn = document.getElementById('btn-submit') as HTMLButtonElement;
-    btn.textContent = 'Signing in…';
+    const label = btn.querySelector('.btn-submit-text');
+    if (label) label.textContent = 'Signing in…';
     btn.disabled = true;
   });
 </script>
 
-<style>
-  .login-page {
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 2rem;
-    background:
-      radial-gradient(ellipse at 30% 10%, rgba(88,119,152,.08) 0%, transparent 50%),
-      radial-gradient(ellipse at 75% 85%, rgba(29,111,92,.06) 0%, transparent 50%);
-  }
-
-  .login-card {
-    width: 100%;
-    max-width: 420px;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius);
-    padding: 2.25rem 2.5rem;
-  }
-
-  /* Brand */
-  .brand {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    margin-bottom: 1.5rem;
-  }
-
-  .brand-icon {
-    width: 48px;
-    height: 48px;
-    border-radius: 12px;
-    background: var(--color-admin-soft);
-    color: var(--color-admin);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-  }
-
-  .brand h1 {
-    font-size: 1.2rem;
-    font-weight: 800;
-    letter-spacing: -0.02em;
-    color: var(--color-text);
-    margin-bottom: 0.15rem;
-  }
-
-  .brand p {
-    font-size: 0.82rem;
-    color: var(--color-text-muted);
-  }
-
-  .divider {
-    height: 1px;
-    background: var(--color-border);
-    margin-bottom: 1.25rem;
-  }
-
-  /* Banners */
-  .demo-banner,
-  .error-banner {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.6rem;
-    border-radius: 8px;
-    padding: 0.7rem 0.9rem;
-    margin-bottom: 1.1rem;
-    font-size: 0.8rem;
-    line-height: 1.5;
-  }
-
-  .demo-banner {
-    background: rgba(245,158,11,.07);
-    border: 1px solid rgba(245,158,11,.2);
-    color: #fbbf24;
-  }
-
-  .error-banner {
-    background: rgba(239,68,68,.07);
-    border: 1px solid rgba(239,68,68,.2);
-    color: #f87171;
-  }
-
-  .demo-banner svg, .error-banner svg { flex-shrink: 0; margin-top: 1px; }
-
-  /* Form */
-  .login-form {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-  }
-
-  .field {
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-  }
-
-  .field label {
-    font-size: 0.78rem;
-    font-weight: 600;
-    color: var(--color-text-muted);
-  }
-
-  .field input {
-    padding: 0.65rem 0.9rem;
-    background: var(--color-surface-2);
-    border: 1px solid var(--color-border);
-    border-radius: 8px;
-    color: var(--color-text);
-    font-size: 0.88rem;
-    font-family: inherit;
-    outline: none;
-    transition: border-color 0.13s, box-shadow 0.13s;
-  }
-
-  .field input:focus {
-    border-color: var(--color-admin);
-    box-shadow: 0 0 0 2px rgba(88,119,152,.15);
-  }
-
-  .field input::placeholder { color: var(--color-text-muted); opacity: 0.6; }
-
-  .btn-submit {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
-    width: 100%;
-    padding: 0.8rem 1.5rem;
-    background: var(--color-admin);
-    color: #fff;
-    border: none;
-    border-radius: 9px;
-    font-size: 0.92rem;
-    font-weight: 700;
-    cursor: pointer;
-    font-family: inherit;
-    transition: all 0.15s ease;
-    margin-top: 0.25rem;
-  }
-
-  .btn-submit:hover:not(:disabled) {
-    background: var(--color-admin-hover);
-    transform: translateY(-1px);
-    box-shadow: 0 6px 20px rgba(88,119,152,.3);
-  }
-
-  .btn-submit:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-    transform: none;
-  }
-
-  /* Demo accounts */
-  .demo-accounts {
-    margin-top: 1.25rem;
-    padding-top: 1.1rem;
-    border-top: 1px solid var(--color-border);
-  }
-
-  .demo-accounts-title {
-    font-size: 0.7rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--color-text-muted);
-    margin-bottom: 0.65rem;
-  }
-
-  .demo-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-  }
-
-  .demo-btn {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    width: 100%;
-    padding: 0.5rem 0.75rem;
-    background: var(--color-surface-2);
-    border: 1px solid var(--color-border);
-    border-radius: 7px;
-    cursor: pointer;
-    font-family: inherit;
-    text-align: left;
-    transition: all 0.13s;
-  }
-
-  .demo-btn:hover {
-    background: var(--color-surface);
-    border-color: var(--color-admin);
-  }
-
-  .demo-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
-
-  .dot-admin    { background: var(--color-admin); }
-  .dot-internal { background: var(--color-admin); }
-  .dot-client   { background: var(--color-customer); }
-
-  .demo-email {
-    font-size: 0.78rem;
-    color: var(--color-text);
-    flex: 1;
-  }
-
-  .demo-role {
-    font-size: 0.65rem;
-    font-weight: 700;
-    color: var(--color-text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-  }
-
-  /* Back link */
-  .back-link {
-    margin-top: 1.25rem;
-    text-align: center;
-  }
-
-  .back-link a {
-    font-size: 0.8rem;
-    color: var(--color-text-muted);
-    transition: color 0.13s;
-  }
-
-  .back-link a:hover { color: var(--color-text); }
-</style>

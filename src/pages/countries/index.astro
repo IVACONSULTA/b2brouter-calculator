@@ -1,12 +1,20 @@
 ---
 import AdminLayout from '../../layouts/AdminLayout.astro';
 import UserLayout from '../../layouts/UserLayout.astro';
-import { getSession, isAdminRole } from '../../lib/session';
-import { canUsePlanAdvisorApi, paFetchJson } from '../../lib/pa-api';
+import { getSession } from '../../lib/session';
+import { paFetchJson } from '../../lib/pa-api';
+import { getFreshSupabaseAccessToken } from '../../lib/supabase-session';
 import { DUMMY_PROFILES, DUMMY_ACTIVE_PROFILES } from '../../lib/dummy-data';
+import '../../styles/pages/countries.css';
 
 const session = getSession(Astro.cookies);
 if (!session) return Astro.redirect('/');
+
+let paToken: string | null = null;
+if (session.supabaseAccessToken?.trim()) {
+  const fresh = await getFreshSupabaseAccessToken(Astro.cookies);
+  if (fresh.ok) paToken = fresh.accessToken;
+}
 
 const isAdmin    = session.role === 'admin';
 const isInternal = session.role === 'internal';
@@ -14,23 +22,102 @@ const isInternal = session.role === 'internal';
 type PaViewer = { displayName: string; subtitle: string };
 let paViewer: PaViewer | null = null;
 let paNotice: string | null = null;
+let adminNotice: string | null = null;
 
-type AvailRow = {
-  profile_id: string;
-  country_code?: string | null;
-  country_name?: string | null;
-  provider_name?: string | null;
-  provider_type?: string | null;
-  version?: string | null;
-  currency?: string | null;
+type AdminProfileApiRow = {
+  id: string;
+  version: string;
+  status: string;
+  currency: string;
   active_from?: string | null;
+  created_at: string;
+  country_code: string;
+  country_name: string;
+  provider_name: string;
+  provider_type?: string | null;
   rules_count?: number | null;
   plans_count?: number | null;
 };
 
+type CountryApiRow = { id: string; code: string; name: string };
+type ProviderApiRow = { id: string; name: string; type: string };
+
+const PROFILE_STATUSES = new Set(['draft', 'pending_approval', 'active', 'archived']);
+
+function isoDateOnly(v: unknown): string | null {
+  if (v == null) return null;
+  if (typeof v === 'string' && v.length) {
+    return v.length >= 10 ? v.slice(0, 10) : v;
+  }
+  return null;
+}
+
+function mapAdminProfileRow(row: AdminProfileApiRow): (typeof DUMMY_PROFILES)[number] {
+  const st = row.status;
+  const status = PROFILE_STATUSES.has(st)
+    ? (st as (typeof DUMMY_PROFILES)[number]['status'])
+    : 'draft';
+
+  return {
+    id: String(row.id),
+    country: {
+      code: row.country_code ?? '—',
+      name: row.country_name ?? '',
+    },
+    provider: {
+      name: row.provider_name ?? '',
+      type: row.provider_type ?? '',
+    },
+    version: String(row.version ?? ''),
+    currency: String(row.currency ?? 'EUR'),
+    status,
+    active_from: isoDateOnly(row.active_from),
+    created_at: isoDateOnly(row.created_at) ?? '',
+    rules_count: Number(row.rules_count ?? 0),
+    plans_count: Number(row.plans_count ?? 0),
+    analysis_id: null,
+  };
+}
+
 let activeProfiles = DUMMY_ACTIVE_PROFILES;
 
-const profiles = DUMMY_PROFILES;
+let profiles = DUMMY_PROFILES;
+/** When true, active profiles are loaded in the browser via `GET /api/pa/available-countries` (visible in DevTools) which proxies to Plan Advisor. */
+let loadActiveProfilesInBrowser = false;
+
+if (isAdmin) {
+  const base = (import.meta.env.API_BASE_URL ?? '').trim();
+
+  if (!base) {
+    adminNotice =
+      'Set API_BASE_URL (and PA_PLAN_API_KEY when the API enforces it) to load profiles, countries, and providers from Plan Advisor.';
+  } else if (!session.supabaseAccessToken?.trim()) {
+    adminNotice =
+      'Sign in with Supabase so this app can send a Bearer token to Plan Advisor and load catalog data.';
+  } else if (!paToken) {
+    adminNotice =
+      'Session expired. Please sign out and sign in again so a fresh Supabase token is stored.';
+  } else {
+    const [pr, cRes, pRes] = await Promise.all([
+      paFetchJson<AdminProfileApiRow[]>('/admin/profiles', paToken),
+      paFetchJson<CountryApiRow[]>('/countries', paToken),
+      paFetchJson<ProviderApiRow[]>('/providers', paToken),
+    ]);
+
+    const failed: string[] = [];
+    if (pr.ok) {
+      profiles = pr.data.map(mapAdminProfileRow);
+    } else {
+      failed.push(`profiles (HTTP ${pr.status})`);
+    }
+    if (!cRes.ok) failed.push(`countries (HTTP ${cRes.status})`);
+    if (!pRes.ok) failed.push(`providers (HTTP ${pRes.status})`);
+
+    if (failed.length) {
+      adminNotice = `Plan Advisor: could not load ${failed.join(', ')}. Showing demo or partial data.`;
+    }
+  }
+}
 
 const statusMeta: Record<string, { label: string; cls: string }> = {
   active:           { label: 'Active',           cls: 'badge-green' },
@@ -46,14 +133,16 @@ const draftCount   = profiles.filter(p => p.status === 'draft').length;
 if (!isAdmin) {
   if (!session.supabaseAccessToken) {
     paNotice =
-      'Demo session (no JWT). Sign in with Supabase + set API_BASE_URL for live profiles.';
+      'Demo session (no JWT). Sign in with Supabase, set API_BASE_URL, and PA_PLAN_API_KEY (when the API enforces it) for live profiles.';
   } else if (!(import.meta.env.API_BASE_URL ?? '').trim()) {
     paNotice = 'Set API_BASE_URL to load active profiles from Plan Advisor.';
-  } else if (canUsePlanAdvisorApi(session) && session.supabaseAccessToken) {
-    const tok = session.supabaseAccessToken;
+  } else if (!paToken) {
+    paNotice =
+      'Session expired. Please sign out and sign in again so a fresh Supabase token is stored.';
+  } else {
     const me = await paFetchJson<{ full_name?: string | null; email?: string; company_name?: string | null }>(
       '/me',
-      tok,
+      paToken,
     );
     if (me.ok) {
       paViewer = {
@@ -63,31 +152,8 @@ if (!isAdmin) {
       };
     }
 
-    const ac = await paFetchJson<AvailRow[]>('/calculator/available-countries', tok);
-    if (ac.ok) {
-      activeProfiles = ac.data.map((p) => ({
-        id: p.profile_id,
-        country: {
-          code: p.country_code ?? '—',
-          name: p.country_name ?? '',
-        },
-        provider: {
-          name: p.provider_name ?? '',
-          type: p.provider_type ?? '',
-        },
-        version: String(p.version ?? ''),
-        currency: String(p.currency ?? 'EUR'),
-        status: 'active' as const,
-        active_from:
-          typeof p.active_from === 'string' && p.active_from.length ? p.active_from : null,
-        created_at: '',
-        rules_count: Number(p.rules_count ?? 0),
-        plans_count: Number(p.plans_count ?? 0),
-        analysis_id: null,
-      }));
-    } else {
-      paNotice = `Plan Advisor unavailable (HTTP ${ac.status}). Showing demo profiles.`;
-    }
+    loadActiveProfilesInBrowser = true;
+    activeProfiles = [];
   }
 }
 ---
@@ -96,7 +162,9 @@ if (!isAdmin) {
   <AdminLayout
     title="Countries & Providers"
     breadcrumbs={[{ label: 'Admin' }, { label: 'Countries & Providers' }]}
+    notice={adminNotice}
   >
+    <div class="page-countries">
     <!-- Filter strip -->
     <div class="filter-bar">
       <div class="filter-tabs" id="filter-tabs">
@@ -190,6 +258,7 @@ if (!isAdmin) {
         </tbody>
       </table>
     </div>
+    </div>
   </AdminLayout>
 )}
 
@@ -200,6 +269,7 @@ if (!isAdmin) {
     paViewer={paViewer}
     paNotice={paNotice}
   >
+    <div class="page-countries">
     <div class="u-header">
       <div>
         <h2 class="u-heading">Active Profiles</h2>
@@ -215,15 +285,15 @@ if (!isAdmin) {
 
     <div class="u-stats-row">
       <div class="u-stat">
-        <span class="u-stat-val">{activeProfiles.length}</span>
+        <span class="u-stat-val" id="u-stat-active-count">{loadActiveProfilesInBrowser ? '—' : activeProfiles.length}</span>
         <span class="u-stat-label">Active Profiles</span>
       </div>
       <div class="u-stat">
-        <span class="u-stat-val">{[...new Set(activeProfiles.map(p => p.country.name))].length}</span>
+        <span class="u-stat-val" id="u-stat-country-count">{loadActiveProfilesInBrowser ? '—' : [...new Set(activeProfiles.map(p => p.country.name))].length}</span>
         <span class="u-stat-label">Countries</span>
       </div>
       <div class="u-stat">
-        <span class="u-stat-val">{[...new Set(activeProfiles.map(p => p.provider.name))].length}</span>
+        <span class="u-stat-val" id="u-stat-provider-count">{loadActiveProfilesInBrowser ? '—' : [...new Set(activeProfiles.map(p => p.provider.name))].length}</span>
         <span class="u-stat-label">Providers</span>
       </div>
     </div>
@@ -242,8 +312,13 @@ if (!isAdmin) {
             <th>Action</th>
           </tr>
         </thead>
-        <tbody>
-          {activeProfiles.map(p => (
+        <tbody id="u-profiles-tbody" data-load-profiles={loadActiveProfilesInBrowser ? '1' : undefined}>
+          {loadActiveProfilesInBrowser ? (
+            <tr>
+              <td colspan="7" class="u-muted">Loading active profiles…</td>
+            </tr>
+          ) : (
+            activeProfiles.map(p => (
             <tr data-search={`${p.country.name} ${p.provider.name}`.toLowerCase()}>
               <td>
                 <div class="u-country-cell">
@@ -271,7 +346,8 @@ if (!isAdmin) {
                 </a>
               </td>
             </tr>
-          ))}
+          ))
+          )}
         </tbody>
       </table>
     </div>
@@ -284,10 +360,35 @@ if (!isAdmin) {
         <span>As an internal user, you can view profiles in pending or draft state. <a href="/admin/dashboard">Switch to Admin view</a> to manage them.</span>
       </div>
     )}
+    </div>
   </UserLayout>
 )}
 
 <script>
+  function esc(s: string) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+  }
+
+  /** Plan Advisor returns `{ error, message, hint, supabase_user_id }` on 403 — show more than `error` alone. */
+  function formatPlanAdvisorError(payload: unknown, status: number, statusText: string): string {
+    if (payload == null) return `${status} ${statusText}`;
+    if (typeof payload === 'string') return payload;
+    if (typeof payload !== 'object') return String(payload);
+    const o = payload as Record<string, unknown>;
+    const summary =
+      (typeof o.message === 'string' && o.message.trim()) ||
+      (typeof o.error === 'string' && o.error.trim()) ||
+      statusText;
+    const parts = [`HTTP ${status}: ${summary}`];
+    if (typeof o.hint === 'string' && o.hint.trim()) {
+      parts.push(o.hint.trim());
+    }
+    if (typeof o.supabase_user_id === 'string' && o.supabase_user_id.trim()) {
+      parts.push(`Supabase user id (set users_profile.id to this): ${o.supabase_user_id.trim()}`);
+    }
+    return parts.join(' ');
+  }
+
   // Admin filter
   const tabs = document.querySelectorAll<HTMLButtonElement>('.filter-tab');
   const rows = document.querySelectorAll<HTMLTableRowElement>('#profiles-table tbody tr');
@@ -322,433 +423,99 @@ if (!isAdmin) {
     });
   }
 
-  // User search
+  // User search (re-query rows so client-loaded profiles stay filterable)
   const uSearch = document.getElementById('u-search') as HTMLInputElement | null;
-  const uRows   = document.querySelectorAll<HTMLTableRowElement>('#u-profiles-table tbody tr');
 
   if (uSearch) {
     uSearch.addEventListener('input', () => {
       const q = uSearch.value.toLowerCase();
-      uRows.forEach(row => {
+      document.querySelectorAll<HTMLTableRowElement>('#u-profiles-table tbody tr').forEach(row => {
         const term = row.dataset.search ?? '';
         row.style.display = term.includes(q) ? '' : 'none';
       });
     });
   }
+
+  /** Load active profiles in the browser so DevTools shows `GET /api/pa/available-countries`; Astro proxies to Plan Advisor `/api/calculator/available-countries`. */
+  const uTbody = document.getElementById('u-profiles-tbody');
+  if (uTbody?.dataset.loadProfiles === '1') {
+    fetch('/api/pa/available-countries', { credentials: 'same-origin' })
+      .then(async (res) => {
+        const raw = await res.text();
+        let payload: unknown = null;
+        if (raw.length) {
+          try {
+            payload = JSON.parse(raw);
+          } catch {
+            payload = null;
+          }
+        }
+        if (!res.ok) {
+          const detail = formatPlanAdvisorError(payload, res.status, res.statusText);
+          uTbody.innerHTML = `<tr><td colspan="7" class="u-muted u-profiles-api-err">${esc(detail)}</td></tr>`;
+          return;
+        }
+        const rows = Array.isArray(payload) ? payload : [];
+
+        const countryNames = new Set<string>();
+        const providerNames = new Set<string>();
+        const frag = document.createDocumentFragment();
+        for (const raw of rows) {
+          const p = raw as Record<string, unknown>;
+          const cname = typeof p.country_name === 'string' ? p.country_name : '';
+          const pname = typeof p.provider_name === 'string' ? p.provider_name : '';
+          countryNames.add(cname);
+          providerNames.add(pname);
+          const code = esc(typeof p.country_code === 'string' ? p.country_code : '—');
+          const tr = document.createElement('tr');
+          tr.dataset.search = `${cname} ${pname}`.toLowerCase();
+          const af = p.active_from;
+          const fromRaw =
+            typeof af === 'string' && af.length ? esc(af.slice(0, 10)) : '—';
+          const ver = typeof p.version === 'string' ? p.version : '';
+          const ptype = typeof p.provider_type === 'string' ? p.provider_type : '';
+          const pid = typeof p.profile_id === 'string' ? p.profile_id : '';
+          tr.innerHTML = `
+            <td>
+              <div class="u-country-cell">
+                <span class="u-code-pill">${code}</span>
+                <span class="u-country-name">${esc(cname)}</span>
+              </div>
+            </td>
+            <td>
+              <span class="u-provider-name">${esc(pname)}</span>
+              <span class="u-type-tag">${esc(ptype)}</span>
+            </td>
+            <td><span class="u-version-pill">${esc(ver)}</span></td>
+            <td class="u-center">${Number(p.rules_count ?? 0)}</td>
+            <td class="u-center">${Number(p.plans_count ?? 0)}</td>
+            <td class="u-muted">${fromRaw}</td>
+            <td>
+              <a href="/calculator/${encodeURIComponent(pid)}" class="u-calc-btn">
+                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="4" y="2" width="16" height="20" rx="2"/>
+                  <line x1="8" y1="10" x2="12" y2="10"/><line x1="12" y1="6" x2="12" y2="14"/>
+                  <line x1="8" y1="18" x2="16" y2="18"/><line x1="8" y1="14" x2="10" y2="14"/>
+                </svg>
+                Calculate
+              </a>
+            </td>`;
+          frag.appendChild(tr);
+        }
+        uTbody.replaceChildren(frag);
+
+        const n = (id: string, v: number) => {
+          const el = document.getElementById(id);
+          if (el) el.textContent = String(v);
+        };
+        n('u-stat-active-count', rows.length);
+        n('u-stat-country-count', countryNames.size);
+        n('u-stat-provider-count', providerNames.size);
+      })
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        uTbody.innerHTML = `<tr><td colspan="7" class="u-muted">Request failed: ${esc(message)}</td></tr>`;
+      });
+  }
 </script>
 
-<style>
-  /* ── Admin styles ── */
-  .filter-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    margin-bottom: 1rem;
-    flex-wrap: wrap;
-  }
-
-  .filter-tabs {
-    display: flex;
-    gap: 0.25rem;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: 9px;
-    padding: 0.25rem;
-  }
-
-  .filter-tab {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.35rem 0.8rem;
-    border-radius: 6px;
-    border: none;
-    background: none;
-    font-size: 0.8rem;
-    font-weight: 500;
-    color: var(--color-text-muted);
-    cursor: pointer;
-    transition: all 0.13s;
-  }
-
-  .filter-tab:hover { background: var(--color-surface-2); color: var(--color-text); }
-
-  .filter-tab.active {
-    background: var(--color-admin-soft);
-    color: var(--color-admin);
-    font-weight: 600;
-  }
-
-  .count {
-    font-size: 0.7rem;
-    background: var(--color-surface-2);
-    color: var(--color-text-muted);
-    padding: 0.05rem 0.35rem;
-    border-radius: 100px;
-  }
-
-  .filter-tab.active .count {
-    background: rgba(88,119,152,.2);
-    color: var(--color-admin);
-  }
-
-  .filter-right {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-  }
-
-  .search-wrap {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: 8px;
-    padding: 0.4rem 0.75rem;
-    color: var(--color-text-muted);
-  }
-
-  .search-input {
-    background: none;
-    border: none;
-    outline: none;
-    font-size: 0.82rem;
-    color: var(--color-text);
-    font-family: inherit;
-    width: 200px;
-  }
-
-  .search-input::placeholder { color: var(--color-text-muted); }
-
-  .btn-primary {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    padding: 0.45rem 0.9rem;
-    background: var(--color-admin);
-    color: #fff;
-    border-radius: 7px;
-    font-size: 0.82rem;
-    font-weight: 600;
-    transition: all 0.13s;
-    white-space: nowrap;
-  }
-
-  .btn-primary:hover {
-    background: var(--color-admin-hover);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 16px rgba(88,119,152,.35);
-  }
-
-  .table-wrap {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius);
-    overflow: hidden;
-  }
-
-  .table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.83rem;
-  }
-
-  .table th {
-    text-align: left;
-    padding: 0.65rem 1rem;
-    font-size: 0.7rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--color-text-muted);
-    background: var(--color-surface-2);
-    border-bottom: 1px solid var(--color-border);
-  }
-
-  .table td {
-    padding: 0.75rem 1rem;
-    color: var(--color-text);
-    border-bottom: 1px solid var(--color-border);
-    vertical-align: middle;
-  }
-
-  .table tbody tr:last-child td { border-bottom: none; }
-  .table tbody tr:hover { background: rgba(255,255,255,.02); }
-
-  .country-cell { display: flex; align-items: center; gap: 0.5rem; }
-
-  .code-pill {
-    font-size: 0.66rem;
-    font-weight: 800;
-    color: var(--color-admin);
-    background: var(--color-admin-soft);
-    border-radius: 5px;
-    padding: 0.15rem 0.4rem;
-    letter-spacing: 0.04em;
-  }
-
-  .country-name { font-weight: 600; }
-  .provider-name { font-weight: 500; }
-
-  .type-tag {
-    font-size: 0.66rem;
-    font-weight: 700;
-    color: var(--color-text-muted);
-    background: var(--color-surface-2);
-    border-radius: 4px;
-    padding: 0.1rem 0.35rem;
-    margin-left: 0.35rem;
-  }
-
-  .version-pill {
-    font-size: 0.75rem;
-    font-family: 'SF Mono', ui-monospace, monospace;
-    color: var(--color-text-muted);
-    background: var(--color-surface-2);
-    border-radius: 5px;
-    padding: 0.15rem 0.45rem;
-  }
-
-  .badge {
-    display: inline-block;
-    padding: 0.22rem 0.6rem;
-    border-radius: 100px;
-    font-size: 0.7rem;
-    font-weight: 700;
-    white-space: nowrap;
-  }
-
-  .badge-green  { background: var(--color-success-soft); color: var(--color-success); }
-  .badge-amber  { background: rgba(245,158,11,.12);  color: #f59e0b; }
-  .badge-gray   { background: var(--color-surface-2); color: var(--color-text-muted); }
-  .badge-red    { background: rgba(239,68,68,.12);   color: #ef4444; }
-
-  .muted { color: var(--color-text-muted); font-size: 0.8rem; }
-  .center { text-align: center; color: var(--color-text-muted); }
-
-  .action-row { display: flex; align-items: center; gap: 0.4rem; }
-
-  .btn-action {
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: var(--color-admin);
-    padding: 0.25rem 0.6rem;
-    border-radius: 5px;
-    border: 1px solid rgba(88,119,152,.3);
-    transition: all 0.13s;
-    white-space: nowrap;
-  }
-
-  .btn-action:hover { background: var(--color-admin-soft); }
-  .btn-action.btn-amber { color: #f59e0b; border-color: rgba(245,158,11,.3); }
-  .btn-action.btn-amber:hover { background: rgba(245,158,11,.08); }
-
-  .btn-icon {
-    width: 26px;
-    height: 26px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid var(--color-border);
-    border-radius: 5px;
-    background: none;
-    color: var(--color-text-muted);
-    cursor: pointer;
-    transition: all 0.13s;
-  }
-
-  .btn-icon:hover { background: var(--color-surface-2); color: var(--color-text); }
-
-  /* ── User/Client styles ── */
-  .u-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-    margin-bottom: 1.25rem;
-    flex-wrap: wrap;
-  }
-
-  .u-heading {
-    font-size: 1.05rem;
-    font-weight: 700;
-    color: var(--color-text);
-    margin-bottom: 0.3rem;
-  }
-
-  .u-sub {
-    font-size: 0.82rem;
-    color: var(--color-text-muted);
-    line-height: 1.5;
-  }
-
-  .u-search-wrap {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: 8px;
-    padding: 0.45rem 0.8rem;
-    color: var(--color-text-muted);
-  }
-
-  .u-search-input {
-    background: none;
-    border: none;
-    outline: none;
-    font-size: 0.82rem;
-    color: var(--color-text);
-    font-family: inherit;
-    width: 220px;
-  }
-
-  .u-search-input::placeholder { color: var(--color-text-muted); }
-
-  .u-stats-row {
-    display: flex;
-    gap: 0.85rem;
-    margin-bottom: 1.25rem;
-  }
-
-  .u-stat {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: 10px;
-    padding: 0.75rem 1.25rem;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.2rem;
-    min-width: 100px;
-  }
-
-  .u-stat-val {
-    font-size: 1.6rem;
-    font-weight: 800;
-    color: var(--color-text);
-    letter-spacing: -0.03em;
-    line-height: 1;
-  }
-
-  .u-stat-label {
-    font-size: 0.7rem;
-    color: var(--color-text-muted);
-  }
-
-  .u-table-wrap {
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius);
-    overflow: hidden;
-    margin-bottom: 1rem;
-  }
-
-  .u-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.84rem;
-  }
-
-  .u-table th {
-    text-align: left;
-    padding: 0.65rem 1rem;
-    font-size: 0.7rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--color-text-muted);
-    background: var(--color-surface-2);
-    border-bottom: 1px solid var(--color-border);
-  }
-
-  .u-table td {
-    padding: 0.85rem 1rem;
-    color: var(--color-text);
-    border-bottom: 1px solid var(--color-border);
-    vertical-align: middle;
-  }
-
-  .u-table tbody tr:last-child td { border-bottom: none; }
-  .u-table tbody tr:hover { background: rgba(29,111,92,.03); }
-
-  .u-country-cell { display: flex; align-items: center; gap: 0.55rem; }
-
-  .u-code-pill {
-    font-size: 0.66rem;
-    font-weight: 800;
-    color: var(--color-customer);
-    background: var(--color-customer-soft);
-    border-radius: 5px;
-    padding: 0.15rem 0.4rem;
-    letter-spacing: 0.04em;
-  }
-
-  .u-country-name { font-weight: 700; color: var(--color-text); }
-
-  .u-provider-name { font-weight: 500; }
-
-  .u-type-tag {
-    font-size: 0.66rem;
-    font-weight: 700;
-    color: var(--color-text-muted);
-    background: var(--color-surface-2);
-    border-radius: 4px;
-    padding: 0.1rem 0.35rem;
-    margin-left: 0.35rem;
-  }
-
-  .u-version-pill {
-    font-size: 0.75rem;
-    font-family: 'SF Mono', ui-monospace, monospace;
-    color: var(--color-text-muted);
-    background: var(--color-surface-2);
-    border-radius: 5px;
-    padding: 0.15rem 0.45rem;
-  }
-
-  .u-center { text-align: center; color: var(--color-text-muted); }
-  .u-muted  { color: var(--color-text-muted); font-size: 0.8rem; }
-
-  .u-calc-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.45rem;
-    padding: 0.42rem 0.9rem;
-    background: var(--color-customer);
-    color: #fff;
-    border-radius: 7px;
-    font-size: 0.8rem;
-    font-weight: 700;
-    transition: all 0.13s;
-    white-space: nowrap;
-  }
-
-  .u-calc-btn:hover {
-    background: var(--color-customer-hover);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 14px rgba(29,111,92,.3);
-  }
-
-  /* Internal note */
-  .internal-note {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-    padding: 0.65rem 0.9rem;
-    background: rgba(88,119,152,.06);
-    border: 1px solid rgba(88,119,152,.2);
-    border-radius: 8px;
-    font-size: 0.78rem;
-    color: #93c5fd;
-  }
-
-  .internal-note a {
-    color: #60a5fa;
-    font-weight: 600;
-  }
-
-  .internal-note a:hover { opacity: 0.8; }
-</style>

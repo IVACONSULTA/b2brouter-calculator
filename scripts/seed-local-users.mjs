@@ -5,7 +5,8 @@
  *   supabase db reset
  *   npm run seed:users
  *
- * Requires SUPABASE_SERVICE_ROLE_KEY in `.env` (from `supabase status` — never commit it).
+ * Requires SUPABASE_SERVICE_ROLE_KEY in `.env` (from `supabase status -o env` → SERVICE_ROLE_KEY=eyJ...
+ * — the JWT, not sb_publishable_; sb_secret_ may not work for admin API on some CLI versions).
  * `public.profiles` rows follow from auth user_metadata via DB triggers.
  */
 
@@ -36,6 +37,17 @@ const TEST_USERS = [
   { email: 'client@acmecorp.com', password: 'Admin1234!', role: 'client', full_name: 'Carlos Ruiz' },
 ];
 
+/** Optional: add your real account to local Supabase (not committed). */
+function extraUserFromEnv() {
+  const email = process.env.SEED_EXTRA_EMAIL?.trim();
+  const password = process.env.SEED_EXTRA_PASSWORD?.trim();
+  const role = (process.env.SEED_EXTRA_ROLE ?? 'admin').trim().toLowerCase();
+  const full_name = (process.env.SEED_EXTRA_FULL_NAME ?? email?.split('@')[0] ?? 'User').trim();
+  if (!email || !password) return null;
+  const r = ['admin', 'internal', 'client'].includes(role) ? role : 'admin';
+  return { email, password, role: r, full_name };
+}
+
 const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
@@ -51,6 +63,7 @@ async function upsertUser({ email, password, role, full_name }) {
 
   if (existing) {
     const { error } = await admin.auth.admin.updateUserById(existing.id, {
+      password,
       user_metadata: { role, full_name },
     });
     if (error) {
@@ -76,5 +89,10 @@ async function upsertUser({ email, password, role, full_name }) {
 console.log('\nSeeding local Supabase users...\n');
 for (const user of TEST_USERS) {
   await upsertUser(user);
+}
+const extra = extraUserFromEnv();
+if (extra) {
+  console.log('  (from SEED_EXTRA_* env)\n');
+  await upsertUser(extra);
 }
 console.log('\nDone. Start the dev server: npm run dev\n');

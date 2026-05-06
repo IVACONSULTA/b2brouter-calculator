@@ -5,9 +5,11 @@ import { getSession } from '../lib/session';
 interface Props {
   title: string;
   breadcrumbs?: { label: string; href?: string }[];
+  /** Inline status (e.g. API configuration hints). */
+  notice?: string | null;
 }
 
-const { title, breadcrumbs = [] } = Astro.props;
+const { title, breadcrumbs = [], notice = null } = Astro.props;
 const session = getSession(Astro.cookies);
 const path = Astro.url.pathname;
 
@@ -135,6 +137,9 @@ function isActive(href: string, exact = false) {
       </header>
 
       <main class="page-content">
+        {notice && (
+          <div class="admin-notice" role="status">{notice}</div>
+        )}
         <slot />
       </main>
     </div>
@@ -142,6 +147,17 @@ function isActive(href: string, exact = false) {
 </Layout>
 
 <style>
+  .admin-notice {
+    margin-bottom: 1rem;
+    padding: 0.65rem 0.9rem;
+    font-size: 0.8rem;
+    line-height: 1.45;
+    color: var(--color-text-muted);
+    background: rgba(245, 158, 11, 0.08);
+    border: 1px solid rgba(245, 158, 11, 0.28);
+    border-radius: 8px;
+  }
+
   .admin-app {
     display: flex;
     flex: 1;

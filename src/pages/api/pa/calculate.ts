@@ -1,15 +1,18 @@
 import type { APIRoute } from 'astro';
-import { getSession } from '../../../lib/session';
 import { paFetchJson } from '../../../lib/pa-api';
+import { getFreshSupabaseAccessToken } from '../../../lib/supabase-session';
 
 export const prerender = false;
 
 /** Same-origin proxy: reads httpOnly session and calls Plan Advisor `POST /api/calculator/calculate`. */
 export const POST: APIRoute = async ({ request, cookies }) => {
-  const session = getSession(cookies);
-  const token = session?.supabaseAccessToken;
-  if (!token) {
-    return new Response(JSON.stringify({ error: 'Not signed in with Supabase.', code: 'no_token' }), {
+  const fresh = await getFreshSupabaseAccessToken(cookies);
+  if (!fresh.ok) {
+    const msg =
+      fresh.code === 'no_session' || fresh.code === 'no_token'
+        ? 'Not signed in with Supabase.'
+        : 'Session expired. Please sign in again.';
+    return new Response(JSON.stringify({ error: 'Unauthorized', message: msg, code: fresh.code }), {
       status: 401,
       headers: { 'Content-Type': 'application/json' },
     });
@@ -25,7 +28,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     });
   }
 
-  const result = await paFetchJson<Record<string, unknown>>('/calculator/calculate', token, {
+  const result = await paFetchJson<Record<string, unknown>>('/calculator/calculate', fresh.accessToken, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
