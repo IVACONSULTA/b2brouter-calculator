@@ -7,9 +7,11 @@ interface Props {
   breadcrumbs?: { label: string; href?: string }[];
   /** Inline status (e.g. API configuration hints). */
   notice?: string | null;
+  /** When set, replaces the static AI Analyses sidebar badge count. */
+  analysesPendingCount?: number | null;
 }
 
-const { title, breadcrumbs = [], notice = null } = Astro.props;
+const { title, breadcrumbs = [], notice = null, analysesPendingCount = null } = Astro.props;
 const session = getSession(Astro.cookies);
 const path = Astro.url.pathname;
 
@@ -60,7 +62,7 @@ function isActive(href: string, exact = false) {
               <path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18"/>
             </svg>
             AI Analyses
-            <span class="nav-badge">2</span>
+            <span class="nav-badge">{analysesPendingCount !== null && analysesPendingCount !== undefined ? analysesPendingCount : 2}</span>
           </a>
 
           <span class="nav-section-label" style="margin-top: 0.5rem">Calculate</span>

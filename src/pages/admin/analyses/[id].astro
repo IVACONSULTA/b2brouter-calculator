@@ -1,6 +1,11 @@
 ---
 import AdminLayout from '../../../layouts/AdminLayout.astro';
 import { getSession, isAdminRole } from '../../../lib/session';
+import {
+  canUsePlanAdvisorApi,
+  paFetchJson,
+} from '../../../lib/pa-api';
+import { getFreshSupabaseAccessToken } from '../../../lib/supabase-session';
 import { DUMMY_ANALYSIS_DETAIL } from '../../../lib/dummy-data';
 import '../../../styles/pages/admin-analysis-detail.css';
 
@@ -9,7 +14,52 @@ if (!session) return Astro.redirect('/admin/login');
 if (!isAdminRole(session.role)) return Astro.redirect('/dashboard');
 
 const { id } = Astro.params;
-const analysis = DUMMY_ANALYSIS_DETAIL; // use dummy regardless of id
+const safeId = id ?? '';
+
+let paToken: string | null = null;
+if (session.supabaseAccessToken?.trim()) {
+  const fresh = await getFreshSupabaseAccessToken(Astro.cookies);
+  if (fresh.ok) paToken = fresh.accessToken;
+}
+
+const apiReady = canUsePlanAdvisorApi(session);
+
+type AnalysisDetail = typeof DUMMY_ANALYSIS_DETAIL;
+type DetailApi = {
+  success?: boolean;
+  mock?: boolean;
+  data?: AnalysisDetail;
+};
+
+let adminNotice: string | null = null;
+let analysis: AnalysisDetail = { ...DUMMY_ANALYSIS_DETAIL };
+
+if (!session.supabaseAccessToken) {
+  adminNotice =
+    'Demo session (no JWT). Configure Supabase sign-in + API_BASE_URL for live analysis detail.';
+} else if (!(import.meta.env.API_BASE_URL ?? '').trim()) {
+  adminNotice = 'Set API_BASE_URL to reach Plan Advisor from this app.';
+} else if (!paToken) {
+  adminNotice =
+    'Session expired. Please sign out and sign in again so a fresh Supabase token is stored.';
+}
+
+if (apiReady && paToken && safeId && (import.meta.env.API_BASE_URL ?? '').trim().length > 0) {
+  const res = await paFetchJson<DetailApi>(
+    `/admin/document-analyses/${encodeURIComponent(safeId)}`,
+    paToken,
+  );
+  if (res.ok && res.data.data) {
+    analysis = res.data.data as AnalysisDetail;
+    if (res.data.mock && !adminNotice) {
+      adminNotice =
+        'Document analysis data is mock/fixture until the Documents Agent is connected to the API.';
+    }
+  } else if (!res.ok) {
+    const suffix = ` Plan Advisor unreachable (HTTP ${res.status}). Showing demo placeholder detail.`;
+    adminNotice = (adminNotice ? adminNotice.trim() + suffix : suffix.trim());
+  }
+}
 
 const confidenceMeta = {
   high:   { cls: 'conf-high',   label: 'High' },
@@ -36,6 +86,7 @@ const planSummary = {
     { label: 'AI Analyses', href: '/admin/analyses' },
     { label: `${analysis.country} / ${analysis.provider} ${analysis.version}` },
   ]}
+  notice={adminNotice}
 >
   <!-- Guardrail audit header -->
   <div class="page-admin-analysis-detail guardrail-row">
@@ -246,7 +297,7 @@ const planSummary = {
             )}
             <!-- TODO: PATCH /admin/plans/{plan.id} via App 2 API -->
             <button class="btn-edit" onclick={`handleEditPlan('${plan.id}')`}>Edit</button>
-            {plan.status !== 'rejected' && (
+            {plan.status === 'proposed' && (
               <!-- TODO: POST /admin/plans/{plan.id}/reject via App 2 API -->
               <button class="btn-reject" onclick={`handleRejectPlan('${plan.id}')`}>Reject</button>
             )}

@@ -1,6 +1,11 @@
 ---
 import AdminLayout from '../../layouts/AdminLayout.astro';
 import { getSession, isAdminRole } from '../../lib/session';
+import {
+  canUsePlanAdvisorApi,
+  paFetchJson,
+} from '../../lib/pa-api';
+import { getFreshSupabaseAccessToken } from '../../lib/supabase-session';
 import { DUMMY_PROFILES, DUMMY_ANALYSES, DUMMY_SCENARIOS, DUMMY_DOCUMENTS } from '../../lib/dummy-data';
 import '../../styles/pages/admin-dashboard.css';
 
@@ -8,19 +13,214 @@ const session = getSession(Astro.cookies);
 if (!session) return Astro.redirect('/admin/login');
 if (!isAdminRole(session.role)) return Astro.redirect('/dashboard');
 
-const activeProfiles    = DUMMY_PROFILES.filter(p => p.status === 'active');
-const draftProfiles     = DUMMY_PROFILES.filter(p => p.status === 'draft');
-const pendingProfiles   = DUMMY_PROFILES.filter(p => p.status === 'pending_approval');
-const pendingAnalyses   = DUMMY_ANALYSES.filter(a => a.status === 'pending_review');
-const recentDocs        = DUMMY_DOCUMENTS.slice(0, 3);
-const recentScenarios   = DUMMY_SCENARIOS.slice(0, 4);
+let paToken: string | null = null;
+if (session.supabaseAccessToken?.trim()) {
+  const fresh = await getFreshSupabaseAccessToken(Astro.cookies);
+  if (fresh.ok) paToken = fresh.accessToken;
+}
+
+const apiReady = canUsePlanAdvisorApi(session);
+
+type AdminDashApi = {
+  success?: boolean;
+  kpis?: {
+    active_profiles: number;
+    profiles_in_progress: number;
+    analyses_pending_review: number;
+  };
+  profiles?: Array<{
+    id: string;
+    country: { code: string; name: string };
+    provider: { name: string; type: string };
+    version: string;
+    status: string;
+    analysis_id?: string | null;
+  }>;
+  recent_documents?: Array<{
+    id: string;
+    filename: string;
+    copyright_status: string;
+    uploaded_at: string;
+  }>;
+  recent_scenarios?: Array<{
+    id: string;
+    client_name?: string | null;
+    created_at: string;
+    has_summary?: boolean;
+    recommended_plan?: string | null;
+    total_annual_cost?: number | string | null;
+    country_name?: string | null;
+    provider_name?: string | null;
+  }>;
+  document_analyses?: {
+    success?: boolean;
+    mock?: boolean;
+    items?: typeof DUMMY_ANALYSES;
+  };
+};
+
+function formatDocUploadedAt(raw: string): string {
+  const t = raw?.trim();
+  if (!t) return '—';
+  const d = new Date(t);
+  if (Number.isNaN(d.getTime())) return t;
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function formatScenarioDate(raw: string): string {
+  const t = raw?.trim();
+  if (!t) return '—';
+  const d = new Date(t);
+  if (Number.isNaN(d.getTime())) return t;
+  return d.toLocaleString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+}
+
+type AdminProfileTableRow = {
+  id: string;
+  country: { code: string; name: string };
+  provider: { name: string; type: string };
+  version: string;
+  currency: string;
+  status: 'active' | 'draft' | 'pending_approval' | 'archived';
+  active_from: string | null;
+  created_at: string;
+  rules_count: number;
+  plans_count: number;
+  analysis_id: string | null;
+};
+
+let adminNotice: string | null = null;
+
+let tableProfiles: AdminProfileTableRow[] = DUMMY_PROFILES.map((p) => ({ ...p })) as AdminProfileTableRow[];
+let pendingAnalyses = DUMMY_ANALYSES.filter((a) => a.status === 'pending_review');
+let mockAnalysesList = DUMMY_ANALYSES;
+let recentDocs: Array<{ filename: string; copyright_status: string; uploaded_at: string }> =
+  DUMMY_DOCUMENTS.slice(0, 3).map((d) => ({
+    filename: d.filename,
+    copyright_status: d.copyright_status,
+    uploaded_at: d.uploaded_at,
+  }));
+
+let recentScenarios: Array<{
+  id: string;
+  client_name: string;
+  country: string;
+  provider: string;
+  recommended_plan: string;
+  total_cost: number;
+  has_summary: boolean;
+  created_at: string;
+}> = DUMMY_SCENARIOS.slice(0, 4).map((s) => ({
+  client_name: s.client_name,
+  country: s.country,
+  provider: s.provider,
+  recommended_plan: s.recommended_plan,
+  total_cost: s.total_cost,
+  has_summary: s.has_summary,
+  created_at: s.created_at,
+  id: s.id,
+}));
+
+let kpiActive = tableProfiles.filter((p) => p.status === 'active').length;
+let kpiInProgress = tableProfiles.filter((p) => p.status === 'draft' || p.status === 'pending_approval').length;
+let kpiAnalysesPending = pendingAnalyses.length;
+let kpiRecentScenarioCount = recentScenarios.length;
+
+let reviewQuickHref = '/admin/analyses';
+if (pendingAnalyses.length && pendingAnalyses[0]?.id) {
+  reviewQuickHref = `/admin/analyses/${pendingAnalyses[0].id}`;
+}
+
+if (!session.supabaseAccessToken) {
+  adminNotice =
+    'Demo session (no JWT). Configure Supabase sign-in + API_BASE_URL for live admin dashboard data.';
+} else if (!(import.meta.env.API_BASE_URL ?? '').trim()) {
+  adminNotice = 'Set API_BASE_URL to reach Plan Advisor from this app.';
+} else if (!paToken) {
+  adminNotice =
+    'Session expired. Please sign out and sign in again so a fresh Supabase token is stored.';
+}
+
+if (apiReady && paToken && (import.meta.env.API_BASE_URL ?? '').trim().length > 0) {
+  const dash = await paFetchJson<AdminDashApi>('/admin/dashboard', paToken);
+  if (dash.ok && dash.data.success !== false) {
+    if (Array.isArray(dash.data.profiles)) {
+      tableProfiles = dash.data.profiles.map((p) => ({
+        id: p.id,
+        country: p.country,
+        provider: p.provider,
+        version: p.version,
+        currency: '',
+        status: p.status as AdminProfileTableRow['status'],
+        active_from: null,
+        created_at: '',
+        rules_count: 0,
+        plans_count: 0,
+        analysis_id: p.analysis_id ?? null,
+      }));
+    }
+    if (dash.data.kpis) {
+      kpiActive = dash.data.kpis.active_profiles;
+      kpiInProgress = dash.data.kpis.profiles_in_progress;
+      kpiAnalysesPending = dash.data.kpis.analyses_pending_review;
+    }
+    if (dash.data.document_analyses?.items?.length) {
+      mockAnalysesList = dash.data.document_analyses.items as typeof DUMMY_ANALYSES;
+      pendingAnalyses = mockAnalysesList.filter((a) => a.status === 'pending_review');
+      if (pendingAnalyses.length && pendingAnalyses[0]?.id) {
+        reviewQuickHref = `/admin/analyses/${pendingAnalyses[0].id}`;
+      }
+    }
+    if (dash.data.recent_documents?.length) {
+      recentDocs = dash.data.recent_documents.slice(0, 3).map((d) => ({
+        filename: d.filename,
+        copyright_status: d.copyright_status,
+        uploaded_at: typeof d.uploaded_at === 'string' ? d.uploaded_at : String(d.uploaded_at),
+      }));
+    }
+    if (dash.data.recent_scenarios?.length) {
+      recentScenarios = dash.data.recent_scenarios.map((s) => ({
+        id: s.id,
+        client_name: s.client_name ?? '—',
+        country: s.country_name ?? '',
+        provider: s.provider_name ?? '',
+        recommended_plan:
+          typeof s.recommended_plan === 'string' && s.recommended_plan ? s.recommended_plan : '—',
+        total_cost:
+          typeof s.total_annual_cost === 'number'
+            ? s.total_annual_cost
+            : Number(s.total_annual_cost ?? 0),
+        has_summary: Boolean(s.has_summary),
+        created_at: typeof s.created_at === 'string' ? s.created_at : '',
+      }));
+      kpiRecentScenarioCount = recentScenarios.length;
+    }
+    if (dash.data.document_analyses?.mock && !adminNotice) {
+      adminNotice =
+        'Document analysis data is mock/fixture until the Documents Agent is connected to the API.';
+    }
+  } else if (!dash.ok) {
+    const suffix = ` Plan Advisor unreachable (HTTP ${dash.status}). Showing demo placeholders.`;
+    adminNotice = (adminNotice ? adminNotice.trim() + suffix : suffix.trim());
+  }
+}
 
 const statusColor: Record<string, string> = {
-  active: 'green', draft: 'gray', pending_approval: 'amber', archived: 'red',
+  active: 'green',
+  draft: 'gray',
+  pending_approval: 'amber',
+  archived: 'red',
 };
 ---
 
-<AdminLayout title="Dashboard">
+<AdminLayout title="Dashboard" notice={adminNotice} analysesPendingCount={kpiAnalysesPending}>
   <!-- KPI row -->
   <div class="page-admin-dashboard kpi-grid">
     <div class="kpi">
@@ -31,7 +231,7 @@ const statusColor: Record<string, string> = {
         </svg>
       </div>
       <div>
-        <p class="kpi-value">{activeProfiles.length}</p>
+        <p class="kpi-value">{kpiActive}</p>
         <p class="kpi-label">Active Profiles</p>
       </div>
     </div>
@@ -43,7 +243,7 @@ const statusColor: Record<string, string> = {
         </svg>
       </div>
       <div>
-        <p class="kpi-value">{pendingProfiles.length + draftProfiles.length}</p>
+        <p class="kpi-value">{kpiInProgress}</p>
         <p class="kpi-label">Profiles in Progress</p>
       </div>
     </div>
@@ -55,7 +255,7 @@ const statusColor: Record<string, string> = {
         </svg>
       </div>
       <div>
-        <p class="kpi-value">{pendingAnalyses.length}</p>
+        <p class="kpi-value">{kpiAnalysesPending}</p>
         <p class="kpi-label">Analyses to Review</p>
       </div>
     </div>
@@ -68,7 +268,7 @@ const statusColor: Record<string, string> = {
         </svg>
       </div>
       <div>
-        <p class="kpi-value">{recentScenarios.length}</p>
+        <p class="kpi-value">{kpiRecentScenarioCount}</p>
         <p class="kpi-label">Recent Scenarios</p>
       </div>
     </div>
@@ -90,7 +290,7 @@ const statusColor: Record<string, string> = {
         </div>
       </a>
 
-      <a href="/admin/analyses/analysis-fr-001" class="action-card amber">
+      <a href={reviewQuickHref} class="action-card amber">
         <div class="action-icon amber">
           <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="9 11 12 14 22 4"/>
@@ -150,7 +350,7 @@ const statusColor: Record<string, string> = {
           </tr>
         </thead>
         <tbody>
-          {DUMMY_PROFILES.map(p => (
+          {tableProfiles.map(p => (
             <tr>
               <td><span class="flag-code">{p.country.code}</span> {p.country.name}</td>
               <td>{p.provider.name} <span class="tag">{p.provider.type}</span></td>
@@ -188,7 +388,7 @@ const statusColor: Record<string, string> = {
               </div>
               <div class="doc-info">
                 <p class="doc-name">{doc.filename}</p>
-                <p class="doc-meta">{doc.uploaded_at} · <span class={`doc-copyright doc-${doc.copyright_status}`}>{doc.copyright_status}</span></p>
+                <p class="doc-meta">{formatDocUploadedAt(doc.uploaded_at)} · <span class={`doc-copyright doc-${doc.copyright_status}`}>{doc.copyright_status}</span></p>
               </div>
             </li>
           ))}
@@ -202,7 +402,7 @@ const statusColor: Record<string, string> = {
           <a href="/admin/analyses" class="link-more">View all →</a>
         </div>
         <ul class="analysis-list">
-          {DUMMY_ANALYSES.map(a => (
+          {mockAnalysesList.map(a => (
             <li class="analysis-item">
               <div class="analysis-info">
                 <p class="analysis-name">{a.country} / {a.provider}</p>
@@ -247,7 +447,7 @@ const statusColor: Record<string, string> = {
             <td>{s.recommended_plan}</td>
             <td class="mono">€{s.total_cost.toLocaleString()}</td>
             <td>{s.has_summary ? <span class="badge badge-green">Generated</span> : <span class="badge badge-gray">—</span>}</td>
-            <td class="muted">{s.created_at}</td>
+            <td class="muted">{formatScenarioDate(s.created_at)}</td>
             <td><a href={`/scenarios/${s.id}`} class="tbl-link">View</a></td>
           </tr>
         ))}
