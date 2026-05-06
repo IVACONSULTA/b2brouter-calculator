@@ -1,26 +1,35 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { getSecret } from 'astro:env/server';
 
 /**
- * Prefer `process.env` on the server so Netlify (and other hosts) can inject
- * secrets at **runtime**. Vite may inline `import.meta.env` at build time — if CI
- * omits `SUPABASE_*`, the deployed function would otherwise see empty strings and
- * fall back to dummy login even after you fix env vars in the dashboard.
+ * Prefer Astro `getSecret()` for Netlify / SSR: values are resolved at runtime via the
+ * adapter and are not stripped when esbuild/Vite inlines `import.meta.env` at build time.
+ * Then `process.env`, then `import.meta.env`, for local scripts and older setups.
  */
-function envFromProcess(key: 'SUPABASE_URL' | 'SUPABASE_ANON_KEY'): string {
+function envFromProcess(key: string): string {
   if (typeof process === 'undefined' || !process.env) return '';
   const v = process.env[key];
   return typeof v === 'string' ? v.trim() : '';
 }
 
 function readCredentials(): { url: string; anonKey: string } {
-  const url = (envFromProcess('SUPABASE_URL') || (import.meta.env.SUPABASE_URL ?? '')).trim();
-  // Local dev: many Supabase snippets use SUPABASE_KEY for the anon JWT; production uses SUPABASE_ANON_KEY.
-  const anonKey = (
-    envFromProcess('SUPABASE_ANON_KEY') ||
-    import.meta.env.SUPABASE_ANON_KEY ||
-    (import.meta.env.DEV ? import.meta.env.SUPABASE_KEY : '') ||
+  const url = (
+    getSecret('SUPABASE_URL') ||
+    envFromProcess('SUPABASE_URL') ||
+    import.meta.env.SUPABASE_URL ||
     ''
   ).trim();
+
+  const anonKey = (
+    getSecret('SUPABASE_ANON_KEY') ||
+    envFromProcess('SUPABASE_ANON_KEY') ||
+    import.meta.env.SUPABASE_ANON_KEY ||
+    (import.meta.env.DEV
+      ? getSecret('SUPABASE_KEY') || import.meta.env.SUPABASE_KEY || ''
+      : '') ||
+    ''
+  ).trim();
+
   return { url, anonKey };
 }
 
