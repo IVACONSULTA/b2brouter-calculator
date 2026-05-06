@@ -41,7 +41,7 @@ const isDemoMode = import.meta.env.SUPABASE_URL === 'https://placeholder.supabas
                    !import.meta.env.SUPABASE_URL;
 ---
 
-<Layout title="Sign In — PA Plan Advisor">
+<Layout title="Sign in">
   <main class="page-login login-page">
     <div class="login-card">
 
@@ -114,12 +114,12 @@ const isDemoMode = import.meta.env.SUPABASE_URL === 'https://placeholder.supabas
         </div>
 
         <button type="submit" class="btn-submit" id="btn-submit">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
             <polyline points="10 17 15 12 10 7"/>
             <line x1="15" y1="12" x2="3" y2="12"/>
           </svg>
-          Sign in
+          <span class="btn-submit-text">Sign in</span>
         </button>
       </form>
 
@@ -164,7 +164,8 @@ const isDemoMode = import.meta.env.SUPABASE_URL === 'https://placeholder.supabas
   // Show loading state on submit
   document.getElementById('login-form')?.addEventListener('submit', () => {
     const btn = document.getElementById('btn-submit') as HTMLButtonElement;
-    btn.textContent = 'Signing in…';
+    const label = btn.querySelector('.btn-submit-text');
+    if (label) label.textContent = 'Signing in…';
     btn.disabled = true;
   });
 </script>

@@ -1,25 +1,29 @@
 /* page-login — scoped shell for one route */
 .page-login {
-  .login-page {
-      flex: 1;
-      min-height: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 2rem;
-      background:
-        radial-gradient(ellipse at 30% 10%, rgba(88,119,152,.08) 0%, transparent 50%),
-        radial-gradient(ellipse at 75% 85%, rgba(29,111,92,.06) 0%, transparent 50%);
-    }
+  /* Same element as .login-page on <main>; must use & — not a descendant */
+  &.login-page {
+    flex: 1;
+    width: 100%;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: clamp(1.25rem, 4vw, 2.5rem);
+    background:
+      radial-gradient(ellipse at 30% 10%, rgba(88, 119, 152, 0.1) 0%, transparent 52%),
+      radial-gradient(ellipse at 75% 85%, rgba(29, 111, 92, 0.07) 0%, transparent 50%),
+      var(--color-bg);
+  }
 
-    .login-card {
-      width: 100%;
-      max-width: 420px;
-      background: var(--color-surface);
-      border: 1px solid var(--color-border);
-      border-radius: var(--radius);
-      padding: 2.25rem 2.5rem;
-    }
+  .login-card {
+    width: 100%;
+    max-width: 420px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    padding: 2.25rem 2.5rem;
+    box-shadow: var(--shadow-card);
+  }
 
     /* Brand */
     .brand {
@@ -74,15 +78,15 @@
     }
 
     .demo-banner {
-      background: rgba(245,158,11,.07);
-      border: 1px solid rgba(245,158,11,.2);
-      color: #fbbf24;
+      background: rgba(245, 158, 11, 0.09);
+      border: 1px solid rgba(217, 119, 6, 0.28);
+      color: #92400e;
     }
 
     .error-banner {
-      background: rgba(239,68,68,.07);
-      border: 1px solid rgba(239,68,68,.2);
-      color: #f87171;
+      background: rgba(239, 68, 68, 0.08);
+      border: 1px solid rgba(220, 38, 38, 0.28);
+      color: #b91c1c;
     }
 
     .demo-banner svg, .error-banner svg { flex-shrink: 0; margin-top: 1px; }
@@ -107,6 +111,8 @@
     }
 
     .field input {
+      width: 100%;
+      box-sizing: border-box;
       padding: 0.65rem 0.9rem;
       background: var(--color-surface-2);
       border: 1px solid var(--color-border);
@@ -126,7 +132,7 @@
     .field input::placeholder { color: var(--color-text-muted); opacity: 0.6; }
 
     .btn-submit {
-      display: flex;
+      display: inline-flex;
       align-items: center;
       justify-content: center;
       gap: 0.5rem;

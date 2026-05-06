@@ -29,7 +29,7 @@ const isDemoMode =
   import.meta.env.SUPABASE_URL === 'https://placeholder.supabase.co' || !import.meta.env.SUPABASE_URL;
 ---
 
-<Layout title="Admin sign in — PA Plan Advisor">
+<Layout title="Admin sign in">
   <main class="page-admin-login login-page">
     <div class="login-card">
       <div class="login-header">
@@ -69,7 +69,9 @@ const isDemoMode =
           <label for="password">Password</label>
           <input type="password" id="password" name="password" placeholder="••••••••" autocomplete="current-password" required />
         </div>
-        <button type="submit" class="btn-submit" id="btn-submit">Sign in</button>
+        <button type="submit" class="btn-submit" id="btn-submit">
+          <span class="btn-submit-text">Sign in</span>
+        </button>
       </form>
 
       {isDemoMode && (
@@ -98,7 +100,8 @@ const isDemoMode =
   });
   document.getElementById('login-form')?.addEventListener('submit', () => {
     const b = document.getElementById('btn-submit') as HTMLButtonElement;
-    b.textContent = 'Signing in…';
+    const label = b.querySelector('.btn-submit-text');
+    if (label) label.textContent = 'Signing in…';
     b.disabled = true;
   });
 </script>

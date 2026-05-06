@@ -1,5 +1,6 @@
 import { defineConfig, sessionDrivers } from "astro/config";
 import netlify from "@astrojs/netlify";
+import react from "@astrojs/react";
 
 import tailwindcss from "@tailwindcss/vite";
 
@@ -14,6 +15,7 @@ const netlifyVitePluginSkipped = process.env.NETLIFY_DEV === "1";
 
 export default defineConfig({
   output: "server",
+  integrations: [react()],
   adapter: netlify(),
   ...(netlifyVitePluginSkipped && {
     session: {

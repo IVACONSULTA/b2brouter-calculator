@@ -1,10 +1,10 @@
 ---
 import UserLayout from '../../layouts/UserLayout.astro';
+import SingleScenario from '../../components/SingleScenario';
 import { getSession, isAdminRole } from '../../lib/session';
 import {
   canUsePlanAdvisorApi,
   paFetchJson,
-  paScenarioGenerateSummaryProxyPath,
 } from '../../lib/pa-api';
 import { getFreshSupabaseAccessToken } from '../../lib/supabase-session';
 import { normalizeScenarioDetail, scenarioFromLegacyDummy, type ScenarioView } from '../../lib/scenario-view';
@@ -45,8 +45,6 @@ let scenarioView: ScenarioView =
     paNotice ??= 'Demo: unknown scenario id — showing a sample scenario.';
     return scenarioFromLegacyDummy(DUMMY_SCENARIO_RESULT);
   })();
-
-let summaryProxyPath: string | null = null;
 
 /** Loaded from GET /scenarios/:id (not demo fallback). */
 let scenarioFromApi = false;
@@ -95,7 +93,6 @@ if (
   if (row.ok && row.data) {
     scenarioView = normalizeScenarioDetail(row.data);
     scenarioFromApi = true;
-    summaryProxyPath = paScenarioGenerateSummaryProxyPath(id);
   } else if (row.status === 403 || row.status === 404) {
     return Astro.redirect('/scenarios');
   } else {
@@ -116,12 +113,9 @@ const date = new Date(scenario.created_at).toLocaleDateString('en-GB', {
 const canGenerateSummary = isInternal;
 const showSummaryBtn = canGenerateSummary || (session.role === 'client' && clientSummaryAllowed);
 
-/** Same-origin absolute URL for browser `fetch` ([Astro data fetching](https://docs.astro.build/en/guides/data-fetching/) — `new URL(..., Astro.url)`). */
-const summaryPostUrl = summaryProxyPath
-  ? new URL(summaryProxyPath, Astro.url).href
-  : '';
+/** True when the session can refresh/BFF auth (dummy login has no JWT). */
+const hasSupabaseToken = Boolean(session.supabaseAccessToken?.trim());
 
-console.log(summaryPostUrl);
 ---
 
 <UserLayout
@@ -134,417 +128,14 @@ console.log(summaryPostUrl);
     { label: scenario.client_name },
   ]}
 >
-  <div class="page-scenario-detail">
-  <!-- Scenario header -->
-  <div class="scenario-header">
-    <div class="sh-left">
-      <div class="sh-meta">
-        <span class="sh-id">#{scenario.id}</span>
-        <span class="sh-date">{date}</span>
-        {isInternal && scenario.created_by && (
-          <span class="sh-author">by {scenario.created_by}</span>
-        )}
-      </div>
-      <h2 class="sh-client">{scenario.client_name}</h2>
-      <div class="sh-profile">
-        <span class="sh-country">{scenario.country}</span>
-        <span class="sh-sep">·</span>
-        <span>{scenario.provider}</span>
-        <span class="sh-sep">·</span>
-        <span class="sh-version">Version {scenario.profile_version}</span>
-        <span class="sh-sep">·</span>
-        <span class="sh-currency">{scenario.currency}</span>
-        <span class="sh-sep">·</span>
-        <span class="sh-basis">{scenario.calculation_basis}</span>
-      </div>
-    </div>
-  </div>
-
-  <!-- Action buttons -->
-  <div class="scenario-actions">
-    <!-- TODO: GET /scenarios/{id}/recalculate → opens calculator with pre-filled inputs -->
-    <a href={`/calculator/${scenario.profile_id}`} class="btn-recalc">
-      <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <polyline points="23 4 23 10 17 10"/>
-        <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
-      </svg>
-      New Calculation
-    </a>
-
-    {showSummaryBtn && !scenario.has_summary && summaryProxyPath && (
-      <button
-        type="button"
-        class="btn-gen-summary"
-         data-summary-url={summaryPostUrl}
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-        </svg>
-        Generate AI Summary
-      </button>
-    )}
-    {showSummaryBtn && !scenario.has_summary && !summaryProxyPath && (
-      <button
-        type="button"
-        class="btn-gen-summary"
-        data-summary-url={summaryPostUrl}
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-        </svg>
-        Generate AI Summary
-      </button>
-    )}
-
-    {scenarioFromApi && (
-      <button type="button" class="btn-export js-scenario-export" data-scenario-id={scenario.id}>
-        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-          <polyline points="7 10 12 15 17 10"/>
-          <line x1="12" y1="15" x2="12" y2="3"/>
-        </svg>
-        Download JSON
-      </button>
-    )}
-
-    {!scenarioFromApi && (
-      <button
-        type="button"
-        class="btn-export"
-        disabled
-        title="Available when this scenario is loaded from Plan Advisor"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-          <polyline points="7 10 12 15 17 10"/>
-          <line x1="12" y1="15" x2="12" y2="3"/>
-        </svg>
-        Download JSON
-      </button>
-    )}
-
-    {scenarioFromApi && (
-      <button
-        type="button"
-        class="btn-delete js-scenario-delete"
-        data-scenario-id={scenario.id}
-        data-client-name={scenario.client_name}
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="3 6 5 6 21 6"/>
-          <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
-          <path d="M10 11v6"/><path d="M14 11v6"/>
-          <path d="M9 6V4h6v2"/>
-        </svg>
-        Delete
-      </button>
-    )}
-  </div>
-
-  <!-- Recommended plan + AI summary (equal columns) -->
-  <div class="rec-summary-row">
-    <div class="rec-card">
-      <div class="rec-header">
-        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-        Recommended Plan
-      </div>
-      <p class="rec-plan-name">{scenario.recommended_plan.plan_name}</p>
-      <p class="rec-total">€{scenario.recommended_plan.total_annual_cost.toLocaleString()}<span class="rec-per">/year</span></p>
-
-      <div class="rec-breakdown">
-        <div class="rec-row">
-          <span>Base fee</span>
-          <strong>€{scenario.recommended_plan.annual_fee.toLocaleString()}</strong>
-        </div>
-        <div class="rec-row">
-          <span>Included PA transactions</span>
-          <strong>{scenario.recommended_plan.included_pa_transactions.toLocaleString()}</strong>
-        </div>
-        <div class="rec-row">
-          <span>Extra PA rate</span>
-          <strong>€{scenario.recommended_plan.extra_transaction_cost.toFixed(2)}</strong>
-        </div>
-        {scenario.recommended_plan.extra_transactions > 0 && (
-          <div class="rec-row">
-            <span>Extra PA consumed</span>
-            <strong>{scenario.recommended_plan.extra_transactions.toLocaleString()}</strong>
-          </div>
-        )}
-        <div class="rec-row rec-total-row">
-          <span>Total extra cost</span>
-          <strong>€{(scenario.recommended_plan.extra_transactions * scenario.recommended_plan.extra_transaction_cost).toLocaleString()}</strong>
-        </div>
-      </div>
-
-      <div class="rec-pa-bar-wrap">
-        <div class="rec-pa-label">
-          <span>PA Usage</span>
-          <span class="pa-pct">{Math.min(100, Math.round((scenario.total_pa_transactions / scenario.recommended_plan.included_pa_transactions) * 100))}% of included</span>
-        </div>
-        <div class="rec-pa-track">
-          <div
-            class="rec-pa-fill"
-            style={`width: ${Math.min(100, (scenario.total_pa_transactions / scenario.recommended_plan.included_pa_transactions) * 100)}%`}
-          ></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="summary-block" id="summary-block">
-      <div class="summary-header">
-        <div class="summary-title-row">
-          <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-          </svg>
-          <span class="summary-title">AI Summary</span>
-          {scenario.has_summary && (
-            <span class="summary-ready-badge">Ready</span>
-          )}
-        </div>
-        <p class="summary-desc">Analysis of the top plan options for this scenario, generated by Agente Resumen (DSPy).</p>
-      </div>
-
-      {scenario.has_summary && scenario.ai_summary ? (
-        <div class="summary-body">
-          <div class="summary-text" id="summary-text">
-            {scenario.ai_summary.split('\n\n').map(paragraph => (
-              <p>{paragraph}</p>
-            ))}
-          </div>
-          <div class="summary-footer">
-            <button
-              class="btn-copy"
-              id="btn-copy"
-              onclick="copySummary()"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-              </svg>
-              Copy Summary
-            </button>
-            {showSummaryBtn && summaryProxyPath && (
-              <button
-                type="button"
-                class="btn-regen"
-                data-summary-url={summaryPostUrl}
-              >
-                Regenerate
-              </button>
-            )}
-            {showSummaryBtn && !summaryProxyPath && (
-              <button
-                type="button"
-                class="btn-regen"
-                data-summary-url={summaryPostUrl}
-              >
-                Regenerate
-              </button>
-            )}
-          </div>
-        </div>
-      ) : showSummaryBtn ? (
-        <div class="summary-empty">
-          <p class="summary-empty-text">No AI summary has been generated yet for this scenario.</p>
-          {summaryProxyPath ? (
-            <button
-              type="button"
-              class="btn-gen-lg"
-              data-summary-url={summaryPostUrl}
-              >
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-              </svg>
-              Generate AI Summary
-            </button>
-          ) : (
-            <button
-              type="button"
-              class="btn-gen-lg"
-              data-summary-url={summaryPostUrl}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-              </svg>
-              Generate AI Summary
-            </button>
-          )}
-        </div>
-      ) : (
-        <div class="summary-empty">
-          <p class="summary-empty-text">AI summaries are not enabled for your account. Contact your administrator.</p>
-        </div>
-      )}
-    </div>
-  </div>
-
-  <!-- Main content: inputs, breakdown, plans, assumptions -->
-  <div class="detail-grid">
-    <div class="detail-main">
-      <!-- Inputs summary -->
-      <section class="detail-block">
-        <h3 class="block-heading">Input Summary</h3>
-        <div class="inputs-grid">
-          {scenario.calculator_form?.groups?.length ? (
-            scenario.calculator_form.groups.map((g) => {
-              const v =
-                g.input_keys.length > 0
-                  ? (scenario.inputs[g.input_keys[0]!] ?? 0)
-                  : 0;
-              return (
-                <div class="input-chip">
-                  <p class="input-key">{g.display_label}</p>
-                  <p class="input-val">{v.toLocaleString()}</p>
-                </div>
-              );
-            })
-          ) : (
-            Object.entries(scenario.inputs).map(([key, val]) => (
-              <div class="input-chip">
-                <p class="input-key">{key.replace(/_/g, ' ')}</p>
-                <p class="input-val">{val.toLocaleString()}</p>
-              </div>
-            ))
-          )}
-        </div>
-      </section>
-
-      <!-- Transaction breakdown -->
-      <section class="detail-block">
-        <h3 class="block-heading">Transaction Breakdown</h3>
-        <div class="table-wrap">
-          <table class="dtable">
-            <thead>
-              <tr>
-                <th>Type</th>
-                <th>Direction</th>
-                <th>Obligation</th>
-                <th class="num">Volume</th>
-                <th class="num">× Multiplier</th>
-                <th class="num">PA Transactions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {scenario.transaction_breakdown.map(row => (
-                <tr>
-                  <td class="row-label">
-                    <div class="type-cell">
-                      <span class="type-main">{row.label}</span>
-                      {row.detail_label && (
-                        <span class="type-detail">{row.detail_label}</span>
-                      )}
-                    </div>
-                  </td>
-                  <td>
-                    <span class={`dir-tag ${row.direction === 'Issued' ? 'dir-issued' : 'dir-received'}`}>{row.direction}</span>
-                  </td>
-                  <td><span class="obl-tag">{row.obligation}</span></td>
-                  <td class="num muted">{row.volume.toLocaleString()}</td>
-                  <td class="num">
-                    <span class="mult-val">×{row.multiplier}</span>
-                  </td>
-                  <td class="num bold">{row.pa_transactions.toLocaleString()}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr class="total-row">
-                <td colspan="5" class="total-label">Total PA Transactions / year</td>
-                <td class="num total-val">{scenario.total_pa_transactions.toLocaleString()}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      </section>
-
-      <!-- Plan comparison -->
-      <section class="detail-block">
-        <h3 class="block-heading">Plan Comparison</h3>
-        <div class="table-wrap">
-          <table class="dtable">
-            <thead>
-              <tr>
-                <th>Plan</th>
-                <th class="num">Annual Fee</th>
-                <th class="num">Included PA</th>
-                <th class="num">Extra / PA</th>
-                <th class="num">Extra PA Used</th>
-                <th class="num">Total / Year</th>
-              </tr>
-            </thead>
-            <tbody>
-              {scenario.plan_comparison.map(plan => (
-                <tr class:list={['plan-row', { 'plan-rec': plan.recommended }]}>
-                  <td>
-                    <div class="plan-cell">
-                      {plan.recommended && (
-                        <span class="rec-star">
-                          <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-                        </span>
-                      )}
-                      <span class:list={['plan-name', { 'plan-name-rec': plan.recommended }]}>
-                        {plan.plan_name}
-                      </span>
-                      {plan.recommended && <span class="rec-label">Recommended</span>}
-                    </div>
-                  </td>
-                  <td class="num">€{plan.annual_fee.toLocaleString()}</td>
-                  <td class="num muted">{plan.included.toLocaleString()}</td>
-                  <td class="num muted">€{plan.extra_cost.toFixed(2)}</td>
-                  <td class="num muted">{plan.extra_transactions > 0 ? plan.extra_transactions.toLocaleString() : '—'}</td>
-                  <td class="num">
-                    <strong class:list={[{ 'rec-cost': plan.recommended }]}>
-                      €{plan.total_annual_cost.toLocaleString()}
-                    </strong>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <!-- Assumptions -->
-      {scenario.assumptions.length > 0 && (
-        <section class="detail-block">
-          <h3 class="block-heading">Business Assumptions</h3>
-          <ul class="assumptions-list">
-            {scenario.assumptions.map(a => (
-              <li class="assumption-item">
-                <span class="assumption-key">{a.key.replace(/_/g, ' ')}</span>
-                <span class="assumption-val">{a.value}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-    </div>
-  </div>
-
-  </div>
-
+  <SingleScenario
+    client:load
+    scenario={scenario}
+    dateDisplay={date}
+    isInternal={isInternal}
+    scenarioFromApi={scenarioFromApi}
+    showSummaryBtn={showSummaryBtn}
+    hasSupabaseToken={hasSupabaseToken}
+  />
   <ScenarioDeleteModal />
 </UserLayout>
-
-<script>
-  import '../../scripts/scenario-detail-page';
-
-  const summaryButtons = document.querySelectorAll("button.btn-gen-summary, button.btn-regen, btn-gen-lg");
-
-  summaryButtons.forEach(button => {
-    button.addEventListener('click', async () => {
-      console.log("Hi, I'm here");
-      const response = await fetch(button.dataset.summaryPostUrl!, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-      if (!response.ok) {
-        throw new Error(`Failed to generate summary: ${response.statusText}`);
-      }
-      const data = await response.json();
-      console.log(data);
-    });
-  });
-</script>
