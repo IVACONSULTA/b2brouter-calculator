@@ -1,4 +1,4 @@
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 /**
  * Netlify + Supabase: same pattern as AstroChatBot (`src/lib/supabase.ts` there) —
@@ -6,29 +6,33 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
  * Falls back to `process.env` / `PUBLIC_*` for runtime-only or alternate names.
  */
 function envFromProcess(key: string): string {
-  if (typeof process === 'undefined' || !process.env) return '';
+  if (typeof process === "undefined" || !process.env) return "";
   const v = process.env[key];
-  return typeof v === 'string' ? v.trim() : '';
+  return typeof v === "string" ? v.trim() : "";
 }
 
 function readCredentials(): { url: string; anonKey: string } {
-  const url = (
-    (import.meta.env.SUPABASE_URL || '').trim() ||
-    envFromProcess('SUPABASE_URL') ||
-    envFromProcess('PUBLIC_SUPABASE_URL') ||
-    (import.meta.env.PUBLIC_SUPABASE_URL || '').trim()
-  );
+  const url =
+    (import.meta.env.SUPABASE_URL || "").trim() ||
+    envFromProcess("SUPABASE_URL") ||
+    envFromProcess("PUBLIC_SUPABASE_URL") ||
+    (import.meta.env.PUBLIC_SUPABASE_URL || "").trim();
 
-  const anonKey = (
-    (import.meta.env.SUPABASE_ANON_KEY || '').trim() ||
-    envFromProcess('SUPABASE_ANON_KEY') ||
-    envFromProcess('PUBLIC_SUPABASE_ANON_KEY') ||
-    (import.meta.env.PUBLIC_SUPABASE_ANON_KEY || '').trim() ||
+  const anonKey =
+    (import.meta.env.SUPABASE_ANON_KEY || "").trim() ||
+    envFromProcess("SUPABASE_ANON_KEY") ||
+    envFromProcess("PUBLIC_SUPABASE_ANON_KEY") ||
+    (import.meta.env.PUBLIC_SUPABASE_ANON_KEY || "").trim() ||
     (import.meta.env.DEV
-      ? (import.meta.env.SUPABASE_KEY || envFromProcess('SUPABASE_KEY') || '').trim()
-      : '')
-  );
+      ? (
+          import.meta.env.SUPABASE_KEY ||
+          envFromProcess("SUPABASE_KEY") ||
+          ""
+        ).trim()
+      : "");
 
+  console.log("url: ", url);
+  console.log("anonKey: ", anonKey);
   return { url, anonKey };
 }
 
@@ -38,15 +42,19 @@ function readCredentials(): { url: string; anonKey: string } {
  * `SUPABASE_URL` + `SUPABASE_ANON_KEY` on the host.
  */
 export function isDemoAuthMode(): boolean {
-  if (import.meta.env.PROD) return false;
+  if (import.meta.env.PROD) {
+    console.log("PROD: ", import.meta.env.PROD);
+    return false;
+  }
+
   const { url } = readCredentials();
-  return !url || url === 'https://placeholder.supabase.co';
+  return !url || url === "https://placeholder.supabase.co";
 }
 
 /** True when a real Supabase project URL and anon key are both present (SSR / Netlify). */
 export function isSupabaseConfigured(): boolean {
   const { url, anonKey } = readCredentials();
-  if (!url || url === 'https://placeholder.supabase.co') return false;
+  if (!url || url === "https://placeholder.supabase.co") return false;
   return anonKey.length > 0;
 }
 
@@ -60,7 +68,7 @@ let cachedAnonKey: string | null = null;
 export function getSupabaseAnon(): SupabaseClient {
   if (!isSupabaseConfigured()) {
     throw new Error(
-      'Supabase is not configured: set SUPABASE_URL and SUPABASE_ANON_KEY (Netlify → Environment variables; include Branch deploys / All contexts).',
+      "Supabase is not configured: set SUPABASE_URL and SUPABASE_ANON_KEY (Netlify → Environment variables; include Branch deploys / All contexts).",
     );
   }
   const { url, anonKey } = readCredentials();
@@ -76,7 +84,7 @@ export function getSupabaseAnon(): SupabaseClient {
 export function createSupabaseWithUserJwt(accessToken: string): SupabaseClient {
   const { url, anonKey } = readCredentials();
   if (!url || !anonKey) {
-    throw new Error('SUPABASE_URL and SUPABASE_ANON_KEY must both be set.');
+    throw new Error("SUPABASE_URL and SUPABASE_ANON_KEY must both be set.");
   }
   return createClient(url, anonKey, {
     auth: { autoRefreshToken: false, persistSession: false },
