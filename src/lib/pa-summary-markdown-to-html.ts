@@ -3,7 +3,7 @@
  * Handles the common shape: ### headings, **bold**, and * … lists where list items
  * start with * **Plan….
  *
- * Escapes all user/agent text; only emits a fixed set of tags (h3, p, ul, li, strong).
+ * Escapes all user/agent text; only emits a fixed set of tags (h3, p, ul, li, strong, br).
  */
 
 function escapeHtml(text: string): string {
@@ -18,11 +18,19 @@ function escapeHtml(text: string): string {
 /** Turn **segments** into <strong>; every other segment is escaped plain text. */
 export function summaryMarkdownInlineToHtml(text: string): string {
   const parts = text.split(/\*\*/);
-  return parts
-    .map((chunk, i) =>
-      i % 2 === 0 ? escapeHtml(chunk) : `<strong>${escapeHtml(chunk)}</strong>`,
-    )
-    .join("");
+  let html = "";
+  for (let i = 0; i < parts.length; i++) {
+    const chunk = parts[i] ?? "";
+    if (i % 2 === 0) {
+      html += escapeHtml(chunk);
+    } else {
+      const inner = escapeHtml(chunk);
+      if (!inner) continue;
+      const br = html.length > 0 ? "<br />" : "";
+      html += `${br}<strong>${inner}</strong>`;
+    }
+  }
+  return html;
 }
 
 /** Heading line: first word Title-case, optional following words all lowercase (e.g. Top three options). */
