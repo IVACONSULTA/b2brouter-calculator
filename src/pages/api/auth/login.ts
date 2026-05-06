@@ -2,6 +2,7 @@ import type { APIRoute } from 'astro';
 import {
   createSupabaseWithUserJwt,
   getSupabaseAnon,
+  isDemoAuthMode,
   isSupabaseConfigured,
 } from '../../../lib/supabase';
 import {
@@ -10,14 +11,6 @@ import {
   sessionRoleFromProfileOrMeta,
   type Session,
 } from '../../../lib/session';
-
-function isPlaceholderSupabaseUrl(): boolean {
-  const url = (import.meta.env.SUPABASE_URL ?? '').trim();
-  return !url || url === 'https://placeholder.supabase.co';
-}
-
-/** Demo / local dummy login when no real Supabase URL is configured. */
-const IS_DUMMY_MODE = isPlaceholderSupabaseUrl();
 
 const DUMMY_USERS: Record<string, { name: string; role: Session['role'] }> = {
   'admin@b2brouter.com': { name: 'Admin User', role: 'admin' },
@@ -60,16 +53,16 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
       return redirect(loginErrorUrl(from, 'missing_fields'));
     }
 
-    // Real Supabase URL set but anon key missing → was uncaught throw + HTTP 500 on Netlify
-    if (!IS_DUMMY_MODE && !isSupabaseConfigured()) {
+    // Supabase expected but credentials incomplete (common Netlify misconfiguration).
+    if (!isDemoAuthMode() && !isSupabaseConfigured()) {
       console.error(
         '[api/auth/login] SUPABASE_URL is set but SUPABASE_ANON_KEY is missing (check Netlify env + deploy context).',
       );
       return redirect(loginErrorUrl(from, 'server_config'));
     }
 
-    // ── Dev / Demo mode ───────────────────────────────────────────────────────
-    if (IS_DUMMY_MODE) {
+    // ── Local dev: password-less dummy session when Supabase is not configured ─
+    if (isDemoAuthMode()) {
       const dummy = DUMMY_USERS[email];
       if (!dummy || password.length < 1) {
         return redirect(loginErrorUrl(from, 'invalid_credentials'));
@@ -90,6 +83,7 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
           path: '/',
           httpOnly: true,
           sameSite: 'lax',
+          secure: import.meta.env.PROD,
           maxAge: 60 * 60 * 24,
         },
       );

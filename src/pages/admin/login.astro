@@ -1,6 +1,7 @@
 ---
 import Layout from '../../layouts/Layout.astro';
 import { getSession, isAdminRole } from '../../lib/session';
+import { isDemoAuthMode } from '../../lib/supabase';
 import '../../styles/pages/admin-login.css';
 
 const session = getSession(Astro.cookies);
@@ -25,8 +26,7 @@ const errorMessages: Record<string, string> = {
 const errorKey = Astro.url.searchParams.get('error') ?? '';
 const errorMsg = errorMessages[errorKey] ?? '';
 
-const isDemoMode =
-  import.meta.env.SUPABASE_URL === 'https://placeholder.supabase.co' || !import.meta.env.SUPABASE_URL;
+const isDemoMode = isDemoAuthMode();
 ---
 
 <Layout title="Admin sign in">

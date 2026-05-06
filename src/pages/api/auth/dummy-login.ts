@@ -11,6 +11,10 @@ const DUMMY_USERS: Record<Role, { email: string; name: string; redirect: string 
 };
 
 export const POST: APIRoute = async ({ request, cookies, redirect }) => {
+  if (import.meta.env.PROD) {
+    return new Response('Not found', { status: 404 });
+  }
+
   const formData = await request.formData();
   const role = formData.get('role')?.toString() as Role | undefined;
 

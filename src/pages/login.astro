@@ -1,6 +1,7 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import { getSession, isAdminRole, canAccessUserPortal } from '../lib/session';
+import { isDemoAuthMode } from '../lib/supabase';
 import '../styles/pages/login.css';
 
 const session = getSession(Astro.cookies);
@@ -36,9 +37,8 @@ const errorMessages: Record<string, string> = {
 const errorKey = Astro.url.searchParams.get('error') ?? '';
 const errorMsg = errorMessages[errorKey] ?? '';
 
-// Demo mode hint: shown when SUPABASE_URL is still the placeholder
-const isDemoMode = import.meta.env.SUPABASE_URL === 'https://placeholder.supabase.co' ||
-                   !import.meta.env.SUPABASE_URL;
+// Dummy shortcut UI only in local dev when Supabase URL is missing / placeholder.
+const isDemoMode = isDemoAuthMode();
 ---
 
 <Layout title="Sign in">
