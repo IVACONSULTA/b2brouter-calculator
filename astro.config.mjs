@@ -1,4 +1,4 @@
-import { defineConfig, sessionDrivers, envField } from "astro/config";
+import { defineConfig, sessionDrivers } from "astro/config";
 import netlify from "@astrojs/netlify";
 import react from "@astrojs/react";
 
@@ -17,27 +17,6 @@ export default defineConfig({
   output: "server",
   integrations: [react()],
   adapter: netlify(),
-
-  env: {
-    schema: {
-      SUPABASE_URL: envField.string({
-        context: "server",
-        access: "secret",
-        optional: true,
-      }),
-      SUPABASE_ANON_KEY: envField.string({
-        context: "server",
-        access: "secret",
-        optional: true,
-      }),
-      /** Local Supabase CLI snippets often use this name; dev fallback only in `supabase.ts`. */
-      SUPABASE_KEY: envField.string({
-        context: "server",
-        access: "secret",
-        optional: true,
-      }),
-    },
-  },
 
   ...(netlifyVitePluginSkipped && {
     session: {

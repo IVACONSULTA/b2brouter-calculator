@@ -1,10 +1,9 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { getSecret } from 'astro:env/server';
 
 /**
- * Prefer Astro `getSecret()` for Netlify / SSR: values are resolved at runtime via the
- * adapter and are not stripped when esbuild/Vite inlines `import.meta.env` at build time.
- * Then `process.env`, then `import.meta.env`, for local scripts and older setups.
+ * Netlify + Supabase: same pattern as AstroChatBot (`src/lib/supabase.ts` there) —
+ * Vite inlines `import.meta.env.SUPABASE_*` from Netlify’s env during `npm run build`.
+ * Falls back to `process.env` / `PUBLIC_*` for runtime-only or alternate names.
  */
 function envFromProcess(key: string): string {
   if (typeof process === 'undefined' || !process.env) return '';
@@ -12,31 +11,23 @@ function envFromProcess(key: string): string {
   return typeof v === 'string' ? v.trim() : '';
 }
 
-/** Canonical server secrets plus optional `PUBLIC_*` overrides (Astro / Netlify env). */
 function readCredentials(): { url: string; anonKey: string } {
   const url = (
-    getSecret('SUPABASE_URL') ||
+    (import.meta.env.SUPABASE_URL || '').trim() ||
     envFromProcess('SUPABASE_URL') ||
     envFromProcess('PUBLIC_SUPABASE_URL') ||
-    import.meta.env.SUPABASE_URL ||
-    import.meta.env.PUBLIC_SUPABASE_URL ||
-    ''
-  ).trim();
+    (import.meta.env.PUBLIC_SUPABASE_URL || '').trim()
+  );
 
   const anonKey = (
-    getSecret('SUPABASE_ANON_KEY') ||
+    (import.meta.env.SUPABASE_ANON_KEY || '').trim() ||
     envFromProcess('SUPABASE_ANON_KEY') ||
     envFromProcess('PUBLIC_SUPABASE_ANON_KEY') ||
-    import.meta.env.SUPABASE_ANON_KEY ||
-    import.meta.env.PUBLIC_SUPABASE_ANON_KEY ||
+    (import.meta.env.PUBLIC_SUPABASE_ANON_KEY || '').trim() ||
     (import.meta.env.DEV
-      ? getSecret('SUPABASE_KEY') ||
-          envFromProcess('SUPABASE_KEY') ||
-          import.meta.env.SUPABASE_KEY ||
-          ''
-      : '') ||
-    ''
-  ).trim();
+      ? (import.meta.env.SUPABASE_KEY || envFromProcess('SUPABASE_KEY') || '').trim()
+      : '')
+  );
 
   return { url, anonKey };
 }
