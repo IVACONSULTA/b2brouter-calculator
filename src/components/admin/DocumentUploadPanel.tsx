@@ -1,4 +1,5 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { paUploadLog } from '../../lib/pa-upload-debug';
 
 export type DocumentTypeOption = { value: string; label: string };
 
@@ -36,6 +37,18 @@ export default function DocumentUploadPanel({
   const [dragOver, setDragOver] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+
+  useEffect(() => {
+    paUploadLog('DocumentUploadPanel props', {
+      canUpload,
+      localMode,
+      profileSlug,
+      countryId: countryId || '(empty)',
+      providerId: providerId || '(empty)',
+      profileId: profileId || '(empty)',
+      uploadEndpoint,
+    });
+  }, [canUpload, localMode, profileSlug, countryId, providerId, profileId, uploadEndpoint]);
 
   const pickFile = useCallback((list: FileList | null) => {
     const f = list?.[0];
@@ -87,6 +100,17 @@ export default function DocumentUploadPanel({
       fd.append('profile_id', profileId);
     }
 
+    paUploadLog('upload submit', {
+      localMode,
+      profileSlug,
+      filename: file.name,
+      size: file.size,
+      documentType,
+      countryId: countryId || undefined,
+      providerId: providerId || undefined,
+      profileId: profileId || undefined,
+    });
+
     setBusy(true);
     try {
       const res = await fetch(uploadEndpoint, {
@@ -95,6 +119,7 @@ export default function DocumentUploadPanel({
         credentials: 'same-origin',
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
+      paUploadLog('upload response', { httpStatus: res.status, body: data });
       if (!res.ok) {
         const msg =
           typeof data.error === 'string'
@@ -108,6 +133,7 @@ export default function DocumentUploadPanel({
       }
       window.location.reload();
     } catch (err) {
+      paUploadLog('upload fetch error', err);
       setMessage({
         kind: 'err',
         text: err instanceof Error ? err.message : 'Upload failed.',

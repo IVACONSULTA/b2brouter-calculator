@@ -3,6 +3,7 @@ import { getSession, isAdminRole } from '../../../../../lib/session';
 import { getFreshSupabaseAccessToken } from '../../../../../lib/supabase-session';
 import { paPostFormData } from '../../../../../lib/pa-api';
 import { saveLocalDevUpload, useLocalDocumentStorage } from '../../../../../lib/admin-documents-local';
+import { paUploadLog } from '../../../../../lib/pa-upload-debug';
 
 export const prerender = false;
 
@@ -14,8 +15,11 @@ function json(status: number, body: unknown) {
 }
 
 export const POST: APIRoute = async ({ request, cookies }) => {
+  paUploadLog('BFF POST /api/pa/admin/documents/upload: incoming');
+
   const session = getSession(cookies);
   if (!session || !isAdminRole(session.role)) {
+    paUploadLog('BFF upload: forbidden (no admin session)');
     return json(403, { error: 'Forbidden', message: 'Admin sign-in required.' });
   }
 
@@ -47,6 +51,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   }
 
   if (useLocalDocumentStorage()) {
+    paUploadLog('BFF upload: local document storage branch', { profile_slug, document_type });
     if (!profile_slug) {
       return json(400, { error: 'profile_slug is required for local document storage.' });
     }
@@ -65,6 +70,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 
   const fresh = await getFreshSupabaseAccessToken(cookies);
   if (!fresh.ok) {
+    paUploadLog('BFF upload: token refresh failed', { code: fresh.code });
     return json(401, {
       error: 'Unauthorized',
       message:
@@ -79,6 +85,11 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   const profile_id = String(form.get('profile_id') ?? '').trim();
 
   if (!country_id || !provider_id || !profile_id) {
+    paUploadLog('BFF upload: missing ids', {
+      hasCountry: Boolean(country_id),
+      hasProvider: Boolean(provider_id),
+      hasProfile: Boolean(profile_id),
+    });
     return json(400, {
       error:
         'country_id, provider_id, and profile_id are required. Ensure this profile exists in Plan Advisor (same country, provider, and version).',
@@ -93,11 +104,22 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   outbound.append('document_type', document_type);
   if (description) outbound.append('description', description);
 
+  paUploadLog('BFF upload: forwarding to Plan Advisor', {
+    profile_id,
+    country_id,
+    provider_id,
+    document_type,
+    filename: file.name,
+    size: file.size,
+  });
+
   const result = await paPostFormData('/admin/documents/upload', fresh.accessToken, outbound);
 
   if (!result.ok) {
+    paUploadLog('BFF upload: Plan Advisor error', { httpStatus: result.status, error: result.error });
     return json(result.status || 502, result.error);
   }
 
+  paUploadLog('BFF upload: Plan Advisor ok', result.data);
   return json(201, result.data);
 };

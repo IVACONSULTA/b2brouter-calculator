@@ -13,6 +13,7 @@ import {
   readLocalDocumentsCombined,
   useLocalDocumentStorage,
 } from '../../../../lib/admin-documents-local';
+import { paUploadLog } from '../../../../lib/pa-upload-debug';
 import { DUMMY_PROFILES, DUMMY_DOCUMENTS, DOCUMENT_TYPES } from '../../../../lib/dummy-data';
 import '../../../../styles/pages/admin-country-documents.css';
 
@@ -180,6 +181,29 @@ const uploadConfig = {
   profileId: apiTarget?.profile_id ?? '',
   canUpload,
 };
+
+paUploadLog('documents page SSR', {
+  routeProfileId,
+  apiReady,
+  hasPaToken: Boolean(paToken),
+  hasApiBaseUrl: Boolean((import.meta.env.API_BASE_URL ?? '').trim()),
+  localDocMode,
+  devLocalFolder,
+  useLocalDocumentsListing,
+  dummyProfileMatch: {
+    countryCode: profile.country.code,
+    providerName: profile.provider.name,
+    version: profile.version,
+  },
+  apiTarget: apiTarget
+    ? {
+        profile_id: apiTarget.profile_id,
+        country_id: apiTarget.country_id,
+        provider_id: apiTarget.provider_id,
+      }
+    : null,
+  canUpload,
+});
 
 const metaFor = (status: string) =>
   copyrightMeta[status] ?? copyrightMeta.pending;
