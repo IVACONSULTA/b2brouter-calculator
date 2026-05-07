@@ -31,6 +31,7 @@ export const DUMMY_PROFILES = [
   },
   {
     id: 'profile-it-pdp-1',
+    /** Upload resolves to Railway via country_code + provider_name + version; align with `providers` / `calculation_profiles` or use PUBLIC_PA_UI_PROFILE_UUID_MAP. */
     country: { code: 'IT', name: 'Italy' },
     provider: { name: 'Aruba PEC', type: 'PDP' },
     version: 'v0.1',

@@ -14,6 +14,7 @@ import {
   useLocalDocumentStorage,
 } from '../../../../lib/admin-documents-local';
 import { paUploadLog } from '../../../../lib/pa-upload-debug';
+import { parsePaUiProfileUuidMap } from '../../../../lib/pa-ui-profile-uuid-map';
 import { DUMMY_PROFILES, DUMMY_DOCUMENTS, DOCUMENT_TYPES } from '../../../../lib/dummy-data';
 import '../../../../styles/pages/admin-country-documents.css';
 
@@ -88,13 +89,20 @@ let apiTarget: {
   provider_id: string;
 } | null = null;
 
+const uiProfileUuidBySlug = parsePaUiProfileUuidMap();
+const uuidOverrideForSlug = uiProfileUuidBySlug[routeProfileId] ?? null;
+
 /** Resolve UUIDs whenever the API is reachable — needed for upload even when the table lists local dev files. */
 if (apiReady && paToken && (import.meta.env.API_BASE_URL ?? '').trim()) {
-  const resolved = await resolvePlanAdvisorProfileIds(paToken, {
-    countryCode: profile.country.code,
-    providerName: profile.provider.name,
-    version: profile.version,
-  });
+  const resolved = await resolvePlanAdvisorProfileIds(
+    paToken,
+    {
+      countryCode: profile.country.code,
+      providerName: profile.provider.name,
+      version: profile.version,
+    },
+    { uuidOverride: uuidOverrideForSlug },
+  );
   if (resolved) {
     apiTarget = {
       profile_id: resolved.id,
@@ -187,6 +195,7 @@ paUploadLog('documents page SSR', {
   apiReady,
   hasPaToken: Boolean(paToken),
   hasApiBaseUrl: Boolean((import.meta.env.API_BASE_URL ?? '').trim()),
+  uuidMapOverride: Boolean(uuidOverrideForSlug),
   localDocMode,
   devLocalFolder,
   useLocalDocumentsListing,
