@@ -25,7 +25,7 @@ const SUMMARY_AUTH_ERROR =
   "We couldn't verify your session for this action. Please sign out, sign in again, and retry.";
 
 const SUMMARY_SIGN_IN_REQUIRED =
-  'AI summary requires a full sign-in (not demo login). Use your email and password, then try again.';
+  "AI summary requires a full sign-in (not demo login). Use your email and password, then try again.";
 
 async function showScenarioUserMessage(message: string): Promise<void> {
   if (typeof window.paScenarioDialogAlert === "function") {
@@ -78,6 +78,10 @@ const SingleScenario = ({
 }: SingleScenarioProps) => {
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [copyDone, setCopyDone] = useState(false);
+
+  if (scenario === null || scenario === undefined) {
+    return;
+  }
 
   const postGenerateSummary = useCallback(async () => {
     if (!hasSupabaseToken) {
@@ -157,8 +161,8 @@ const SingleScenario = ({
           typeof data.message === "string"
             ? data.message
             : typeof data.error === "string"
-            ? data.error
-            : `HTTP ${res.status}`;
+              ? data.error
+              : `HTTP ${res.status}`;
         alert(`Download failed: ${msg}`);
         return;
       }
@@ -211,8 +215,8 @@ const SingleScenario = ({
         typeof data.message === "string"
           ? data.message
           : typeof data.error === "string"
-          ? data.error
-          : JSON.stringify(data);
+            ? data.error
+            : JSON.stringify(data);
       const detail = `Delete failed (${res.status}): ${msg}`;
       if (typeof alertDlg === "function") await alertDlg(detail);
       else alert(detail);
@@ -249,7 +253,7 @@ const SingleScenario = ({
       <div className="scenario-header">
         <div className="sh-left">
           <div className="sh-meta">
-            <span className="sh-id">#{scenario.id}</span>
+            <span className="sh-id">{scenario.id}</span>
             <span className="sh-date">{dateDisplay}</span>
             {isInternal && scenario.created_by ? (
               <span className="sh-author">by {scenario.created_by}</span>
@@ -581,7 +585,7 @@ const SingleScenario = ({
                 ? scenario.calculator_form.groups.map((g, gi) => {
                     const v =
                       g.input_keys.length > 0
-                        ? scenario.inputs[g.input_keys[0]!] ?? 0
+                        ? (scenario.inputs[g.input_keys[0]!] ?? 0)
                         : 0;
                     return (
                       <div
