@@ -58,7 +58,7 @@ function mapAdminProfileRow(row: AdminProfileApiRow): (typeof DUMMY_PROFILES)[nu
     ? (st as (typeof DUMMY_PROFILES)[number]['status'])
     : 'draft';
 
-  return {
+  const mapped = {
     id: String(row.id),
     country: {
       code: row.country_code ?? '—',
@@ -77,6 +77,7 @@ function mapAdminProfileRow(row: AdminProfileApiRow): (typeof DUMMY_PROFILES)[nu
     plans_count: Number(row.plans_count ?? 0),
     analysis_id: null,
   };
+  return mapped as (typeof DUMMY_PROFILES)[number];
 }
 
 let activeProfiles = DUMMY_ACTIVE_PROFILES;

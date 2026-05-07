@@ -205,11 +205,18 @@ export function initAdminCountryAiAnalysisChat(): void {
     return;
   }
 
+  const chatMessages = messagesEl;
+  const chatRulesEmpty = rulesEmptyEl;
+  const chatRulesList = rulesListEl;
+  const chatForm = form;
+  const chatInput = input;
+  const chatSendBtn = sendBtn;
+
   let turnIndex = 0;
   const seenRuleIds = new Set<string>();
 
   function scrollChatToBottom(): void {
-    messagesEl.scrollTop = messagesEl.scrollHeight;
+    chatMessages.scrollTop = chatMessages.scrollHeight;
   }
 
   function addBubble(role: 'user' | 'assistant', html: string): void {
@@ -221,7 +228,7 @@ export function initAdminCountryAiAnalysisChat(): void {
       '</div><div class="bubble-body"></div>';
     const body = wrap.querySelector('.bubble-body');
     if (body) body.innerHTML = html;
-    messagesEl.appendChild(wrap);
+    chatMessages.appendChild(wrap);
     scrollChatToBottom();
   }
 
@@ -230,12 +237,12 @@ export function initAdminCountryAiAnalysisChat(): void {
     for (const r of rules) {
       if (seenRuleIds.has(r.id)) continue;
       seenRuleIds.add(r.id);
-      rulesListEl.appendChild(renderRuleCard(r));
+      chatRulesList.appendChild(renderRuleCard(r));
       added = true;
     }
     if (added) {
-      rulesListEl.hidden = false;
-      rulesEmptyEl.hidden = true;
+      chatRulesList.hidden = false;
+      chatRulesEmpty.hidden = true;
     }
   }
 
@@ -246,14 +253,14 @@ export function initAdminCountryAiAnalysisChat(): void {
     mergeRules(turn.rules);
   }
 
-  form.addEventListener('submit', (e) => {
+  chatForm.addEventListener('submit', (e) => {
     e.preventDefault();
-    const text = input.value.trim();
+    const text = chatInput.value.trim();
     if (!text) return;
 
     addBubble('user', escapeText(text).replace(/\n/g, '<br/>'));
-    input.value = '';
-    sendBtn.disabled = true;
+    chatInput.value = '';
+    chatSendBtn.disabled = true;
 
     void (async () => {
       try {
@@ -295,8 +302,8 @@ export function initAdminCountryAiAnalysisChat(): void {
         const msg = err instanceof Error ? err.message : String(err);
         addBubble('assistant', escapeText('Request failed: ' + msg).replace(/\n/g, '<br/>'));
       } finally {
-        sendBtn.disabled = false;
-        input.focus();
+        chatSendBtn.disabled = false;
+        chatInput.focus();
       }
     })();
   });

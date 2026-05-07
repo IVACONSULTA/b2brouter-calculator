@@ -15,8 +15,9 @@ const analysis = DUMMY_ANALYSIS_DETAIL;
 const approvedRules = analysis.rules.filter(r => r.status === 'approved');
 const approvedPlans = analysis.plans.filter(p => p.status === 'approved');
 const approvedAssumptions = analysis.assumptions.filter(a => a.status === 'approved');
-const pendingItems = analysis.rules.filter(r => r.status !== 'approved' && r.status !== 'rejected').length
-  + analysis.plans.filter(p => p.status !== 'approved' && p.status !== 'rejected').length;
+const pendingItems =
+  analysis.rules.filter(r => r.status !== 'approved' && r.status !== 'rejected').length +
+  analysis.plans.filter((p) => !['approved', 'rejected'].includes(p.status)).length;
 
 const canActivate = approvedRules.length >= 1 && approvedPlans.length >= 1 && analysis.conflicts.length === 0;
 

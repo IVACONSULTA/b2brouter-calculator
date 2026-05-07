@@ -309,6 +309,12 @@
 
     .btn-upload:hover { background: var(--color-admin); color: #fff; border-color: var(--color-admin); }
 
+    .btn-upload:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      pointer-events: none;
+    }
+
     /* Legend */
     .legend-panel { padding: 1rem 1.1rem; }
 
