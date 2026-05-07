@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { paUploadLog } from '../../lib/pa-upload-debug';
+import { paUploadLogClient } from '../../lib/pa-upload-debug';
 
 export type DocumentTypeOption = { value: string; label: string };
 
@@ -8,6 +8,8 @@ export type DocumentUploadPanelProps = {
   uploadEndpoint: string;
   canUpload: boolean;
   localMode: boolean;
+  /** `staging` = wizard temp upload (no calculation_profiles UUID yet). */
+  uploadMode: 'local' | 'live' | 'staging';
   profileSlug: string;
   countryId: string;
   providerId: string;
@@ -24,6 +26,7 @@ export default function DocumentUploadPanel({
   uploadEndpoint,
   canUpload,
   localMode,
+  uploadMode,
   profileSlug,
   countryId,
   providerId,
@@ -39,16 +42,17 @@ export default function DocumentUploadPanel({
   const [message, setMessage] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
 
   useEffect(() => {
-    paUploadLog('DocumentUploadPanel props', {
+    paUploadLogClient('DocumentUploadPanel props', {
       canUpload,
       localMode,
+      uploadMode,
       profileSlug,
       countryId: countryId || '(empty)',
       providerId: providerId || '(empty)',
       profileId: profileId || '(empty)',
       uploadEndpoint,
     });
-  }, [canUpload, localMode, profileSlug, countryId, providerId, profileId, uploadEndpoint]);
+  }, [canUpload, localMode, uploadMode, profileSlug, countryId, providerId, profileId, uploadEndpoint]);
 
   const pickFile = useCallback((list: FileList | null) => {
     const f = list?.[0];
@@ -69,7 +73,7 @@ export default function DocumentUploadPanel({
       setMessage({
         kind: 'err',
         text:
-          'Upload is not available until this profile exists in Plan Advisor, or enable PA_LOCAL_DOCUMENT_STORAGE for local dev.',
+          'Upload is not available. Sign in as admin, set API_BASE_URL for Plan Advisor, or enable PA_LOCAL_DOCUMENT_STORAGE for local-only storage.',
       });
       return;
     }
@@ -81,7 +85,7 @@ export default function DocumentUploadPanel({
       setMessage({ kind: 'err', text: 'Select a document type.' });
       return;
     }
-    if (!localMode && (!countryId || !providerId || !profileId)) {
+    if (!localMode && uploadMode === 'live' && (!countryId || !providerId || !profileId)) {
       setMessage({
         kind: 'err',
         text: 'Missing country, provider, or profile id — reload the page or complete profile setup.',
@@ -94,13 +98,15 @@ export default function DocumentUploadPanel({
     fd.append('document_type', documentType);
     fd.append('profile_slug', profileSlug);
     if (description.trim()) fd.append('description', description.trim());
-    if (!localMode) {
+    if (uploadMode === 'staging') {
+      fd.append('upload_mode', 'staging');
+    } else if (!localMode) {
       fd.append('country_id', countryId);
       fd.append('provider_id', providerId);
       fd.append('profile_id', profileId);
     }
 
-    paUploadLog('upload submit', {
+    paUploadLogClient('upload submit', {
       localMode,
       profileSlug,
       filename: file.name,
@@ -119,7 +125,7 @@ export default function DocumentUploadPanel({
         credentials: 'same-origin',
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string; message?: string };
-      paUploadLog('upload response', { httpStatus: res.status, body: data });
+      paUploadLogClient('upload response', { httpStatus: res.status, body: data });
       if (!res.ok) {
         const msg =
           typeof data.error === 'string'
@@ -133,7 +139,7 @@ export default function DocumentUploadPanel({
       }
       window.location.reload();
     } catch (err) {
-      paUploadLog('upload fetch error', err);
+      paUploadLogClient('upload fetch error', err);
       setMessage({
         kind: 'err',
         text: err instanceof Error ? err.message : 'Upload failed.',

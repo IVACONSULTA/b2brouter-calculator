@@ -1,7 +1,9 @@
 import type { APIRoute } from 'astro';
 import { getSession, isAdminRole } from '../../../../../lib/session';
-import { listLocalProfileDocumentAbsolutePaths } from '../../../../../lib/admin-ai-analysis-paths';
+import { listLocalProfileDocumentAbsolutePaths, safeProfileSlug } from '../../../../../lib/admin-ai-analysis-paths';
 import { parseCrewAnalysisOutput } from '../../../../../lib/pa-crew-response-parse';
+import { getFreshSupabaseAccessToken } from '../../../../../lib/supabase-session';
+import { paFetchJson, planAdvisorApiBase } from '../../../../../lib/pa-api';
 
 export const prerender = false;
 
@@ -48,11 +50,31 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     });
   }
 
-  const { rootDir, paths } = listLocalProfileDocumentAbsolutePaths(profileId);
+  let { rootDir, paths } = listLocalProfileDocumentAbsolutePaths(profileId);
+
+  if (paths.length === 0 && planAdvisorApiBase()) {
+    const fresh = await getFreshSupabaseAccessToken(cookies);
+    if (fresh.ok) {
+      const stagingRoot = (import.meta.env.PLAN_ADVISOR_STAGING_DOCUMENT_ROOT ?? '/data/documents')
+        .trim()
+        .replace(/\/$/, '');
+      const slug = safeProfileSlug(profileId);
+      const list = await paFetchJson<Array<{ filename: string }>>(
+        `/admin/documents/staging?profile_slug=${encodeURIComponent(profileId)}`,
+        fresh.accessToken,
+      );
+
+      if (list.ok && Array.isArray(list.data) && list.data.length > 0) {
+        rootDir = `${stagingRoot}/staging__${slug}`;
+        paths = list.data.map((row) => `${rootDir}/${row.filename}`);
+      }
+    }
+  }
+
   if (paths.length === 0) {
     return json(400, {
       error: 'No documents',
-      message: `No files found under docs/uploads for this profile. Add files to: ${rootDir}`,
+      message: `No files under docs/uploads/${safeProfileSlug(profileId)} for local crew, and no Railway staged documents for this profile (or crew cannot read PLAN_ADVISOR_STAGING_DOCUMENT_ROOT).`,
     });
   }
 

@@ -68,6 +68,8 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     });
   }
 
+  const upload_mode = String(form.get('upload_mode') ?? '').trim();
+
   const fresh = await getFreshSupabaseAccessToken(cookies);
   if (!fresh.ok) {
     paUploadLog('BFF upload: token refresh failed', { code: fresh.code });
@@ -78,6 +80,34 @@ export const POST: APIRoute = async ({ request, cookies }) => {
           ? 'Not signed in with Supabase.'
           : 'Session expired. Please sign in again.',
     });
+  }
+
+  if (upload_mode === 'staging') {
+    if (!profile_slug) {
+      return json(400, { error: 'profile_slug is required for staged uploads.' });
+    }
+    const outbound = new FormData();
+    outbound.append('file', file, file.name);
+    outbound.append('profile_slug', profile_slug);
+    outbound.append('document_type', document_type);
+    if (description) outbound.append('description', description);
+
+    paUploadLog('BFF upload: Plan Advisor staging upload', {
+      profile_slug,
+      document_type,
+      filename: file.name,
+      size: file.size,
+    });
+
+    const result = await paPostFormData('/admin/documents/upload-staging', fresh.accessToken, outbound);
+
+    if (!result.ok) {
+      paUploadLog('BFF upload: staging error', { httpStatus: result.status, error: result.error });
+      return json(result.status || 502, result.error);
+    }
+
+    paUploadLog('BFF upload: staging ok', result.data);
+    return json(201, { ...(result.data as object), staged: true });
   }
 
   const country_id = String(form.get('country_id') ?? '').trim();

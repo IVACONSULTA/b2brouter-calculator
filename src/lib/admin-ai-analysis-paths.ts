@@ -2,7 +2,7 @@ import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 /** Match slug sanitization in admin-documents-local / uploads layout. */
-function safeProfileSlug(profileId: string): string {
+export function safeProfileSlug(profileId: string): string {
   return profileId.replace(/[^a-zA-Z0-9-_]/g, '') || 'profile';
 }
 

@@ -166,7 +166,32 @@ if (useLocalDocumentsListing) {
     }
   } else {
     adminNotice =
-      'No matching calculation profile in Plan Advisor for this country/provider/version. Upload is disabled until the profile exists, or enable PA_LOCAL_DOCUMENT_STORAGE for local docs.';
+      'Draft uploads are stored temporarily for AI analysis (steps 2–3). When you activate the calculation profile (step 4), include promote_profile_slug in the activate request (same value as this page’s profile id) so files are copied into live calculator storage.';
+    const slist = await paFetchJson<
+      Array<{
+        id: string;
+        filename: string;
+        document_type: string;
+        description?: string | null;
+        copyright_status: string;
+        created_at: string;
+      }>
+    >(`/admin/documents/staging?profile_slug=${encodeURIComponent(routeProfileId)}`, paToken);
+    if (slist.ok && Array.isArray(slist.data)) {
+      documents = slist.data.map((r) => ({
+        id: r.id,
+        filename: r.filename,
+        document_type: r.document_type,
+        description: r.description ?? undefined,
+        copyright_status: r.copyright_status,
+        uploaded_at: formatApiDate(r.created_at),
+        size: '—',
+        selected: r.copyright_status !== 'blocked',
+      }));
+    } else if (!slist.ok) {
+      const suffix = ` Could not load staged documents (HTTP ${slist.status}). Showing demo list.`;
+      adminNotice = `${adminNotice}${suffix}`.trim();
+    }
   }
 } else if (!session.supabaseAccessToken) {
   adminNotice = 'Demo session (no JWT). Sign in with Supabase + set API_BASE_URL for live uploads.';
@@ -179,11 +204,17 @@ const blockedDocs = documents.filter((d) => d.copyright_status === 'blocked');
 
 const aiAnalysisHref = `/admin/countries/${routeProfileId}/ai-analysis`;
 
-const canUpload = localDocMode || Boolean(apiTarget);
+const hasApiBase = Boolean((import.meta.env.API_BASE_URL ?? '').trim());
+const canUpload = Boolean(
+  localDocMode || apiTarget || (apiReady && paToken && hasApiBase && !localDocMode),
+);
+
+const uploadMode: 'local' | 'live' | 'staging' = localDocMode ? 'local' : apiTarget ? 'live' : 'staging';
 
 const uploadConfig = {
   profileSlug: routeProfileId,
   localMode: localDocMode,
+  uploadMode,
   countryId: apiTarget?.country_id ?? '',
   providerId: apiTarget?.provider_id ?? '',
   profileId: apiTarget?.profile_id ?? '',
@@ -212,6 +243,7 @@ paUploadLog('documents page SSR', {
       }
     : null,
   canUpload,
+  uploadMode,
 });
 
 const metaFor = (status: string) =>
@@ -380,6 +412,7 @@ const metaFor = (status: string) =>
           uploadEndpoint="/api/pa/admin/documents/upload"
           canUpload={canUpload}
           localMode={localDocMode}
+          uploadMode={uploadConfig.uploadMode}
           profileSlug={routeProfileId}
           countryId={uploadConfig.countryId}
           providerId={uploadConfig.providerId}
