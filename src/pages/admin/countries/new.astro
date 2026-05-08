@@ -292,10 +292,20 @@ const currencies = ['EUR', 'GBP', 'PLN', 'RON'];
           apiProfileId = data.id;
           apiCountryId = data.country_id;
           apiProviderId = data.provider_id;
+          console.log('[New Country] Profile created on Railway:', {
+            profile_id: apiProfileId,
+            country_id: apiCountryId,
+            provider_id: apiProviderId,
+          });
+        } else {
+          console.warn('[New Country] Profile creation failed:', res.status, await res.text());
         }
-      } catch {
-        // Offline or API unavailable — continue with local draft only
+      } catch (err) {
+        console.error('[New Country] Profile creation error:', err);
+        // Continue with local draft only
       }
+    } else {
+      console.warn('[New Country] Could not resolve country/provider IDs from Railway');
     }
 
     const profileRouteId = makeDraftProfileRouteId();
@@ -315,6 +325,11 @@ const currencies = ['EUR', 'GBP', 'PLN', 'RON'];
       apiCountryId,
       apiProviderId,
     };
+
+    console.log('[New Country] Saving draft to sessionStorage:', {
+      profileRouteId: draft.profileRouteId,
+      hasApiUUIDs: Boolean(apiProfileId && apiCountryId && apiProviderId),
+    });
 
     saveCountryWizardDraft(draft);
 

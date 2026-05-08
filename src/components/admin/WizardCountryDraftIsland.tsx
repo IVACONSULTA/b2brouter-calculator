@@ -98,11 +98,29 @@ function WizardCountryRibbon() {
   const { draft, profile } = useWizardCountryDraft();
   if (!draft && !profile.id.startsWith('profile-draft-')) return null;
 
+  const hasApiUUIDs = draft?.apiProfileId && draft?.apiCountryId && draft?.apiProviderId;
+
   return (
     <div className="wizard-draft-ribbon" role="status">
       <span>
         Profile: <strong>{profile.country.name}</strong> ({profile.country.code}) ·{' '}
         <strong>{profile.provider.name}</strong> — {profile.provider.type}
+        {hasApiUUIDs ? (
+          <span style={{ marginLeft: '0.5rem', fontSize: '0.7rem', opacity: 0.7 }}>
+            ✓ Railway profile
+          </span>
+        ) : (
+          <span
+            style={{
+              marginLeft: '0.5rem',
+              fontSize: '0.7rem',
+              opacity: 0.7,
+              color: 'var(--color-warning, #f59e0b)',
+            }}
+          >
+            ⚠ Local draft only
+          </span>
+        )}
       </span>
     </div>
   );

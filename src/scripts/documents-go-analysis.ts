@@ -1,3 +1,5 @@
+import { loadCountryWizardDraft } from '../lib/country-wizard-draft';
+
 /**
  * Step 2 → Step 3: promote staged docs + run Plan Advisor analysis pipeline before navigation.
  */
@@ -8,13 +10,31 @@ export function initDocumentsGoAnalysis(): void {
   btn.addEventListener('click', async () => {
     const href = btn.dataset.href ?? '';
     const slug = btn.dataset.profileSlug ?? '';
-    const profileId = btn.dataset.profileId ?? '';
-    const countryId = btn.dataset.countryId ?? '';
-    const providerId = btn.dataset.providerId ?? '';
 
     if (!href || !slug) {
       alert('Missing navigation target.');
       return;
+    }
+
+    // Read from button data attributes (set by React island after hydration)
+    let profileId = btn.dataset.profileId ?? '';
+    let countryId = btn.dataset.countryId ?? '';
+    let providerId = btn.dataset.providerId ?? '';
+
+    // Fallback: read directly from sessionStorage if React hasn't hydrated yet
+    if (!profileId || !countryId || !providerId) {
+      const draft = loadCountryWizardDraft(slug);
+      console.log('[Go to Analysis] Draft from sessionStorage:', {
+        slug,
+        hasApiProfileId: Boolean(draft?.apiProfileId),
+        hasApiCountryId: Boolean(draft?.apiCountryId),
+        hasApiProviderId: Boolean(draft?.apiProviderId),
+      });
+      if (draft?.apiProfileId && draft?.apiCountryId && draft?.apiProviderId) {
+        profileId = draft.apiProfileId;
+        countryId = draft.apiCountryId;
+        providerId = draft.apiProviderId;
+      }
     }
 
     if (!profileId || !countryId || !providerId) {
