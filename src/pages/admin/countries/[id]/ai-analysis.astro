@@ -1,7 +1,12 @@
 ---
 import AdminLayout from '../../../../layouts/AdminLayout.astro';
 import { getSession, isAdminRole } from '../../../../lib/session';
-import { DUMMY_PROFILES } from '../../../../lib/dummy-data';
+import { canUsePlanAdvisorApi } from '../../../../lib/pa-api';
+import { getFreshSupabaseAccessToken } from '../../../../lib/supabase-session';
+import { resolvePlanAdvisorProfileIds } from '../../../../lib/admin-resolve-profile-api';
+import { resolveAdminWizardProfile } from '../../../../lib/admin-wizard-profile-fallback';
+import WizardCountryDraftIsland from '../../../../components/admin/WizardCountryDraftIsland';
+import { parsePaUiProfileUuidMap } from '../../../../lib/pa-ui-profile-uuid-map';
 import '../../../../styles/pages/admin-country-ai-analysis.css';
 
 const session = getSession(Astro.cookies);
@@ -11,10 +16,57 @@ if (!isAdminRole(session.role)) return Astro.redirect('/dashboard');
 const { id: routeProfileId } = Astro.params;
 if (!routeProfileId) return Astro.redirect('/countries');
 
-const profile = DUMMY_PROFILES.find((p) => p.id === routeProfileId) ?? DUMMY_PROFILES[0];
+const profile = resolveAdminWizardProfile(routeProfileId);
+
+let paToken: string | null = null;
+if (session.supabaseAccessToken?.trim()) {
+  const fresh = await getFreshSupabaseAccessToken(Astro.cookies);
+  if (fresh.ok) paToken = fresh.accessToken;
+}
+
+const apiReady = canUsePlanAdvisorApi(session);
+
+let apiTarget: {
+  profile_id: string;
+  country_id: string;
+  provider_id: string;
+} | null = null;
+
+const uiProfileUuidBySlug = parsePaUiProfileUuidMap();
+const uuidOverrideForSlug = uiProfileUuidBySlug[routeProfileId] ?? null;
+
+if (apiReady && paToken && (import.meta.env.API_BASE_URL ?? '').trim()) {
+  const resolved = await resolvePlanAdvisorProfileIds(
+    paToken,
+    {
+      countryCode: profile.country.code,
+      providerName: profile.provider.name,
+      version: profile.version,
+    },
+    { uuidOverride: uuidOverrideForSlug },
+  );
+  if (resolved) {
+    apiTarget = {
+      profile_id: resolved.id,
+      country_id: resolved.country_id,
+      provider_id: resolved.provider_id,
+    };
+  }
+}
+
+const wizardCalculationProfileId = apiTarget?.profile_id ?? '';
+const wizardProfileSlug = routeProfileId;
+
 const fullAnalysisHref = profile.analysis_id
   ? `/admin/analyses/${profile.analysis_id}`
   : null;
+
+const approveDisabledReason =
+  !wizardCalculationProfileId && apiReady && paToken && (import.meta.env.API_BASE_URL ?? '').trim()
+    ? 'Link this wizard profile to a draft calculation_profiles row (PUBLIC_PA_UI_PROFILE_UUID_MAP or matching country/provider/version).'
+    : !wizardCalculationProfileId
+      ? 'Sign in with Supabase and set API_BASE_URL to approve analysis against Plan Advisor.'
+      : '';
 ---
 
 <AdminLayout
@@ -33,7 +85,15 @@ const fullAnalysisHref = profile.analysis_id
     data-profile-id={profile.id}
     data-country={profile.country.name}
     data-provider={profile.provider.name}
+    data-wizard-calculation-profile-id={wizardCalculationProfileId}
+    data-wizard-profile-slug={wizardProfileSlug}
   >
+    <WizardCountryDraftIsland
+      client:load
+      routeProfileId={routeProfileId}
+      fallbackProfileJson={JSON.stringify(profile)}
+      mode="ai-analysis"
+    />
     <div class="step-bar">
       <a href={`/admin/countries/${profile.id}/setup`} class="step-tab">
         <span class="step-num done">✓</span>
@@ -113,18 +173,29 @@ const fullAnalysisHref = profile.analysis_id
         </svg>
         Back to Documents
       </a>
-      {fullAnalysisHref ? (
-        <a href={fullAnalysisHref} class="btn-primary-link">
-          Open full analysis review
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M5 12h14M12 5l7 7-7 7"/>
-          </svg>
-        </a>
-      ) : (
-        <span class="rules-empty" style="padding:0;margin:0;text-align:right;flex:1;font-size:0.78rem">
-          No linked analysis record for this profile yet.
-        </span>
-      )}
+      <div class="analysis-footer-right">
+        <button
+          type="button"
+          id="btn-approve-analysis"
+          class="btn-approve-analysis"
+          disabled={!wizardCalculationProfileId}
+          title={approveDisabledReason || undefined}
+        >
+          Approve analysis
+        </button>
+        {fullAnalysisHref ? (
+          <a href={fullAnalysisHref} class="btn-primary-link">
+            Open full analysis review
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M5 12h14M12 5l7 7-7 7"/>
+            </svg>
+          </a>
+        ) : (
+          <span class="rules-empty footer-placeholder">
+            No linked analysis record for this profile yet.
+          </span>
+        )}
+      </div>
     </div>
   </div>
 </AdminLayout>
@@ -144,6 +215,10 @@ const fullAnalysisHref = profile.analysis_id
 </style>
 
 <script>
-  import { initAdminCountryAiAnalysisChat } from '../../../../scripts/admin-country-ai-analysis-chat';
+  import {
+    initAdminCountryAiAnalysisChat,
+    initWizardApproveAnalysis,
+  } from '../../../../scripts/admin-country-ai-analysis-chat';
   initAdminCountryAiAnalysisChat();
+  initWizardApproveAnalysis();
 </script>

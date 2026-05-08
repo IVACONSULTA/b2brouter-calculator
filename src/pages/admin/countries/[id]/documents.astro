@@ -1,6 +1,7 @@
 ---
 import AdminLayout from '../../../../layouts/AdminLayout.astro';
 import DocumentUploadPanel from '../../../../components/admin/DocumentUploadPanel';
+import WizardCountryDraftIsland from '../../../../components/admin/WizardCountryDraftIsland';
 import { getSession, isAdminRole } from '../../../../lib/session';
 import {
   canUsePlanAdvisorApi,
@@ -8,6 +9,7 @@ import {
 } from '../../../../lib/pa-api';
 import { getFreshSupabaseAccessToken } from '../../../../lib/supabase-session';
 import { resolvePlanAdvisorProfileIds } from '../../../../lib/admin-resolve-profile-api';
+import { resolveAdminWizardProfile } from '../../../../lib/admin-wizard-profile-fallback';
 import {
   hasLocalDocumentFiles,
   readLocalDocumentsCombined,
@@ -15,7 +17,7 @@ import {
 } from '../../../../lib/admin-documents-local';
 import { paUploadLog } from '../../../../lib/pa-upload-debug';
 import { parsePaUiProfileUuidMap } from '../../../../lib/pa-ui-profile-uuid-map';
-import { DUMMY_PROFILES, DUMMY_DOCUMENTS, DOCUMENT_TYPES } from '../../../../lib/dummy-data';
+import { DUMMY_DOCUMENTS, DOCUMENT_TYPES } from '../../../../lib/dummy-data';
 import '../../../../styles/pages/admin-country-documents.css';
 
 const session = getSession(Astro.cookies);
@@ -25,7 +27,7 @@ if (!isAdminRole(session.role)) return Astro.redirect('/dashboard');
 const { id: routeProfileId } = Astro.params;
 if (!routeProfileId) return Astro.redirect('/countries');
 
-const profile = DUMMY_PROFILES.find((p) => p.id === routeProfileId) ?? DUMMY_PROFILES[0];
+const profile = resolveAdminWizardProfile(routeProfileId);
 
 const localDocMode = useLocalDocumentStorage();
 const devLocalFolder =
@@ -260,6 +262,12 @@ const metaFor = (status: string) =>
   ]}
 >
   <div class="page-admin-country-documents">
+  <WizardCountryDraftIsland
+    client:load
+    routeProfileId={routeProfileId}
+    fallbackProfileJson={JSON.stringify(profile)}
+    mode="documents"
+  />
   <!-- Step bar -->
   <div class="step-bar">
     <a href={`/admin/countries/${profile.id}/setup`} class="step-tab">
@@ -391,12 +399,21 @@ const metaFor = (status: string) =>
             Back to Profile setup
           </a>
 
-          <a href={aiAnalysisHref} class="btn-go-analysis">
+          <button
+            type="button"
+            id="btn-go-analysis"
+            class="btn-go-analysis"
+            data-href={aiAnalysisHref}
+            data-profile-slug={routeProfileId}
+            data-profile-id={uploadConfig.profileId}
+            data-country-id={uploadConfig.countryId}
+            data-provider-id={uploadConfig.providerId}
+          >
             Go to Analysis
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M5 12h14M12 5l7 7-7 7"/>
             </svg>
-          </a>
+          </button>
         </div>
       </div>
     </div>
@@ -448,4 +465,9 @@ const metaFor = (status: string) =>
       });
     });
   }
+</script>
+
+<script>
+  import { initDocumentsGoAnalysis } from '../../../../scripts/documents-go-analysis';
+  initDocumentsGoAnalysis();
 </script>

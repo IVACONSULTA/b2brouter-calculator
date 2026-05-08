@@ -184,9 +184,6 @@ function readChatContext(root: HTMLElement | null): ChatContext {
 }
 
 export function initAdminCountryAiAnalysisChat(): void {
-  const pageRoot = document.querySelector<HTMLElement>('.page-admin-country-ai-analysis');
-  const ctx = readChatContext(pageRoot);
-
   const messagesEl = document.getElementById('chat-messages');
   const rulesEmptyEl = document.getElementById('rules-empty');
   const rulesListEl = document.getElementById('rules-list');
@@ -264,6 +261,9 @@ export function initAdminCountryAiAnalysisChat(): void {
 
     void (async () => {
       try {
+        const root = document.querySelector<HTMLElement>('.page-admin-country-ai-analysis');
+        const ctx = readChatContext(root);
+
         const res = await fetch('/api/pa/admin/ai-analysis/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -306,5 +306,59 @@ export function initAdminCountryAiAnalysisChat(): void {
         chatInput.focus();
       }
     })();
+  });
+}
+
+export function initWizardApproveAnalysis(): void {
+  const root = document.querySelector<HTMLElement>('.page-admin-country-ai-analysis');
+  const btn = document.getElementById('btn-approve-analysis');
+  if (!(btn instanceof HTMLButtonElement) || !root) return;
+
+  const profileId = root.dataset.wizardCalculationProfileId ?? '';
+  const slug = root.dataset.wizardProfileSlug ?? '';
+
+  if (!profileId) {
+    btn.disabled = true;
+    return;
+  }
+
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    try {
+      const res = await fetch('/api/pa/admin/wizard/approve-analysis', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          profile_id: profileId,
+          profile_slug: slug || undefined,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+        message?: string;
+        approved_rules?: number;
+        approved_plans?: number;
+        artifact_path?: string;
+      };
+      if (!res.ok) {
+        const msg =
+          typeof data.error === 'string'
+            ? data.error
+            : typeof data.message === 'string'
+              ? data.message
+              : JSON.stringify(data);
+        alert(msg || `Approve failed (${res.status})`);
+        return;
+      }
+      const rules = typeof data.approved_rules === 'number' ? data.approved_rules : 0;
+      const plans = typeof data.approved_plans === 'number' ? data.approved_plans : 0;
+      const pathHint =
+        typeof data.artifact_path === 'string' ? `\nArtifact: ${data.artifact_path}` : '';
+      alert(`Approved ${rules} rule(s) and ${plans} plan(s).${pathHint}`);
+    } finally {
+      btn.disabled = false;
+    }
   });
 }

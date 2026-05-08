@@ -183,6 +183,12 @@ const currencies = ['EUR', 'GBP', 'PLN', 'RON'];
 </AdminLayout>
 
 <script>
+  import {
+    makeDraftProfileRouteId,
+    saveCountryWizardDraft,
+    type CountryWizardDraft,
+  } from '../../../lib/country-wizard-draft';
+
   // Show/hide custom provider fields
   const providerSelect = document.getElementById('provider') as HTMLSelectElement;
   const customWrap = document.getElementById('custom-provider-wrap')!;
@@ -194,13 +200,58 @@ const currencies = ['EUR', 'GBP', 'PLN', 'RON'];
     customTypeWrap.style.display = isCustom ? '' : 'none';
   });
 
-  // Form submit — wired up later to POST /admin/countries via App 2 API
+  function inferProviderType(optionText: string): 'PA' | 'PDP' | 'other' {
+    const m = optionText.match(/—\s*(PA|PDP)\s*$/);
+    if (m?.[1] === 'PA' || m?.[1] === 'PDP') return m[1];
+    return 'PA';
+  }
+
   document.getElementById('new-country-form')!.addEventListener('submit', (e) => {
     e.preventDefault();
-    // TODO: POST to API_BASE_URL/admin/countries
-    // On success: redirect to /admin/countries/{newId}/setup
-    const demoId = 'profile-new-demo';
-    window.location.href = `/admin/countries/${demoId}/setup`;
+
+    const countrySelect = document.getElementById('country_code') as HTMLSelectElement;
+    const currencySelect = document.getElementById('currency') as HTMLSelectElement;
+    const versionInput = document.getElementById('version') as HTMLInputElement;
+    const calcInput = document.getElementById('calculation_basis') as HTMLInputElement;
+    const notesInput = document.getElementById('notes') as HTMLTextAreaElement;
+    const providerTypeSelect = document.getElementById('provider_type') as HTMLSelectElement;
+    const providerCustomInput = document.getElementById('provider_custom') as HTMLInputElement;
+
+    const countryCode = countrySelect.value.trim();
+    const countryLabel = countrySelect.options[countrySelect.selectedIndex]?.text ?? countryCode;
+
+    let providerName: string;
+    let providerType: 'PA' | 'PDP' | 'other';
+
+    if (providerSelect.value === '__custom__') {
+      providerName = providerCustomInput.value.trim() || 'Custom provider';
+      const t = providerTypeSelect.value;
+      providerType = t === 'PDP' ? 'PDP' : t === 'other' ? 'other' : 'PA';
+    } else {
+      const opt = providerSelect.options[providerSelect.selectedIndex]?.text ?? '';
+      providerName = providerSelect.value.trim();
+      providerType = inferProviderType(opt);
+    }
+
+    const profileRouteId = makeDraftProfileRouteId();
+
+    const draft: CountryWizardDraft = {
+      profileRouteId,
+      countryCode,
+      countryName: countryLabel.split('(')[0]?.trim() || countryLabel,
+      providerName,
+      providerType,
+      currency: currencySelect.value,
+      version: versionInput.value.trim() || 'v1.0',
+      calculationBasis: calcInput.value.trim() || 'PA transactions',
+      notes: notesInput.value.trim(),
+      savedAt: new Date().toISOString(),
+    };
+
+    saveCountryWizardDraft(draft);
+
+    // TODO: POST to API_BASE_URL/admin/countries — keep session draft until API returns canonical id
+    window.location.href = `/admin/countries/${encodeURIComponent(profileRouteId)}/setup`;
   });
 </script>
 

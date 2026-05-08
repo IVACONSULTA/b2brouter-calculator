@@ -1,0 +1,19 @@
+/* Used by WizardCountryDraftIsland (React) on setup / documents / AI analysis */
+.wizard-draft-ribbon {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  background: rgba(88, 119, 152, 0.06);
+  border: 1px solid rgba(88, 119, 152, 0.2);
+  border-radius: var(--radius, 8px);
+  padding: 0.55rem 0.85rem;
+  margin-bottom: 1rem;
+}
+
+.wizard-draft-ribbon strong {
+  color: var(--color-text);
+  font-weight: 600;
+}
