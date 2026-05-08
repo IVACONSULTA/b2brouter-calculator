@@ -156,6 +156,34 @@ function WizardSetupFormSync() {
   return null;
 }
 
+function WizardDocumentsButtonSync({
+  ssrApiTarget,
+}: {
+  ssrApiTarget: {
+    profile_id: string;
+    country_id: string;
+    provider_id: string;
+  } | null;
+}) {
+  const { draft } = useWizardCountryDraft();
+
+  useEffect(() => {
+    const btn = document.getElementById('btn-go-analysis');
+    if (!(btn instanceof HTMLButtonElement)) return;
+
+    // Prefer draft UUIDs (from step 1 profile creation), fallback to SSR resolution
+    const profileId = draft?.apiProfileId || ssrApiTarget?.profile_id || '';
+    const countryId = draft?.apiCountryId || ssrApiTarget?.country_id || '';
+    const providerId = draft?.apiProviderId || ssrApiTarget?.provider_id || '';
+
+    btn.dataset.profileId = profileId;
+    btn.dataset.countryId = countryId;
+    btn.dataset.providerId = providerId;
+  }, [draft, ssrApiTarget]);
+
+  return null;
+}
+
 function WizardAiAnalysisDatasetSync() {
   const { profile } = useWizardCountryDraft();
   useEffect(() => {
@@ -172,6 +200,8 @@ export type WizardCountryDraftIslandProps = {
   routeProfileId: string;
   /** JSON-serialized AdminWizardProfile from Astro SSR */
   fallbackProfileJson: string;
+  /** JSON-serialized apiTarget from SSR (may be null if no resolution) */
+  fallbackApiTarget?: string | null;
   mode: 'setup' | 'documents' | 'ai-analysis';
 };
 
@@ -183,12 +213,27 @@ function parseFallback(json: string): AdminWizardProfile | null {
   }
 }
 
+function parseApiTarget(json: string | null | undefined): {
+  profile_id: string;
+  country_id: string;
+  provider_id: string;
+} | null {
+  if (!json) return null;
+  try {
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
+
 export default function WizardCountryDraftIsland({
   routeProfileId,
   fallbackProfileJson,
+  fallbackApiTarget,
   mode,
 }: WizardCountryDraftIslandProps) {
   const fallbackProfile = parseFallback(fallbackProfileJson);
+  const ssrApiTarget = parseApiTarget(fallbackApiTarget);
   if (!fallbackProfile) return null;
 
   const titlePrefix =
@@ -202,10 +247,15 @@ export default function WizardCountryDraftIsland({
           <WizardSetupCardHeader />
           <WizardSetupFormSync />
         </>
+      ) : mode === 'documents' ? (
+        <>
+          <WizardCountryRibbon />
+          <WizardDocumentsButtonSync ssrApiTarget={ssrApiTarget} />
+        </>
       ) : (
         <>
           <WizardCountryRibbon />
-          {mode === 'ai-analysis' ? <WizardAiAnalysisDatasetSync /> : null}
+          <WizardAiAnalysisDatasetSync />
         </>
       )}
     </WizardCountryDraftProvider>

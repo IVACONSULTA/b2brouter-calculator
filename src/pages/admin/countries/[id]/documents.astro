@@ -17,6 +17,7 @@ import {
 } from '../../../../lib/admin-documents-local';
 import { paUploadLog } from '../../../../lib/pa-upload-debug';
 import { parsePaUiProfileUuidMap } from '../../../../lib/pa-ui-profile-uuid-map';
+import { isDraftProfileRouteId } from '../../../../lib/country-wizard-draft';
 import { DUMMY_DOCUMENTS, DOCUMENT_TYPES } from '../../../../lib/dummy-data';
 import '../../../../styles/pages/admin-country-documents.css';
 
@@ -28,6 +29,9 @@ const { id: routeProfileId } = Astro.params;
 if (!routeProfileId) return Astro.redirect('/countries');
 
 const profile = resolveAdminWizardProfile(routeProfileId);
+
+// Check if this is a wizard draft with stored API UUIDs (server-side cannot read sessionStorage directly)
+const isDraft = isDraftProfileRouteId(routeProfileId);
 
 const localDocMode = useLocalDocumentStorage();
 const devLocalFolder =
@@ -94,7 +98,10 @@ let apiTarget: {
 const uiProfileUuidBySlug = parsePaUiProfileUuidMap();
 const uuidOverrideForSlug = uiProfileUuidBySlug[routeProfileId] ?? null;
 
-/** Resolve UUIDs whenever the API is reachable — needed for upload even when the table lists local dev files. */
+/**
+ * Wizard drafts may have API UUIDs stored in sessionStorage (created at step 1).
+ * Island will hydrate and provide those to upload components. SSR uses best-effort resolution.
+ */
 if (apiReady && paToken && (import.meta.env.API_BASE_URL ?? '').trim()) {
   const resolved = await resolvePlanAdvisorProfileIds(
     paToken,
@@ -266,6 +273,7 @@ const metaFor = (status: string) =>
     client:load
     routeProfileId={routeProfileId}
     fallbackProfileJson={JSON.stringify(profile)}
+    fallbackApiTarget={apiTarget ? JSON.stringify(apiTarget) : null}
     mode="documents"
   />
   <!-- Step bar -->

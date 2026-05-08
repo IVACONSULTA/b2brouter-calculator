@@ -14,6 +14,10 @@ export type CountryWizardDraft = {
   calculationBasis: string;
   notes: string;
   savedAt: string;
+  /** calculation_profiles.id from Railway after POST /api/admin/profiles */
+  apiProfileId?: string;
+  apiCountryId?: string;
+  apiProviderId?: string;
 };
 
 const STORAGE_PREFIX = 'pa_country_wizard_draft:';

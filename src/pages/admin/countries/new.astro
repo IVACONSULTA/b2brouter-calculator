@@ -189,10 +189,10 @@ const currencies = ['EUR', 'GBP', 'PLN', 'RON'];
     type CountryWizardDraft,
   } from '../../../lib/country-wizard-draft';
 
-  // Show/hide custom provider fields
   const providerSelect = document.getElementById('provider') as HTMLSelectElement;
   const customWrap = document.getElementById('custom-provider-wrap')!;
   const customTypeWrap = document.getElementById('custom-type-wrap')!;
+  const submitBtn = document.getElementById('submit-btn') as HTMLButtonElement;
 
   providerSelect.addEventListener('change', () => {
     const isCustom = providerSelect.value === '__custom__';
@@ -206,7 +206,32 @@ const currencies = ['EUR', 'GBP', 'PLN', 'RON'];
     return 'PA';
   }
 
-  document.getElementById('new-country-form')!.addEventListener('submit', (e) => {
+  // Resolve country_id and provider_id from Railway on submit
+  async function resolveIds(countryCode: string, providerName: string): Promise<{
+    country_id: string;
+    provider_id: string;
+  } | null> {
+    try {
+      const [countriesRes, providersRes] = await Promise.all([
+        fetch('/api/pa/countries'),
+        fetch('/api/pa/providers'),
+      ]);
+      if (!countriesRes.ok || !providersRes.ok) return null;
+
+      const countries = (await countriesRes.json()) as Array<{ id: string; code: string }>;
+      const providers = (await providersRes.json()) as Array<{ id: string; name: string }>;
+
+      const country = countries.find((c) => c.code === countryCode);
+      const provider = providers.find((p) => p.name === providerName);
+
+      if (!country || !provider) return null;
+      return { country_id: country.id, provider_id: provider.id };
+    } catch {
+      return null;
+    }
+  }
+
+  document.getElementById('new-country-form')!.addEventListener('submit', async (e) => {
     e.preventDefault();
 
     const countrySelect = document.getElementById('country_code') as HTMLSelectElement;
@@ -233,6 +258,46 @@ const currencies = ['EUR', 'GBP', 'PLN', 'RON'];
       providerType = inferProviderType(opt);
     }
 
+    const currency = currencySelect.value;
+    const version = versionInput.value.trim() || 'v1.0';
+    const calculationBasis = calcInput.value.trim() || 'PA transactions';
+    const notes = notesInput.value.trim();
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Creating profile…';
+
+    // Try to create profile on Railway
+    const ids = await resolveIds(countryCode, providerName);
+    let apiProfileId: string | undefined;
+    let apiCountryId: string | undefined;
+    let apiProviderId: string | undefined;
+
+    if (ids) {
+      try {
+        const res = await fetch('/api/pa/admin/profiles/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({
+            country_id: ids.country_id,
+            provider_id: ids.provider_id,
+            version,
+            currency,
+            calculation_basis: calculationBasis,
+            notes,
+          }),
+        });
+        if (res.ok) {
+          const data = (await res.json()) as { id: string; country_id: string; provider_id: string };
+          apiProfileId = data.id;
+          apiCountryId = data.country_id;
+          apiProviderId = data.provider_id;
+        }
+      } catch {
+        // Offline or API unavailable — continue with local draft only
+      }
+    }
+
     const profileRouteId = makeDraftProfileRouteId();
 
     const draft: CountryWizardDraft = {
@@ -241,16 +306,18 @@ const currencies = ['EUR', 'GBP', 'PLN', 'RON'];
       countryName: countryLabel.split('(')[0]?.trim() || countryLabel,
       providerName,
       providerType,
-      currency: currencySelect.value,
-      version: versionInput.value.trim() || 'v1.0',
-      calculationBasis: calcInput.value.trim() || 'PA transactions',
-      notes: notesInput.value.trim(),
+      currency,
+      version,
+      calculationBasis,
+      notes,
       savedAt: new Date().toISOString(),
+      apiProfileId,
+      apiCountryId,
+      apiProviderId,
     };
 
     saveCountryWizardDraft(draft);
 
-    // TODO: POST to API_BASE_URL/admin/countries — keep session draft until API returns canonical id
     window.location.href = `/admin/countries/${encodeURIComponent(profileRouteId)}/setup`;
   });
 </script>
