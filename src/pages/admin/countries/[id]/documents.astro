@@ -270,7 +270,7 @@ const metaFor = (status: string) =>
 >
   <div class="page-admin-country-documents">
   <WizardCountryDraftIsland
-    client:load
+    client:only="react"
     routeProfileId={routeProfileId}
     fallbackProfileJson={JSON.stringify(profile)}
     fallbackApiTarget={apiTarget ? JSON.stringify(apiTarget) : null}

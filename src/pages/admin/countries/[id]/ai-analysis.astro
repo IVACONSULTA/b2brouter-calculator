@@ -89,7 +89,7 @@ const approveDisabledReason =
     data-wizard-profile-slug={wizardProfileSlug}
   >
     <WizardCountryDraftIsland
-      client:load
+      client:only="react"
       routeProfileId={routeProfileId}
       fallbackProfileJson={JSON.stringify(profile)}
       mode="ai-analysis"

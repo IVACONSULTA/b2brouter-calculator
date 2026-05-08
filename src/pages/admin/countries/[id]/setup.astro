@@ -46,7 +46,7 @@ const profile = resolveAdminWizardProfile(id);
   <div class="form-layout">
     <div class="form-card">
       <WizardCountryDraftIsland
-        client:load
+        client:only="react"
         routeProfileId={id}
         fallbackProfileJson={JSON.stringify(profile)}
         mode="setup"
