@@ -212,21 +212,45 @@ const currencies = ['EUR', 'GBP', 'PLN', 'RON'];
     provider_id: string;
   } | null> {
     try {
+      console.log('[New Country] Fetching countries and providers from Railway...');
       const [countriesRes, providersRes] = await Promise.all([
         fetch('/api/pa/countries'),
         fetch('/api/pa/providers'),
       ]);
-      if (!countriesRes.ok || !providersRes.ok) return null;
+      
+      console.log('[New Country] Countries response:', countriesRes.status, countriesRes.ok);
+      console.log('[New Country] Providers response:', providersRes.status, providersRes.ok);
+      
+      if (!countriesRes.ok || !providersRes.ok) {
+        console.error('[New Country] API call failed:', {
+          countries: { status: countriesRes.status, statusText: countriesRes.statusText },
+          providers: { status: providersRes.status, statusText: providersRes.statusText },
+        });
+        return null;
+      }
 
       const countries = (await countriesRes.json()) as Array<{ id: string; code: string }>;
       const providers = (await providersRes.json()) as Array<{ id: string; name: string }>;
 
+      console.log('[New Country] Got data:', {
+        countriesCount: countries.length,
+        providersCount: providers.length,
+      });
+
       const country = countries.find((c) => c.code === countryCode);
       const provider = providers.find((p) => p.name === providerName);
 
+      console.log('[New Country] Lookup results:', {
+        countryCode,
+        foundCountry: !!country,
+        providerName,
+        foundProvider: !!provider,
+      });
+
       if (!country || !provider) return null;
       return { country_id: country.id, provider_id: provider.id };
-    } catch {
+    } catch (err) {
+      console.error('[New Country] Resolve IDs error:', err);
       return null;
     }
   }
