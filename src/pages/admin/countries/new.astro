@@ -206,55 +206,6 @@ const currencies = ['EUR', 'GBP', 'PLN', 'RON'];
     return 'PA';
   }
 
-  // Resolve country_id and provider_id from Railway on submit
-  async function resolveIds(countryCode: string, providerName: string): Promise<{
-    country_id: string;
-    provider_id: string;
-  } | null> {
-    try {
-      console.log('[New Country] Fetching countries and providers from Railway...');
-      const [countriesRes, providersRes] = await Promise.all([
-        fetch('/api/pa/countries'),
-        fetch('/api/pa/providers'),
-      ]);
-      
-      console.log('[New Country] Countries response:', countriesRes.status, countriesRes.ok);
-      console.log('[New Country] Providers response:', providersRes.status, providersRes.ok);
-      
-      if (!countriesRes.ok || !providersRes.ok) {
-        console.error('[New Country] API call failed:', {
-          countries: { status: countriesRes.status, statusText: countriesRes.statusText },
-          providers: { status: providersRes.status, statusText: providersRes.statusText },
-        });
-        return null;
-      }
-
-      const countries = (await countriesRes.json()) as Array<{ id: string; code: string }>;
-      const providers = (await providersRes.json()) as Array<{ id: string; name: string }>;
-
-      console.log('[New Country] Got data:', {
-        countriesCount: countries.length,
-        providersCount: providers.length,
-      });
-
-      const country = countries.find((c) => c.code === countryCode);
-      const provider = providers.find((p) => p.name === providerName);
-
-      console.log('[New Country] Lookup results:', {
-        countryCode,
-        foundCountry: !!country,
-        providerName,
-        foundProvider: !!provider,
-      });
-
-      if (!country || !provider) return null;
-      return { country_id: country.id, provider_id: provider.id };
-    } catch (err) {
-      console.error('[New Country] Resolve IDs error:', err);
-      return null;
-    }
-  }
-
   document.getElementById('new-country-form')!.addEventListener('submit', async (e) => {
     e.preventDefault();
 
@@ -290,46 +241,45 @@ const currencies = ['EUR', 'GBP', 'PLN', 'RON'];
     submitBtn.disabled = true;
     submitBtn.textContent = 'Creating profile…';
 
-    // Try to create profile on Railway
-    const ids = await resolveIds(countryCode, providerName);
+    // Create profile on Railway (auto-creates country/provider if needed)
     let apiProfileId: string | undefined;
     let apiCountryId: string | undefined;
     let apiProviderId: string | undefined;
 
-    if (ids) {
-      try {
-        const res = await fetch('/api/pa/admin/profiles/create', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'same-origin',
-          body: JSON.stringify({
-            country_id: ids.country_id,
-            provider_id: ids.provider_id,
-            version,
-            currency,
-            calculation_basis: calculationBasis,
-            notes,
-          }),
+    try {
+      console.log('[New Country] Creating profile with auto-create for country/provider...');
+      const res = await fetch('/api/pa/admin/profiles/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          country_code: countryCode,
+          country_name: countryLabel.split('(')[0]?.trim() || countryLabel,
+          provider_name: providerName,
+          provider_type: providerType,
+          version,
+          currency,
+          calculation_basis: calculationBasis,
+          notes,
+        }),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as { id: string; country_id: string; provider_id: string };
+        apiProfileId = data.id;
+        apiCountryId = data.country_id;
+        apiProviderId = data.provider_id;
+        console.log('[New Country] Profile created on Railway:', {
+          profile_id: apiProfileId,
+          country_id: apiCountryId,
+          provider_id: apiProviderId,
         });
-        if (res.ok) {
-          const data = (await res.json()) as { id: string; country_id: string; provider_id: string };
-          apiProfileId = data.id;
-          apiCountryId = data.country_id;
-          apiProviderId = data.provider_id;
-          console.log('[New Country] Profile created on Railway:', {
-            profile_id: apiProfileId,
-            country_id: apiCountryId,
-            provider_id: apiProviderId,
-          });
-        } else {
-          console.warn('[New Country] Profile creation failed:', res.status, await res.text());
-        }
-      } catch (err) {
-        console.error('[New Country] Profile creation error:', err);
-        // Continue with local draft only
+      } else {
+        const errorText = await res.text();
+        console.warn('[New Country] Profile creation failed:', res.status, errorText);
       }
-    } else {
-      console.warn('[New Country] Could not resolve country/provider IDs from Railway');
+    } catch (err) {
+      console.error('[New Country] Profile creation error:', err);
+      // Continue with local draft only
     }
 
     const profileRouteId = makeDraftProfileRouteId();

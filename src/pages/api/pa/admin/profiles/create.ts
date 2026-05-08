@@ -21,6 +21,10 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   let body: {
     country_id?: string;
     provider_id?: string;
+    country_code?: string;
+    country_name?: string;
+    provider_name?: string;
+    provider_type?: string;
     version?: string;
     currency?: string;
     calculation_basis?: string;
@@ -34,12 +38,25 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 
   const country_id = String(body.country_id ?? '').trim();
   const provider_id = String(body.provider_id ?? '').trim();
+  const country_code = String(body.country_code ?? '').trim();
+  const country_name = String(body.country_name ?? '').trim();
+  const provider_name = String(body.provider_name ?? '').trim();
   const version = String(body.version ?? '').trim();
   const currency = String(body.currency ?? '').trim();
 
-  if (!country_id || !provider_id || !version || !currency) {
+  // Either UUIDs or code/name required
+  const hasUUIDs = country_id && provider_id;
+  const hasCodeName = country_code && country_name && provider_name;
+
+  if (!hasUUIDs && !hasCodeName) {
     return json(400, {
-      error: 'country_id, provider_id, version, and currency are required.',
+      error: 'Must provide either (country_id, provider_id) or (country_code, country_name, provider_name).',
+    });
+  }
+
+  if (!version || !currency) {
+    return json(400, {
+      error: 'version and currency are required.',
     });
   }
 
@@ -54,17 +71,29 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     });
   }
 
-  const result = await paPostJson<{ id: string }>(
+  // Try with UUIDs first, fallback to code/name for wizard
+  const profilePayload: Record<string, unknown> = {
+    version,
+    currency,
+    calculation_basis: body.calculation_basis || 'PA transactions',
+    notes: body.notes || undefined,
+  };
+
+  if (country_id && provider_id) {
+    profilePayload.country_id = country_id;
+    profilePayload.provider_id = provider_id;
+  } else {
+    // Wizard mode: send code/name for auto-creation
+    profilePayload.country_code = body.country_code || undefined;
+    profilePayload.country_name = body.country_name || undefined;
+    profilePayload.provider_name = body.provider_name || undefined;
+    profilePayload.provider_type = body.provider_type || 'PA';
+  }
+
+  const result = await paPostJson<{ id: string; country_id: string; provider_id: string }>(
     '/admin/profiles',
     fresh.accessToken,
-    {
-      country_id,
-      provider_id,
-      version,
-      currency,
-      calculation_basis: body.calculation_basis || 'PA transactions',
-      notes: body.notes || undefined,
-    },
+    profilePayload,
   );
 
   if (!result.ok) {
