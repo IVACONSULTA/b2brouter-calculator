@@ -36,6 +36,16 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     return json(400, { error: 'Invalid JSON body.' });
   }
 
+  console.log('[BFF /profiles/create] Received:', {
+    has_country_id: Boolean(body.country_id),
+    has_provider_id: Boolean(body.provider_id),
+    has_country_code: Boolean(body.country_code),
+    has_country_name: Boolean(body.country_name),
+    has_provider_name: Boolean(body.provider_name),
+    version: body.version,
+    currency: body.currency,
+  });
+
   const country_id = String(body.country_id ?? '').trim();
   const provider_id = String(body.provider_id ?? '').trim();
   const country_code = String(body.country_code ?? '').trim();
@@ -48,15 +58,19 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   const hasUUIDs = country_id && provider_id;
   const hasCodeName = country_code && country_name && provider_name;
 
+  console.log('[BFF /profiles/create] Validation:', { hasUUIDs, hasCodeName });
+
   if (!hasUUIDs && !hasCodeName) {
     return json(400, {
       error: 'Must provide either (country_id, provider_id) or (country_code, country_name, provider_name).',
+      debug: { country_code, country_name, provider_name },
     });
   }
 
   if (!version || !currency) {
     return json(400, {
       error: 'version and currency are required.',
+      debug: { version, currency },
     });
   }
 
