@@ -32,8 +32,9 @@ const isAlreadyActive = profile.status === 'active';
     { label: `Profile ${profile.version}` },
   ]}
 >
+  <div class="page-admin-profile-detail">
   <!-- Profile header card -->
-  <div class="page-admin-profile-detail profile-header">
+  <div class="profile-header">
     <div class="ph-left">
       <div class="ph-badge">
         <span class="ph-code">{profile.country.code}</span>
@@ -225,6 +226,7 @@ const isAlreadyActive = profile.status === 'active';
         </button>
       </div>
     </div>
+  </div>
   </div>
 </AdminLayout>
 
