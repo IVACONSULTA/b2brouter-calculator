@@ -264,14 +264,22 @@ const currencies = ['EUR', 'GBP', 'PLN', 'RON'];
         }),
       });
       if (res.ok) {
-        const data = (await res.json()) as { id: string; country_id: string; provider_id: string };
+        const data = (await res.json()) as { 
+          id: string; 
+          country_id: string; 
+          provider_id: string;
+          reused?: boolean;
+          message?: string;
+        };
         apiProfileId = data.id;
         apiCountryId = data.country_id;
         apiProviderId = data.provider_id;
-        console.log('[New Country] Profile created on Railway:', {
+        console.log('[New Country] Profile on Railway:', {
           profile_id: apiProfileId,
           country_id: apiCountryId,
           provider_id: apiProviderId,
+          reused: data.reused || false,
+          message: data.message,
         });
       } else {
         const errorText = await res.text();
