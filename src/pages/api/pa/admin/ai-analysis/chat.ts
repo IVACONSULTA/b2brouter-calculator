@@ -1,9 +1,7 @@
 import type { APIRoute } from 'astro';
 import { getSession, isAdminRole } from '../../../../../lib/session';
-import { listLocalProfileDocumentAbsolutePaths, safeProfileSlug } from '../../../../../lib/admin-ai-analysis-paths';
-import { parseCrewAnalysisOutput } from '../../../../../lib/pa-crew-response-parse';
 import { getFreshSupabaseAccessToken } from '../../../../../lib/supabase-session';
-import { paFetchJson, planAdvisorApiBase } from '../../../../../lib/pa-api';
+import { paFetchJson } from '../../../../../lib/pa-api';
 
 export const prerender = false;
 
@@ -14,11 +12,11 @@ function json(status: number, body: unknown) {
   });
 }
 
-/** CrewAI service: independent app AgenteDocumental (`POST /analyze`). Set PLAN_ADVISOR_CREW_URL. */
-function crewBaseUrl(): string {
-  return (import.meta.env.PLAN_ADVISOR_CREW_URL ?? '').trim().replace(/\/$/, '');
-}
-
+/**
+ * POST /api/pa/admin/ai-analysis/chat
+ * Proxies to PlanAdvisorAPI POST /admin/ai-analysis/chat.
+ * PlanAdvisorAPI handles document loading, text extraction, and the AgenteDocumental call.
+ */
 export const POST: APIRoute = async ({ request, cookies }) => {
   const session = getSession(cookies);
   if (!session || !isAdminRole(session.role)) {
@@ -41,81 +39,36 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     return json(400, { error: 'profileId is required.' });
   }
 
-  const base = crewBaseUrl();
-  if (!base) {
-    return json(503, {
-      error: 'Crew service unavailable',
-      message: 'Set PLAN_ADVISOR_CREW_URL (e.g. http://127.0.0.1:8788) and run the Python crew server.',
-      demo: true,
+  const fresh = await getFreshSupabaseAccessToken(cookies);
+  if (!fresh.ok) {
+    return json(401, {
+      error: 'Session expired',
+      message: 'Please sign out and sign in again.',
     });
   }
 
-  let { rootDir, paths } = listLocalProfileDocumentAbsolutePaths(profileId);
-
-  if (paths.length === 0 && planAdvisorApiBase()) {
-    const fresh = await getFreshSupabaseAccessToken(cookies);
-    if (fresh.ok) {
-      const stagingRoot = (import.meta.env.PLAN_ADVISOR_STAGING_DOCUMENT_ROOT ?? '/data/documents')
-        .trim()
-        .replace(/\/$/, '');
-      const slug = safeProfileSlug(profileId);
-      const list = await paFetchJson<Array<{ filename: string }>>(
-        `/admin/documents/staging?profile_slug=${encodeURIComponent(profileId)}`,
-        fresh.accessToken,
-      );
-
-      if (list.ok && Array.isArray(list.data) && list.data.length > 0) {
-        rootDir = `${stagingRoot}/staging__${slug}`;
-        paths = list.data.map((row) => `${rootDir}/${row.filename}`);
-      }
-    }
-  }
-
-  if (paths.length === 0) {
-    return json(400, {
-      error: 'No documents',
-      message: `No files under docs/uploads/${safeProfileSlug(profileId)} for local crew, and no Railway staged documents for this profile (or crew cannot read PLAN_ADVISOR_STAGING_DOCUMENT_ROOT).`,
-    });
-  }
-
-  const crewRes = await fetch(`${base}/analyze`, {
+  const result = await paFetchJson<{
+    assistant?: string;
+    rules?: unknown[];
+    raw_output?: string;
+    documents_used?: string[];
+    error?: string;
+    message?: string;
+    demo?: boolean;
+  }>('/admin/ai-analysis/chat', fresh.accessToken, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       message,
-      document_paths: paths,
-      allowed_roots: [rootDir],
-      country_name: body.countryName ?? undefined,
-      provider_name: body.providerName ?? undefined,
-      profile_id: profileId,
+      profileId,
+      countryName: body.countryName ?? undefined,
+      providerName: body.providerName ?? undefined,
     }),
   });
 
-  const rawText = await crewRes.text();
-  let payload: { output?: string; detail?: unknown };
-  try {
-    payload = JSON.parse(rawText) as { output?: string; detail?: unknown };
-  } catch {
-    return json(502, {
-      error: 'Crew response not JSON',
-      message: rawText.slice(0, 500),
-    });
+  if (!result.ok) {
+    return json(result.status, result.data ?? { error: 'API request failed' });
   }
 
-  if (!crewRes.ok) {
-    return json(crewRes.status, {
-      error: 'Crew error',
-      message: typeof payload.detail === 'string' ? payload.detail : payload,
-    });
-  }
-
-  const output = String(payload.output ?? '');
-  const { assistant, rules } = parseCrewAnalysisOutput(output);
-
-  return json(200, {
-    assistant,
-    rules,
-    raw_output: output,
-    documents_used: paths.map((p) => p.split('/').pop() ?? p),
-  });
+  return json(200, result.data);
 };
