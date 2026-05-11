@@ -86,14 +86,26 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     if (!profile_slug) {
       return json(400, { error: 'profile_slug is required for staged uploads.' });
     }
+    
+    // Extract IDs for permanent storage (wizard now persists directly)
+    const country_id = String(form.get('country_id') ?? '').trim();
+    const provider_id = String(form.get('provider_id') ?? '').trim();
+    const profile_id = String(form.get('profile_id') ?? '').trim();
+    
     const outbound = new FormData();
     outbound.append('file', file, file.name);
     outbound.append('profile_slug', profile_slug);
     outbound.append('document_type', document_type);
     if (description) outbound.append('description', description);
+    
+    // Include IDs for permanent persistence (optional for drafts)
+    if (country_id) outbound.append('country_id', country_id);
+    if (provider_id) outbound.append('provider_id', provider_id);
+    if (profile_id) outbound.append('profile_id', profile_id);
 
-    paUploadLog('BFF upload: Plan Advisor staging upload', {
+    paUploadLog('BFF upload: Plan Advisor staging upload (now persists directly)', {
       profile_slug,
+      profile_id: profile_id || '(draft)',
       document_type,
       filename: file.name,
       size: file.size,

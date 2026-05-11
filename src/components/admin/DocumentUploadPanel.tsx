@@ -98,12 +98,14 @@ export default function DocumentUploadPanel({
     fd.append('document_type', documentType);
     fd.append('profile_slug', profileSlug);
     if (description.trim()) fd.append('description', description.trim());
+    
+    // Always include IDs if available (staging now persists directly)
+    if (countryId) fd.append('country_id', countryId);
+    if (providerId) fd.append('provider_id', providerId);
+    if (profileId) fd.append('profile_id', profileId);
+    
     if (uploadMode === 'staging') {
       fd.append('upload_mode', 'staging');
-    } else if (!localMode) {
-      fd.append('country_id', countryId);
-      fd.append('provider_id', providerId);
-      fd.append('profile_id', profileId);
     }
 
     paUploadLogClient('upload submit', {
