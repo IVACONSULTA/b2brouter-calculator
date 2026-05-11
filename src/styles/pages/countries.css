@@ -223,6 +223,31 @@
 
     .btn-icon:hover { background: var(--color-surface-2); color: var(--color-text); }
 
+    .btn-delete {
+      width: 26px;
+      height: 26px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid rgba(239,68,68,.3);
+      border-radius: 5px;
+      background: none;
+      color: #ef4444;
+      cursor: pointer;
+      transition: all 0.13s;
+    }
+
+    .btn-delete:hover {
+      background: rgba(239,68,68,.12);
+      color: #dc2626;
+      border-color: rgba(239,68,68,.5);
+    }
+
+    .btn-delete:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
     /* ── User/Client styles ── */
     .u-header {
       display: flex;
