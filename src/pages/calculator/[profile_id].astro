@@ -228,9 +228,7 @@ const showSummaryBtn =
           <h3 class="rules-heading">Transaction inputs</h3>
           <div class="rules-grid">
             {displayGroups.map((g, idx) => {
-              const lead = g.rules[0];
-              // Get unique directions and obligations in this group
-              const uniqueDirections = [...new Set(g.rules.map(r => r.direction))];
+              // Get unique obligations in this group
               const uniqueObligations = [...new Set(g.rules.map(r => r.obligation))];
               
               return (
@@ -241,17 +239,8 @@ const showSummaryBtn =
                 >
                   <div class="rule-card-top">
                     <div class="rule-badges">
-                      {uniqueDirections.length === 1 ? (
-                        <span class={`dir-badge ${lead.direction === 'Issued' ? 'dir-issued' : 'dir-received'}`}>
-                          {lead.direction}
-                        </span>
-                      ) : (
-                        <span class="dir-badge dir-mixed">
-                          {uniqueDirections.join(' / ')}
-                        </span>
-                      )}
                       {uniqueObligations.length === 1 ? (
-                        <span class="obl-badge">{lead.obligation}</span>
+                        <span class="obl-badge">{uniqueObligations[0]}</span>
                       ) : (
                         <span class="obl-badge obl-mixed">{uniqueObligations.length} types</span>
                       )}
