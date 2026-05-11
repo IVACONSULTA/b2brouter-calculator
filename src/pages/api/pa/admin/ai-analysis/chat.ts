@@ -1,14 +1,14 @@
-import type { APIRoute } from "astro";
-import { getSession, isAdminRole } from "../../../../../lib/session";
-import { getFreshSupabaseAccessToken } from "../../../../../lib/supabase-session";
-import { paFetchJson } from "../../../../../lib/pa-api";
+import type { APIRoute } from 'astro';
+import { getSession, isAdminRole } from '../../../../../lib/session';
+import { getFreshSupabaseAccessToken } from '../../../../../lib/supabase-session';
+import { paPostJson, planAdvisorApiBase } from '../../../../../lib/pa-api';
 
 export const prerender = false;
 
 function json(status: number, body: unknown) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "Content-Type": "application/json" },
+    headers: { 'Content-Type': 'application/json' },
   });
 }
 
@@ -20,12 +20,8 @@ function json(status: number, body: unknown) {
 export const POST: APIRoute = async ({ request, cookies }) => {
   const session = getSession(cookies);
   if (!session || !isAdminRole(session.role)) {
-    return json(403, {
-      error: "Forbidden",
-      message: "Admin sign-in required.",
-    });
+    return json(403, { error: 'Forbidden', message: 'Admin sign-in required.' });
   }
-  console.log("request", request);
 
   let body: {
     message?: string;
@@ -36,27 +32,36 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   try {
     body = await request.json();
   } catch {
-    return json(400, { error: "Invalid JSON body." });
+    return json(400, { error: 'Invalid JSON body.' });
   }
 
-  const message = String(body.message ?? "").trim();
-  const profileId = String(body.profileId ?? "").trim();
+  const message = String(body.message ?? '').trim();
+  const profileId = String(body.profileId ?? '').trim();
   if (!message) {
-    return json(400, { error: "message is required." });
+    return json(400, { error: 'message is required.' });
   }
   if (!profileId) {
-    return json(400, { error: "profileId is required." });
+    return json(400, { error: 'profileId is required.' });
+  }
+
+  const base = planAdvisorApiBase();
+  if (!base) {
+    return json(503, {
+      error: 'API not configured',
+      message: 'API_BASE_URL is not set on this deployment.',
+      demo: true,
+    });
   }
 
   const fresh = await getFreshSupabaseAccessToken(cookies);
   if (!fresh.ok) {
     return json(401, {
-      error: "Session expired",
-      message: "Please sign out and sign in again.",
+      error: 'Session expired',
+      message: 'Please sign out and sign in again.',
     });
   }
 
-  const result = await paFetchJson<{
+  const result = await paPostJson<{
     assistant?: string;
     rules?: unknown[];
     raw_output?: string;
@@ -64,19 +69,18 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     error?: string;
     message?: string;
     demo?: boolean;
-  }>("/admin/ai-analysis/chat", fresh.accessToken, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      message,
-      profileId,
-      countryName: body.countryName ?? undefined,
-      providerName: body.providerName ?? undefined,
-    }),
+  }>('/admin/ai-analysis/chat', fresh.accessToken, {
+    message,
+    profileId,
+    countryName: body.countryName ?? undefined,
+    providerName: body.providerName ?? undefined,
   });
 
   if (!result.ok) {
-    return json(result.status, result.data ?? { error: "API request failed" });
+    const status = result.status > 0 ? result.status : 502;
+    const errorBody = result.error ?? { error: 'API request failed' };
+    console.error('[ai-analysis/chat BFF] API error:', status, errorBody);
+    return json(status, errorBody);
   }
 
   return json(200, result.data);
