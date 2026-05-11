@@ -229,6 +229,10 @@ const showSummaryBtn =
           <div class="rules-grid">
             {displayGroups.map((g, idx) => {
               const lead = g.rules[0];
+              // Get unique directions and obligations in this group
+              const uniqueDirections = [...new Set(g.rules.map(r => r.direction))];
+              const uniqueObligations = [...new Set(g.rules.map(r => r.obligation))];
+              
               return (
                 <div
                   class="rule-input-card"
@@ -237,10 +241,20 @@ const showSummaryBtn =
                 >
                   <div class="rule-card-top">
                     <div class="rule-badges">
-                      <span class={`dir-badge ${lead.direction === 'Issued' ? 'dir-issued' : 'dir-received'}`}>
-                        {lead.direction}
-                      </span>
-                      <span class="obl-badge">{lead.obligation}</span>
+                      {uniqueDirections.length === 1 ? (
+                        <span class={`dir-badge ${lead.direction === 'Issued' ? 'dir-issued' : 'dir-received'}`}>
+                          {lead.direction}
+                        </span>
+                      ) : (
+                        <span class="dir-badge dir-mixed">
+                          {uniqueDirections.join(' / ')}
+                        </span>
+                      )}
+                      {uniqueObligations.length === 1 ? (
+                        <span class="obl-badge">{lead.obligation}</span>
+                      ) : (
+                        <span class="obl-badge obl-mixed">{uniqueObligations.length} types</span>
+                      )}
                     </div>
                     <span class="mult-hint">{g.multiplierHint}</span>
                   </div>

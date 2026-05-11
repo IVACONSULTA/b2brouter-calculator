@@ -27,17 +27,23 @@ function multiplierHintFromMults(mults: number[]): string {
 /** Same merge key as Plan Advisor `POST /calculator/calculate` (must stay in sync). */
 export function transactionRuleMergeBucketKey(r: CalcRuleRow): string {
   const og = (r.operation_group ?? '').trim();
+  // Group only by operation_group when it's set
+  // If operation_group is empty, fall back to the full key for unique grouping
+  if (og && og.length > 0) {
+    return JSON.stringify(['operation_group', og]);
+  }
+  // Fallback for rules without operation_group: use all fields
   const dir = String(r.direction ?? '').trim();
   const obl = String(r.obligation ?? '').trim();
   let mult = Number(r.pa_transactions_per_item);
   if (!Number.isFinite(mult)) mult = 0;
   const multKey = Math.round(mult * 1e9) / 1e9;
-  return JSON.stringify([og, dir, obl, multKey]);
+  return JSON.stringify(['unique', dir, obl, multKey, r.label]);
 }
 
 /**
- * One form field per group of rules that share
- * `operation_group`, `direction`, `obligation`, and `pa_transactions_per_item`.
+ * One form field per group of rules that share `operation_group`.
+ * When operation_group is set, all rules with the same operation_group are merged into one input field.
  */
 export function buildRuleDisplayGroups(rows: CalcRuleRow[]): RuleDisplayGroup[] {
   const bucket = new Map<string, CalcRuleRow[]>();
@@ -56,8 +62,11 @@ export function buildRuleDisplayGroups(rows: CalcRuleRow[]): RuleDisplayGroup[] 
     const list = bucket.get(k)!;
     const og = list[0].operation_group?.trim();
     const labels = [...new Set(list.map((x) => x.label))];
+    
+    // Use operation_group as display label when available, otherwise use the rule label
     const displayLabel =
       og && og.length > 0 ? og : labels.length === 1 ? (labels[0] as string) : list[0].label;
+    
     const mults = list.map((x) => x.pa_transactions_per_item);
     const placeholder = Math.max(...list.map((x) => x.placeholder));
 
