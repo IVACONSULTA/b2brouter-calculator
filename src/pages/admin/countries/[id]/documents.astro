@@ -382,7 +382,13 @@ const metaFor = (status: string) =>
                           <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
                         </svg>
                       </button>
-                      <button class="btn-icon btn-danger" title="Delete" type="button" onclick={`alert('Delete is not implemented yet for ${doc.filename}')`}>
+                      <button 
+                        class="btn-icon btn-danger btn-delete-doc" 
+                        title="Delete" 
+                        type="button"
+                        data-doc-id={doc.id}
+                        data-doc-filename={doc.filename}
+                      >
                         <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                           <polyline points="3 6 5 6 21 6"/>
                           <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
@@ -478,4 +484,89 @@ const metaFor = (status: string) =>
 <script>
   import { initDocumentsGoAnalysis } from '../../../../scripts/documents-go-analysis';
   initDocumentsGoAnalysis();
+</script>
+
+<script>
+  // Delete document functionality
+  document.addEventListener('click', async (e) => {
+    const target = e.target as HTMLElement;
+    const deleteBtn = target.closest('.btn-delete-doc') as HTMLButtonElement | null;
+    
+    if (!deleteBtn) return;
+
+    const docId = deleteBtn.dataset.docId;
+    const filename = deleteBtn.dataset.docFilename || 'this document';
+
+    if (!docId) {
+      alert('Document ID is missing.');
+      return;
+    }
+
+    const confirmed = confirm(
+      `Are you sure you want to delete "${filename}"?\n\nThis action cannot be undone.`
+    );
+
+    if (!confirmed) return;
+
+    deleteBtn.disabled = true;
+    deleteBtn.style.opacity = '0.5';
+    deleteBtn.style.cursor = 'wait';
+
+    try {
+      const response = await fetch(`/api/pa/admin/documents/delete?id=${encodeURIComponent(docId)}`, {
+        method: 'DELETE',
+        credentials: 'same-origin',
+      });
+
+      const raw = await response.text();
+      let payload: unknown = null;
+      if (raw.length) {
+        try {
+          payload = JSON.parse(raw);
+        } catch {
+          payload = null;
+        }
+      }
+
+      if (!response.ok) {
+        const errorMsg = typeof payload === 'object' && payload !== null && 'error' in payload
+          ? String((payload as any).error)
+          : `HTTP ${response.status}`;
+        alert(`Delete failed: ${errorMsg}`);
+        deleteBtn.disabled = false;
+        deleteBtn.style.opacity = '';
+        deleteBtn.style.cursor = '';
+        return;
+      }
+
+      // Remove the row from the table with animation
+      const row = deleteBtn.closest('tr');
+      if (row) {
+        row.style.transition = 'opacity 0.3s';
+        row.style.opacity = '0';
+        setTimeout(() => {
+          row.remove();
+          
+          // Update document count in subtitle
+          const subtitle = document.querySelector('.panel-subtitle');
+          if (subtitle) {
+            const currentText = subtitle.textContent || '';
+            const match = currentText.match(/(\d+) documents/);
+            if (match) {
+              const currentCount = parseInt(match[1], 10);
+              const newCount = Math.max(0, currentCount - 1);
+              subtitle.textContent = currentText.replace(/\d+ documents/, `${newCount} documents`);
+            }
+          }
+        }, 300);
+      }
+
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      alert(`Request failed: ${message}`);
+      deleteBtn.disabled = false;
+      deleteBtn.style.opacity = '';
+      deleteBtn.style.cursor = '';
+    }
+  });
 </script>
