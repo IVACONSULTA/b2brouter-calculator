@@ -25,20 +25,29 @@ function multiplierHintFromMults(mults: number[]): string {
 }
 
 /** Words that should always be rendered in full uppercase. */
-const UPPERCASE_WORDS = new Set(['b2b', 'b2c', 'vat', 'id', 'edi', 'api', 'ui']);
+const UPPERCASE_WORDS = new Set(['b2b', 'b2c', 'vat', 'tva', 'id', 'edi', 'api', 'ui']);
+
+function formatWord(word: string): string {
+  const lower = word.toLowerCase();
+  if (UPPERCASE_WORDS.has(lower)) return word.toUpperCase();
+  return word.charAt(0).toUpperCase() + word.slice(1);
+}
 
 /**
  * Formats a snake_case input_key into a human-readable label.
- * Known acronyms (B2B, B2C, VAT, …) are fully uppercased.
- * e.g. "issued_b2b_domestic" → "Issued B2B Domestic"
+ * Known acronyms (B2B, B2C, VAT, TVA, …) are fully uppercased.
+ * Segments that contain "/" are split, each part formatted, then rejoined with " / ".
+ * e.g. "issued_b2b_domestic"  → "Issued B2B Domestic"
+ *      "issued_b2b/b2c"       → "Issued B2B / B2C"
+ *      "received_b2c/tva"     → "Received B2C / TVA"
  */
 export function formatInputKey(key: string): string {
   return key
     .split('_')
-    .map((word) =>
-      UPPERCASE_WORDS.has(word.toLowerCase())
-        ? word.toUpperCase()
-        : word.charAt(0).toUpperCase() + word.slice(1),
+    .map((segment) =>
+      segment.includes('/')
+        ? segment.split('/').map(formatWord).join(' / ')
+        : formatWord(segment),
     )
     .join(' ');
 }

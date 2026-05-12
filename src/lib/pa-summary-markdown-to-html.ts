@@ -143,7 +143,7 @@ function summaryLabeledSectionsToHtml(raw: string): string {
       }
       if (hasAsteriskItems) {
         const items = body
-          .split(/\*\s+/)
+          .split(/^\s*\*\s*/m)
           .map((s) => s.trim())
           .filter(Boolean);
         if (items.length > 0) {
