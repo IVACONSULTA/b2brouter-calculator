@@ -6,6 +6,7 @@ import {
   scenarioIdFromScenariosPath,
 } from "../lib/pa-generate-summary-client";
 import { summaryMarkdownToHtml } from "../lib/pa-summary-markdown-to-html";
+import { formatInputKey } from "../lib/calculator-rule-groups";
 import type { ScenarioView } from "../lib/scenario-view";
 
 declare global {
@@ -599,7 +600,7 @@ const SingleScenario = ({
                   })
                 : Object.entries(scenario.inputs).map(([key, val]) => (
                     <div key={key} className="input-chip">
-                      <p className="input-key">{key.replace(/_/g, " ")}</p>
+                      <p className="input-key">{formatInputKey(key)}</p>
                       <p className="input-val">{val.toLocaleString()}</p>
                     </div>
                   ))}
