@@ -239,16 +239,6 @@ const showSummaryBtn =
                   data-group-keys={g.input_keys.join(',')}
                   data-display-label={g.displayLabel}
                 >
-                  <div class="rule-card-top">
-                    <div class="rule-badges">
-                      {uniqueObligations.length === 1 ? (
-                        <span class="obl-badge">{uniqueObligations[0]}</span>
-                      ) : (
-                        <span class="obl-badge obl-mixed">{uniqueObligations.length} types</span>
-                      )}
-                    </div>
-                    <span class="mult-hint">{g.multiplierHint}</span>
-                  </div>
                   <label class="field-label" for={`input-group-${idx}`}>
                     {g.displayLabel}
                   </label>
