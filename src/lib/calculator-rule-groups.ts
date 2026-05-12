@@ -7,6 +7,8 @@ export type CalcRuleRow = {
   operation_group: string;
   pa_transactions_per_item: number;
   placeholder: number;
+  /** Optional display order set in transaction_rules.index_ui. NULL / undefined = unset (sorted last). */
+  index_ui?: number | null;
 };
 
 export type RuleDisplayGroup = {
@@ -54,14 +56,24 @@ export function formatInputKey(key: string): string {
 
 /**
  * One form field per unique `input_key`.
+ * Rows are sorted by `index_ui` (nulls last) before processing.
  * Duplicate input_keys are silently skipped (keeps the first occurrence).
  * The display label is derived from the input_key via `formatInputKey`.
  */
 export function buildRuleDisplayGroups(rows: CalcRuleRow[]): RuleDisplayGroup[] {
+  const sorted = [...rows].sort((a, b) => {
+    const ai = a.index_ui ?? null;
+    const bi = b.index_ui ?? null;
+    if (ai === null && bi === null) return 0;
+    if (ai === null) return 1;
+    if (bi === null) return -1;
+    return ai - bi;
+  });
+
   const seen = new Set<string>();
   const groups: RuleDisplayGroup[] = [];
 
-  for (const r of rows) {
+  for (const r of sorted) {
     if (seen.has(r.input_key)) continue;
     seen.add(r.input_key);
 

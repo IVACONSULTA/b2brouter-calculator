@@ -44,6 +44,7 @@ type ApiProfile = {
     obligation?: string;
     operation_group?: string;
     pa_transactions_per_item: number;
+    index_ui?: number | null;
   }>;
 };
 
@@ -128,6 +129,7 @@ if (liveApi && paToken && profile_id) {
       obligation: inp.obligation ?? '—',
       operation_group: String(inp.operation_group ?? '').trim(),
       pa_transactions_per_item: Number(inp.pa_transactions_per_item ?? 0),
+      index_ui: inp.index_ui ?? null,
       placeholder: 0,
     }));
   } else {
