@@ -441,6 +441,7 @@ const metaFor = (status: string) =>
         <DocumentUploadPanel
           client:load
           uploadEndpoint="/api/pa/admin/documents/upload"
+          copyrightCheckEndpoint="/api/pa/admin/documents/copyright-check"
           canUpload={canUpload}
           localMode={localDocMode}
           uploadMode={uploadConfig.uploadMode}
