@@ -385,7 +385,7 @@ const showSummaryBtn =
   </div>
 </UserLayout>
 
-<script>
+<script define:vars={{ showSummaryBtn }}>
   document.addEventListener('DOMContentLoaded', () => {
     const form = document.getElementById('calc-form') as HTMLFormElement | null;
     if (!form) return;
@@ -461,6 +461,19 @@ const showSummaryBtn =
         }
         const sid = typeof data.scenario_id === 'string' ? data.scenario_id : null;
         if (sid) {
+          if (showSummaryBtn) {
+            if (btn) btn.textContent = 'Generating summary…';
+            try {
+              await fetch(`/api/pa/scenarios/${encodeURIComponent(sid)}/generate-summary`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: '{}',
+              });
+            } catch {
+              // summary failure is non-blocking — navigate anyway
+            }
+          }
           window.location.href = `/scenarios/${sid}`;
           return;
         }
