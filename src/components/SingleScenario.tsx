@@ -145,12 +145,10 @@ const SingleScenario = ({
     });
   }, [scenario.ai_summary]);
 
-  const handleExportJson = useCallback(async () => {
+  const handleExportPdf = useCallback(async () => {
     try {
       const res = await fetch(
-        `/api/pa/scenarios/${encodeURIComponent(
-          scenario.id,
-        )}/export?format=json`,
+        `/api/pa/scenarios/${encodeURIComponent(scenario.id)}/export-pdf`,
         { credentials: "same-origin" },
       );
       if (!res.ok) {
@@ -164,12 +162,12 @@ const SingleScenario = ({
             : typeof data.error === "string"
               ? data.error
               : `HTTP ${res.status}`;
-        alert(`Download failed: ${msg}`);
+        alert(`PDF download failed: ${msg}`);
         return;
       }
       const blob = await res.blob();
       const cd = res.headers.get("Content-Disposition");
-      let safeName = `scenario-${scenario.id.slice(0, 8)}.json`;
+      let safeName = `scenario-${scenario.id.slice(0, 8)}.pdf`;
       const quoted = cd && /filename="([^"]+)"/.exec(cd);
       if (quoted?.[1]) safeName = quoted[1];
       const url = URL.createObjectURL(blob);
@@ -182,7 +180,7 @@ const SingleScenario = ({
       URL.revokeObjectURL(url);
     } catch (e) {
       console.error(e);
-      alert("Download failed. Check your connection and try again.");
+      alert("PDF download failed. Check your connection and try again.");
     }
   }, [scenario.id]);
 
@@ -324,7 +322,7 @@ const SingleScenario = ({
           <button
             type="button"
             className="btn-export"
-            onClick={() => void handleExportJson()}
+            onClick={() => void handleExportPdf()}
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -341,7 +339,7 @@ const SingleScenario = ({
               <polyline points="7 10 12 15 17 10" />
               <line x1="12" y1="15" x2="12" y2="3" />
             </svg>
-            Download JSON
+            Download PDF
           </button>
         ) : (
           <button
@@ -365,7 +363,7 @@ const SingleScenario = ({
               <polyline points="7 10 12 15 17 10" />
               <line x1="12" y1="15" x2="12" y2="3" />
             </svg>
-            Download JSON
+            Download PDF
           </button>
         )}
 
