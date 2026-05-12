@@ -292,7 +292,7 @@ const summaryListGenerateAuth =
                     <button
                       type="button"
                       class="btn-icon js-export-scenario"
-                      title="Download scenario (JSON)"
+                      title="Download PDF"
                       data-scenario-id={s.id}
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -456,42 +456,52 @@ const summaryListGenerateAuth =
     });
   });
 
-  async function downloadScenarioJson(id) {
-    const res = await fetch(
-      `/api/pa/scenarios/${encodeURIComponent(id)}/export?format=json`,
-      { credentials: 'same-origin' },
-    );
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      const msg =
-        typeof data.message === 'string'
-          ? data.message
-          : typeof data.error === 'string'
-            ? data.error
-            : `HTTP ${res.status}`;
-      alert(`Download failed: ${msg}`);
-      return;
+  async function downloadScenarioPdf(id, btn) {
+    const prev = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '…';
+    try {
+      const res = await fetch(
+        `/api/pa/scenarios/${encodeURIComponent(id)}/export-pdf`,
+        { credentials: 'same-origin' },
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        const msg =
+          typeof data.message === 'string'
+            ? data.message
+            : typeof data.error === 'string'
+              ? data.error
+              : `HTTP ${res.status}`;
+        alert(`PDF download failed: ${msg}`);
+        return;
+      }
+      const blob = await res.blob();
+      const cd = res.headers.get('Content-Disposition');
+      let safeName = `scenario-${id.slice(0, 8)}.pdf`;
+      const quoted = cd && /filename="([^"]+)"/.exec(cd);
+      if (quoted) safeName = quoted[1] ?? safeName;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = safeName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      alert('PDF download failed. Check your connection and try again.');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = prev;
     }
-    const blob = await res.blob();
-    const cd = res.headers.get('Content-Disposition');
-    let safeName = `scenario-${id.slice(0, 8)}.json`;
-    const quoted = cd && /filename="([^"]+)"/.exec(cd);
-    if (quoted) safeName = quoted[1] ?? safeName;
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = safeName;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
   }
 
   document.querySelectorAll('.js-export-scenario').forEach((btn) => {
     btn.addEventListener('click', () => {
       const id = btn.getAttribute('data-scenario-id');
       if (!id) return;
-      void downloadScenarioJson(id);
+      void downloadScenarioPdf(id, btn);
     });
   });
 
