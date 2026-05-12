@@ -93,6 +93,7 @@ if (
   if (row.ok && row.data) {
     scenarioView = normalizeScenarioDetail(row.data);
     scenarioFromApi = true;
+    paNotice = null;
   } else if (row.status === 403 || row.status === 404) {
     return Astro.redirect('/scenarios');
   } else {
