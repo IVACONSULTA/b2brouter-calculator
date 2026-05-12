@@ -24,14 +24,22 @@ function multiplierHintFromMults(mults: number[]): string {
   return `×${u[0]}–×${u[u.length - 1]} PA`;
 }
 
+/** Words that should always be rendered in full uppercase. */
+const UPPERCASE_WORDS = new Set(['b2b', 'b2c', 'vat', 'id', 'edi', 'api', 'ui']);
+
 /**
  * Formats a snake_case input_key into a human-readable label.
- * e.g. "issued_b2b_domestic" → "Issued B2b Domestic"
+ * Known acronyms (B2B, B2C, VAT, …) are fully uppercased.
+ * e.g. "issued_b2b_domestic" → "Issued B2B Domestic"
  */
 export function formatInputKey(key: string): string {
   return key
     .split('_')
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .map((word) =>
+      UPPERCASE_WORDS.has(word.toLowerCase())
+        ? word.toUpperCase()
+        : word.charAt(0).toUpperCase() + word.slice(1),
+    )
     .join(' ');
 }
 
