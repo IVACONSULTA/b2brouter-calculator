@@ -103,6 +103,8 @@ if (liveApi && paToken && profile_id) {
     }
   }
 
+  console.log('clientSummaryFromApi', clientSummaryFromApi);
+
   const loaded = await paFetchJson<ApiProfile>(`/calculator/profile/${profile_id}`, paToken);
   if (loaded.ok && loaded.data) {
     useProxyCalculate = true;
