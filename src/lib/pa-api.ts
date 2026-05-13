@@ -126,6 +126,7 @@ export async function paPostJson<T>(
   apiPath: string,
   token: string,
   body: unknown,
+  extraHeaders?: Record<string, string>,
 ): Promise<PaOk<T>> {
   const url = paApiAbsoluteUrl(apiPath);
   if (!url) {
@@ -138,6 +139,7 @@ export async function paPostJson<T>(
       headers: {
         ...paAuthHeaders(token),
         'Content-Type': 'application/json',
+        ...(extraHeaders ?? {}),
       },
       body: JSON.stringify(body ?? {}),
     });

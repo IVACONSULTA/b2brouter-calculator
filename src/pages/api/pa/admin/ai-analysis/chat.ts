@@ -26,13 +26,9 @@ function json(status: number, body: unknown) {
 
 /**
  * POST /api/pa/admin/ai-analysis/chat
- * Proxies to PlanAdvisorAPI POST /admin/ai-analysis/chat.
- * PlanAdvisorAPI handles document loading, text extraction, and the AgenteDocumental call.
- *
- * **Timeouts:** This handler runs on Netlify as part of the Astro `ssr` serverless function.
- * Netlify enforces a max wall-clock time per invocation (default ~60s unless raised in
- * `netlify.toml` → `[functions.ssr]`). Crew-based analysis often runs minutes longer; if
- * the limit is too low the client sees 504 while Railway/API logs still show work in progress.
+ * Starts async analysis on PlanAdvisorAPI (`X-Async-Analysis: 1`) and returns **202** with `job_id`.
+ * The browser polls GET `/api/pa/admin/ai-analysis/chat/jobs/:job_id` (short requests) until completion.
+ * This avoids Netlify (and other proxies) closing a single long idle HTTP connection while Crew runs.
  */
 export const POST: APIRoute = async ({ request, cookies }) => {
   try {
@@ -79,29 +75,47 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       });
     }
 
-    const result = await paPostJson<{
-      assistant?: string;
-      rules?: unknown[];
-      raw_output?: string;
-      documents_used?: string[];
-      error?: string;
+    const start = await paPostJson<{
+      job_id?: string;
+      poll_after_ms?: number;
       message?: string;
-      demo?: boolean;
-    }>('/admin/ai-analysis/chat', fresh.accessToken, {
-      message,
-      profileId,
-      countryName: body.countryName ?? undefined,
-      providerName: body.providerName ?? undefined,
-    });
+      error?: string;
+    }>(
+      '/admin/ai-analysis/chat',
+      fresh.accessToken,
+      {
+        message,
+        profileId,
+        countryName: body.countryName ?? undefined,
+        providerName: body.providerName ?? undefined,
+      },
+      { 'X-Async-Analysis': '1' },
+    );
 
-    if (!result.ok) {
-      const status = result.status > 0 ? result.status : 502;
-      const errorBody = result.error ?? { error: 'API request failed' };
-      console.error('[ai-analysis/chat BFF] API error:', status, errorBody);
+    if (!start.ok) {
+      const status = start.status > 0 ? start.status : 502;
+      const errorBody = start.error ?? { error: 'API request failed' };
+      console.error('[ai-analysis/chat BFF] API start error:', status, errorBody);
       return json(status, errorBody);
     }
 
-    return json(200, result.data);
+    if (start.status === 202 && start.data?.job_id) {
+      return json(202, {
+        job_id: start.data.job_id,
+        poll_after_ms: start.data.poll_after_ms ?? 1500,
+        message:
+          start.data.message ??
+          'Poll GET /api/pa/admin/ai-analysis/chat/jobs/<job_id> until status is completed.',
+      });
+    }
+
+    // Fallback: older API without async — treat body as final result (200).
+    if (start.status === 200 && typeof (start.data as { assistant?: string }).assistant === 'string') {
+      return json(200, start.data);
+    }
+
+    console.error('[ai-analysis/chat BFF] unexpected API response:', start.status, start.data);
+    return json(502, { error: 'Unexpected response from analysis API', status: start.status });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     const stack = e instanceof Error ? e.stack : undefined;

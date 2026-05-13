@@ -90,6 +90,10 @@ function escapeText(s: string): string {
     .replace(/>/g, "&gt;");
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function simpleMarkdownToHtml(s: string): string {
   const parts = String(s).split(/\*\*/);
   let out = "";
@@ -287,12 +291,84 @@ export function initAdminCountryAiAnalysisChat(): void {
             providerName: ctx.providerName || undefined,
           }),
         });
-        const data = (await res.json().catch(() => ({}))) as {
+
+        const startPayload = (await res.json().catch(() => ({}))) as {
+          job_id?: string;
+          poll_after_ms?: number;
+          message?: string;
+          assistant?: string;
+          rules?: ExtractedRule[];
+          demo?: boolean;
+          error?: string;
+          http_status?: number;
+        };
+
+        type ChatPoll = {
+          status?: string;
+          assistant?: string;
+          rules?: ExtractedRule[];
+          message?: string;
+          error?: string;
+          http_status?: number;
+        };
+
+        let data: {
           demo?: boolean;
           assistant?: string;
           rules?: ExtractedRule[];
           message?: string;
-        };
+        } = startPayload;
+
+        if (res.status === 202 && typeof startPayload.job_id === "string") {
+          const jobId = startPayload.job_id;
+          const pollMs = Math.min(
+            Math.max(Number(startPayload.poll_after_ms) || 1500, 500),
+            5000,
+          );
+          const maxRounds = 1200;
+          for (let i = 0; i < maxRounds; i++) {
+            await sleep(pollMs);
+            const pr = await fetch(
+              `/api/pa/admin/ai-analysis/chat/jobs/${encodeURIComponent(jobId)}`,
+            );
+            const jd = (await pr.json().catch(() => ({}))) as ChatPoll;
+            if (jd.status === "pending") continue;
+            if (jd.status === "completed") {
+              data = {
+                assistant: jd.assistant,
+                rules: jd.rules,
+                message: undefined,
+                demo: undefined,
+              };
+              break;
+            }
+            if (jd.status === "failed") {
+              const hint =
+                typeof jd.message === "string"
+                  ? jd.message
+                  : typeof jd.error === "string"
+                    ? jd.error
+                    : `Job failed (http_status=${jd.http_status ?? "?"})`;
+              addBubble(
+                "assistant",
+                escapeText("Could not reach the Crew service: " + hint).replace(
+                  /\n/g,
+                  "<br/>",
+                ),
+              );
+              return;
+            }
+          }
+          if (typeof data.assistant !== "string") {
+            addBubble(
+              "assistant",
+              escapeText(
+                "Analysis is still running on the server but this page stopped waiting (max wait exceeded). Try again or contact support.",
+              ).replace(/\n/g, "<br/>"),
+            );
+            return;
+          }
+        }
 
         if (res.ok && typeof data.assistant === "string") {
           addBubble("assistant", simpleMarkdownToHtml(data.assistant));
