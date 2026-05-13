@@ -16,6 +16,11 @@ function json(status: number, body: unknown) {
  * POST /api/pa/admin/ai-analysis/chat
  * Proxies to PlanAdvisorAPI POST /admin/ai-analysis/chat.
  * PlanAdvisorAPI handles document loading, text extraction, and the AgenteDocumental call.
+ *
+ * **Timeouts:** This handler runs on Netlify as part of the Astro `ssr` serverless function.
+ * Netlify enforces a max wall-clock time per invocation (default ~60s unless raised in
+ * `netlify.toml` → `[functions.ssr]`). Crew-based analysis often runs minutes longer; if
+ * the limit is too low the client sees 504 while Railway/API logs still show work in progress.
  */
 export const POST: APIRoute = async ({ request, cookies }) => {
   const session = getSession(cookies);
