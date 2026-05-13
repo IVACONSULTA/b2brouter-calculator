@@ -33,6 +33,10 @@ const profile = resolveAdminWizardProfile(routeProfileId);
 // Check if this is a wizard draft with stored API UUIDs (server-side cannot read sessionStorage directly)
 const isDraft = isDraftProfileRouteId(routeProfileId);
 
+// For draft routes the client-side script below detects apiProfileId in sessionStorage and reloads
+// with ?profile_id=<uuid>.  On that reload SSR can read it here and list documents by UUID directly.
+const draftApiProfileId = isDraft ? (Astro.url.searchParams.get('profile_id') ?? '') : '';
+
 const localDocMode = useLocalDocumentStorage();
 const devLocalFolder =
   import.meta.env.DEV && hasLocalDocumentFiles(routeProfileId);
@@ -177,10 +181,10 @@ if (useLocalDocumentsListing) {
       const noticeBefore: string | null = adminNotice;
       adminNotice = `${noticeBefore ?? ''}${suffix}`.trim();
     }
-  } else {
-    adminNotice =
-      'Draft uploads are stored temporarily for AI analysis (steps 2–3). When you activate the calculation profile (step 4), include promote_profile_slug in the activate request (same value as this page’s profile id) so files are copied into live calculator storage.';
-    const slist = await paFetchJson<
+  } else if (draftApiProfileId) {
+    // Draft route — UUID injected via ?profile_id= by the client-side script below.
+    // List documents by profile_id directly so uploaded files are visible immediately.
+    const list = await paFetchJson<
       Array<{
         id: string;
         filename: string;
@@ -189,9 +193,9 @@ if (useLocalDocumentsListing) {
         copyright_status: string;
         created_at: string;
       }>
-    >(`/admin/documents/staging?profile_slug=${encodeURIComponent(routeProfileId)}`, paToken);
-    if (slist.ok && Array.isArray(slist.data)) {
-      documents = slist.data.map((r) => ({
+    >(`/admin/documents?profile_id=${encodeURIComponent(draftApiProfileId)}`, paToken);
+    if (list.ok && Array.isArray(list.data)) {
+      documents = list.data.map((r) => ({
         id: r.id,
         filename: r.filename,
         document_type: r.document_type,
@@ -201,10 +205,13 @@ if (useLocalDocumentsListing) {
         size: '—',
         selected: r.copyright_status !== 'blocked',
       }));
-    } else if (!slist.ok) {
-      const suffix = ` Could not load staged documents (HTTP ${slist.status}). Showing demo list.`;
-      adminNotice = `${adminNotice}${suffix}`.trim();
+    } else if (!list.ok) {
+      const suffix = ` Could not load documents (HTTP ${list.status}). Showing demo list.`;
+      adminNotice = (adminNotice ?? '').concat(suffix).trim();
     }
+  } else {
+    // No UUID yet — the client-side script will inject ?profile_id= and trigger a reload.
+    adminNotice = 'Resolving profile…';
   }
 } else if (!session.supabaseAccessToken) {
   adminNotice = 'Demo session (no JWT). Sign in with Supabase + set API_BASE_URL for live uploads.';
@@ -489,6 +496,30 @@ const metaFor = (status: string) =>
 <script>
   import { initDocumentsGoAnalysis } from '../../../../scripts/documents-go-analysis';
   initDocumentsGoAnalysis();
+</script>
+
+<script>
+  /**
+   * For wizard draft routes the real DB profile UUID lives in sessionStorage — the SSR cannot
+   * read it.  This script reads it and, if the current URL is missing ?profile_id=<uuid>,
+   * reloads once with that param so the SSR can list the correct documents.
+   */
+  import { loadCountryWizardDraft } from '../../../../lib/country-wizard-draft';
+
+  // Extract the [id] segment from /admin/countries/{id}/documents
+  const pathParts = window.location.pathname.split('/').filter(Boolean);
+  const routeProfileId = pathParts[pathParts.length - 2] ?? '';
+
+  if (routeProfileId.startsWith('profile-draft-')) {
+    const draft = loadCountryWizardDraft(routeProfileId);
+    if (draft?.apiProfileId) {
+      const url = new URL(window.location.href);
+      if (url.searchParams.get('profile_id') !== draft.apiProfileId) {
+        url.searchParams.set('profile_id', draft.apiProfileId);
+        window.location.replace(url.toString());
+      }
+    }
+  }
 </script>
 
 <script>
