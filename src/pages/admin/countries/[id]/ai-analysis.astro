@@ -7,6 +7,7 @@ import { resolvePlanAdvisorProfileIds } from '../../../../lib/admin-resolve-prof
 import { resolveAdminWizardProfile } from '../../../../lib/admin-wizard-profile-fallback';
 import WizardCountryDraftIsland from '../../../../components/admin/WizardCountryDraftIsland';
 import { parsePaUiProfileUuidMap } from '../../../../lib/pa-ui-profile-uuid-map';
+import { isDraftProfileRouteId } from '../../../../lib/country-wizard-draft';
 import '../../../../styles/pages/admin-country-ai-analysis.css';
 
 const session = getSession(Astro.cookies);
@@ -35,7 +36,11 @@ let apiTarget: {
 const uiProfileUuidBySlug = parsePaUiProfileUuidMap();
 const uuidOverrideForSlug = uiProfileUuidBySlug[routeProfileId] ?? null;
 
-if (apiReady && paToken && (import.meta.env.API_BASE_URL ?? '').trim()) {
+// Skip SSR resolution for wizard draft routes — the correct UUID was stored in sessionStorage at
+// step 1 and will be picked up by WizardAiAnalysisDatasetSync via the island.  Resolving by
+// country+provider+version here would match the existing *active* profile instead of the new draft.
+const isDraft = isDraftProfileRouteId(routeProfileId);
+if (!isDraft && apiReady && paToken && (import.meta.env.API_BASE_URL ?? '').trim()) {
   const resolved = await resolvePlanAdvisorProfileIds(
     paToken,
     {
@@ -92,6 +97,7 @@ const approveDisabledReason =
       client:only="react"
       routeProfileId={routeProfileId}
       fallbackProfileJson={JSON.stringify(profile)}
+      fallbackApiTarget={apiTarget ? JSON.stringify(apiTarget) : null}
       mode="ai-analysis"
     />
     <div class="step-bar">

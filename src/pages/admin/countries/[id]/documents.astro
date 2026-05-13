@@ -99,10 +99,14 @@ const uiProfileUuidBySlug = parsePaUiProfileUuidMap();
 const uuidOverrideForSlug = uiProfileUuidBySlug[routeProfileId] ?? null;
 
 /**
- * Wizard drafts may have API UUIDs stored in sessionStorage (created at step 1).
- * Island will hydrate and provide those to upload components. SSR uses best-effort resolution.
+ * Wizard drafts have API UUIDs stored in sessionStorage (created at step 1 via /admin/countries/new).
+ * For draft routes, skip SSR resolution — resolving by country+provider+version would return the
+ * already-active profile UUID, causing documents to be linked to the wrong profile.
+ * The island hydrates with the correct UUID from sessionStorage and passes it to the upload panel.
+ *
+ * For non-draft (static/legacy) routes, SSR resolution is still used.
  */
-if (apiReady && paToken && (import.meta.env.API_BASE_URL ?? '').trim()) {
+if (!isDraft && apiReady && paToken && (import.meta.env.API_BASE_URL ?? '').trim()) {
   const resolved = await resolvePlanAdvisorProfileIds(
     paToken,
     {

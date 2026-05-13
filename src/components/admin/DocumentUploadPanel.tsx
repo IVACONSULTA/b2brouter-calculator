@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { loadCountryWizardDraft } from '../../lib/country-wizard-draft';
 import { paUploadLogClient } from '../../lib/pa-upload-debug';
 
 export type DocumentTypeOption = { value: string; label: string };
@@ -74,6 +75,21 @@ export default function DocumentUploadPanel({
   const [copyrightResult, setCopyrightResult] = useState<CopyrightCheckResult | null>(null);
   const [message, setMessage] = useState<{ kind: 'ok' | 'err' | 'warn'; text: string } | null>(null);
 
+  // For wizard draft profiles, the SSR cannot read sessionStorage, so the profileId / countryId /
+  // providerId props may be empty or wrong (SSR resolves by country+provider, which may match the
+  // wrong existing active profile).  On mount, read the wizard draft stored at step 1 and prefer
+  // those UUIDs over whatever SSR supplied.
+  const [effectiveProfileId, setEffectiveProfileId] = useState(profileId);
+  const [effectiveCountryId, setEffectiveCountryId] = useState(countryId);
+  const [effectiveProviderId, setEffectiveProviderId] = useState(providerId);
+
+  useEffect(() => {
+    const draft = loadCountryWizardDraft(profileSlug);
+    if (draft?.apiProfileId) setEffectiveProfileId(draft.apiProfileId);
+    if (draft?.apiCountryId) setEffectiveCountryId(draft.apiCountryId);
+    if (draft?.apiProviderId) setEffectiveProviderId(draft.apiProviderId);
+  }, [profileSlug]);
+
   const busy = phase === 'checking-copyright' || phase === 'uploading';
 
   useEffect(() => {
@@ -82,12 +98,12 @@ export default function DocumentUploadPanel({
       localMode,
       uploadMode,
       profileSlug,
-      countryId: countryId || '(empty)',
-      providerId: providerId || '(empty)',
-      profileId: profileId || '(empty)',
+      countryId: effectiveCountryId || '(empty)',
+      providerId: effectiveProviderId || '(empty)',
+      profileId: effectiveProfileId || '(empty)',
       uploadEndpoint,
     });
-  }, [canUpload, localMode, uploadMode, profileSlug, countryId, providerId, profileId, uploadEndpoint]);
+  }, [canUpload, localMode, uploadMode, profileSlug, effectiveCountryId, effectiveProviderId, effectiveProfileId, uploadEndpoint]);
 
   const pickFile = useCallback((list: FileList | null) => {
     const f = list?.[0];
@@ -111,9 +127,9 @@ export default function DocumentUploadPanel({
     fd.append('document_type', documentType);
     fd.append('profile_slug', profileSlug);
     if (description.trim()) fd.append('description', description.trim());
-    if (countryId) fd.append('country_id', countryId);
-    if (providerId) fd.append('provider_id', providerId);
-    if (profileId) fd.append('profile_id', profileId);
+    if (effectiveCountryId) fd.append('country_id', effectiveCountryId);
+    if (effectiveProviderId) fd.append('provider_id', effectiveProviderId);
+    if (effectiveProfileId) fd.append('profile_id', effectiveProfileId);
     if (uploadMode === 'staging') fd.append('upload_mode', 'staging');
 
     paUploadLogClient('upload submit', {
@@ -122,9 +138,9 @@ export default function DocumentUploadPanel({
       filename: f.name,
       size: f.size,
       documentType,
-      countryId: countryId || undefined,
-      providerId: providerId || undefined,
-      profileId: profileId || undefined,
+      countryId: effectiveCountryId || undefined,
+      providerId: effectiveProviderId || undefined,
+      profileId: effectiveProfileId || undefined,
     });
 
     try {
@@ -178,7 +194,7 @@ export default function DocumentUploadPanel({
       setMessage({ kind: 'err', text: 'Select a document type.' });
       return;
     }
-    if (!localMode && uploadMode === 'live' && (!countryId || !providerId || !profileId)) {
+    if (!localMode && uploadMode === 'live' && (!effectiveCountryId || !effectiveProviderId || !effectiveProfileId)) {
       setMessage({
         kind: 'err',
         text: 'Missing country, provider, or profile id — reload the page or complete profile setup.',

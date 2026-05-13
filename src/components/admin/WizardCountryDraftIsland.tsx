@@ -202,15 +202,25 @@ function WizardDocumentsButtonSync({
   return null;
 }
 
-function WizardAiAnalysisDatasetSync() {
-  const { profile } = useWizardCountryDraft();
+function WizardAiAnalysisDatasetSync({
+  ssrApiTarget,
+}: {
+  ssrApiTarget: {
+    profile_id: string;
+    country_id: string;
+    provider_id: string;
+  } | null;
+}) {
+  const { draft, profile } = useWizardCountryDraft();
   useEffect(() => {
     const root = document.querySelector<HTMLElement>('.page-admin-country-ai-analysis');
     if (!root) return;
-    root.dataset.profileId = profile.id;
+    // Priority: UUID created at step 1 (sessionStorage) → SSR-resolved UUID → route slug fallback.
+    // Using the real DB UUID ensures the chat API can find the correct documents.
+    root.dataset.profileId = draft?.apiProfileId || ssrApiTarget?.profile_id || profile.id;
     root.dataset.country = profile.country.name;
     root.dataset.provider = profile.provider.name;
-  }, [profile]);
+  }, [profile, draft, ssrApiTarget]);
   return null;
 }
 
@@ -273,7 +283,7 @@ export default function WizardCountryDraftIsland({
       ) : (
         <>
           <WizardCountryRibbon />
-          <WizardAiAnalysisDatasetSync />
+          <WizardAiAnalysisDatasetSync ssrApiTarget={ssrApiTarget} />
         </>
       )}
     </WizardCountryDraftProvider>
