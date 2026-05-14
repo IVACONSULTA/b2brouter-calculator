@@ -102,6 +102,12 @@ let apiTarget: {
 const uiProfileUuidBySlug = parsePaUiProfileUuidMap();
 const uuidOverrideForSlug = uiProfileUuidBySlug[routeProfileId] ?? null;
 
+// Helper to check if a string looks like a valid UUID (v4 or similar)
+function isValidUuid(str: string): boolean {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(str);
+}
+
 /**
  * Wizard drafts have API UUIDs stored in sessionStorage (created at step 1 via /admin/countries/new).
  * For draft routes, skip SSR resolution — resolving by country+provider+version would return the
@@ -109,23 +115,43 @@ const uuidOverrideForSlug = uiProfileUuidBySlug[routeProfileId] ?? null;
  * The island hydrates with the correct UUID from sessionStorage and passes it to the upload panel.
  *
  * For non-draft (static/legacy) routes, SSR resolution is still used.
+ *
+ * For real profile IDs (UUIDs from database), use them directly without resolution.
  */
 if (!isDraft && apiReady && paToken && (import.meta.env.API_BASE_URL ?? '').trim()) {
-  const resolved = await resolvePlanAdvisorProfileIds(
-    paToken,
-    {
-      countryCode: profile.country.code,
-      providerName: profile.provider.name,
-      version: profile.version,
-    },
-    { uuidOverride: uuidOverrideForSlug },
-  );
-  if (resolved) {
-    apiTarget = {
-      profile_id: resolved.id,
-      country_id: resolved.country_id,
-      provider_id: resolved.provider_id,
-    };
+  // If the route ID is a valid UUID, use it directly as the profile ID
+  if (isValidUuid(routeProfileId)) {
+    // For real profile IDs, we need to fetch the profile detail to get country_id and provider_id
+    const detail = await paFetchJson<{
+      id: string;
+      country_id: string;
+      provider_id: string;
+    }>(`/admin/profiles/${encodeURIComponent(routeProfileId)}`, paToken);
+    if (detail.ok && detail.data) {
+      apiTarget = {
+        profile_id: String(detail.data.id),
+        country_id: String(detail.data.country_id),
+        provider_id: String(detail.data.provider_id),
+      };
+    }
+  } else {
+    // For static/legacy routes, resolve by country+provider+version
+    const resolved = await resolvePlanAdvisorProfileIds(
+      paToken,
+      {
+        countryCode: profile.country.code,
+        providerName: profile.provider.name,
+        version: profile.version,
+      },
+      { uuidOverride: uuidOverrideForSlug },
+    );
+    if (resolved) {
+      apiTarget = {
+        profile_id: resolved.id,
+        country_id: resolved.country_id,
+        provider_id: resolved.provider_id,
+      };
+    }
   }
 }
 

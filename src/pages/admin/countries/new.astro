@@ -290,7 +290,8 @@ const currencies = ['EUR', 'GBP', 'PLN', 'RON'];
       // Continue with local draft only
     }
 
-    const profileRouteId = makeDraftProfileRouteId();
+    // Use the real profile ID from API if available, otherwise generate a draft ID
+    const profileRouteId = apiProfileId || makeDraftProfileRouteId();
 
     const draft: CountryWizardDraft = {
       profileRouteId,
