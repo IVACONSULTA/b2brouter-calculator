@@ -316,8 +316,8 @@ export default function DocumentUploadPanel({
           credentials: "same-origin",
         });
         checkData = (await checkRes.json().catch(() => ({
-          copyright_status: "restricted" as CopyrightStatus,
-          reason: "Could not parse copyright check response.",
+          copyright_status: "clear" as CopyrightStatus,
+          reason: "Could not parse copyright check response — treating as clear.",
         }))) as CopyrightCheckResult;
         paUploadLogClient("copyright-check response", {
           httpStatus: checkRes.status,
@@ -335,44 +335,29 @@ export default function DocumentUploadPanel({
         return;
       }
 
-      // BLOCKED — reject upload immediately
+      // BLOCKED — explicit AI prohibition detected, do not upload
       if (checkRes.status === 451 || checkData.copyright_status === "blocked") {
         setCopyrightResult(checkData);
-        setPhase("copyright-blocked");
-        setMessage(null);
-        return;
-      }
-
-      // RESTRICTED — do NOT upload, store in client-side failed list
-      if (checkData.copyright_status === "restricted") {
-        setCopyrightResult(checkData);
+        // Store in client-side Copyright Issues list
         const failedDoc: CopyrightFailedDocument = {
           id: crypto.randomUUID(),
           filename: file.name,
           document_type: documentType,
           description: description.trim() || undefined,
-          copyright_status: "restricted",
+          copyright_status: "blocked",
           copyright_reason: checkData.reason,
           legal_basis: checkData.legal_basis,
+          action_required: checkData.action_required,
           failed_at: new Date().toISOString(),
         };
         saveCopyrightFailedDoc(failedDoc);
-        setPhase("done");
-        setMessage({
-          kind: "warn",
-          text: 'Copyright restricted — document not uploaded. See "Copyright Issues" list below.',
-        });
-        // Clear form for next upload
-        setFile(null);
-        setDocumentType("");
-        setDescription("");
-        if (inputRef.current) inputRef.current.value = "";
-        // Emit event to notify parent page
+        setPhase("copyright-blocked");
+        setMessage(null);
         window.dispatchEvent(new CustomEvent("copyright-failed-docs-changed"));
         return;
       }
 
-      // CLEAR — proceed with upload
+      // CLEAR — no explicit AI prohibition, proceed with upload
       setCopyrightResult(checkData);
       setMessage({ kind: "ok", text: "Copyright check passed. Uploading…" });
     }
@@ -532,49 +517,6 @@ export default function DocumentUploadPanel({
       )}
 
       {/* Copyright restricted — inline notice */}
-      {phase !== "copyright-blocked" &&
-        copyrightResult?.copyright_status === "restricted" && (
-          <div
-            style={{
-              border: "1px solid #fcd34d",
-              borderRadius: "0.5rem",
-              background: "#fffbeb",
-              padding: "0.6rem 0.875rem",
-              display: "flex",
-              gap: "0.5rem",
-              alignItems: "flex-start",
-            }}
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width={14}
-              height={14}
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="#d97706"
-              strokeWidth={2}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden
-              style={{ flexShrink: 0, marginTop: 2 }}
-            >
-              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-              <line x1="12" y1="9" x2="12" y2="13" />
-              <line x1="12" y1="17" x2="12.01" y2="17" />
-            </svg>
-            <p
-              style={{
-                margin: 0,
-                fontSize: "0.72rem",
-                color: "#92400e",
-                lineHeight: 1.5,
-              }}
-            >
-              <strong>Restricted document:</strong> {copyrightResult.reason}
-            </p>
-          </div>
-        )}
-
       {/* Copyright clear — inline notice */}
       {phase !== "copyright-blocked" &&
         copyrightResult?.copyright_status === "clear" && (
