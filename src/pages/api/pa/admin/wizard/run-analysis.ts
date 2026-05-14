@@ -81,5 +81,6 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     return json(result.status || 502, result.error);
   }
 
-  return json(201, result.data);
+  // API returns 202 (async kick-off, body contains analysis_id) or legacy 201.
+  return json(result.status || 202, result.data);
 };
