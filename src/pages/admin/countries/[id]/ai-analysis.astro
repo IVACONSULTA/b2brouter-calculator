@@ -98,6 +98,68 @@ const approveDisabledReason =
     : !wizardCalculationProfileId
       ? 'Sign in with Supabase and set API_BASE_URL to approve analysis against Plan Advisor.'
       : '';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Fetch transaction_rules for this profile from the API
+// These are the rules extracted by the document analysis agent
+// ═══════════════════════════════════════════════════════════════════════════
+type TransactionRule = {
+  id: string;
+  input_key: string;
+  label: string;
+  direction: string;
+  obligation: string;
+  operation_group: string;
+  pa_transactions_per_item: number;
+  reason?: string;
+  source_excerpt?: string;
+  confidence?: string;
+  status: string;
+};
+
+let transactionRules: TransactionRule[] = [];
+let rulesError: string | null = null;
+
+if (wizardCalculationProfileId && apiReady && paToken) {
+  const rulesRes = await paFetchJson<
+    Array<{
+      id: string;
+      input_key: string;
+      label: string;
+      direction: string;
+      obligation: string;
+      operation_group: string;
+      pa_transactions_per_item: number;
+      reason?: string;
+      source_excerpt?: string;
+      confidence?: string;
+      status: string;
+    }>
+  >(`/admin/transaction-rules?profile_id=${encodeURIComponent(wizardCalculationProfileId)}`, paToken);
+
+  if (rulesRes.ok && Array.isArray(rulesRes.data)) {
+    transactionRules = rulesRes.data.map((r) => ({
+      id: String(r.id),
+      input_key: String(r.input_key),
+      label: String(r.label),
+      direction: String(r.direction),
+      obligation: String(r.obligation),
+      operation_group: String(r.operation_group),
+      pa_transactions_per_item: Number(r.pa_transactions_per_item) || 0,
+      reason: r.reason,
+      source_excerpt: r.source_excerpt,
+      confidence: r.confidence,
+      status: String(r.status),
+    }));
+  } else if (!rulesRes.ok) {
+    const errMsg = typeof rulesRes.error === 'string' ? rulesRes.error : 'Could not load transaction rules';
+    rulesError = errMsg;
+    console.warn('[ai-analysis] Failed to load rules:', errMsg);
+  }
+}
+
+const proposedRules = transactionRules.filter((r) => r.status === 'proposed');
+const approvedRules = transactionRules.filter((r) => r.status === 'approved');
 ---
 
 <AdminLayout
@@ -184,16 +246,59 @@ const approveDisabledReason =
         <div class="panel-head">
           <h2>Extracted rules</h2>
           <p>
-            Fields are populated from JSON payloads embedded in assistant replies (demo: canned
-            extractions per turn). Edit values before sending them to your downstream API.
+            {transactionRules.length > 0
+              ? `${transactionRules.length} rules extracted (${proposedRules.length} proposed, ${approvedRules.length} approved). Review and approve before activation.`
+              : "No rules extracted yet. Run document analysis to extract rules from uploaded documents."}
           </p>
         </div>
         <div class="rules-scroll">
-          <div id="rules-empty" class="rules-empty">
-            No rules extracted yet. Send a message in the chat; when the assistant returns structured
-            data, rule forms will appear here.
-          </div>
-          <div id="rules-list" class="rules-list" hidden></div>
+          {transactionRules.length === 0 ? (
+            <div id="rules-empty" class="rules-empty">
+              No rules extracted yet. Go back to Documents and click "Go to Analysis" to run document analysis.
+            </div>
+          ) : (
+            <div id="rules-list" class="rules-list">
+              {transactionRules.map((rule) => (
+                <div class={`rule-card status-${rule.status}`} data-rule-id={rule.id}>
+                  <div class="rule-header">
+                    <span class={`rule-status-badge status-${rule.status}`}>{rule.status}</span>
+                    <span class="rule-confidence">{rule.confidence || 'medium'} confidence</span>
+                  </div>
+                  <h4 class="rule-label">{rule.label}</h4>
+                  <div class="rule-details">
+                    <div class="rule-field">
+                      <span class="field-label">Direction:</span>
+                      <span class="field-value">{rule.direction}</span>
+                    </div>
+                    <div class="rule-field">
+                      <span class="field-label">Obligation:</span>
+                      <span class="field-value">{rule.obligation}</span>
+                    </div>
+                    <div class="rule-field">
+                      <span class="field-label">Operation Group:</span>
+                      <span class="field-value">{rule.operation_group}</span>
+                    </div>
+                    <div class="rule-field">
+                      <span class="field-label">PA Transactions:</span>
+                      <span class="field-value">{rule.pa_transactions_per_item}</span>
+                    </div>
+                  </div>
+                  {rule.reason && (
+                    <div class="rule-reason">
+                      <span class="field-label">Reason:</span>
+                      <p>{rule.reason}</p>
+                    </div>
+                  )}
+                  {rule.source_excerpt && (
+                    <div class="rule-source">
+                      <span class="field-label">Source:</span>
+                      <blockquote>{rule.source_excerpt}</blockquote>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </section>
     </div>

@@ -1,11 +1,20 @@
 import { loadCountryWizardDraft } from '../lib/country-wizard-draft';
 
 /**
- * Step 2 → Step 3: promote staged docs + run Plan Advisor analysis pipeline before navigation.
+ * Step 2 → Step 3: Run document analysis and navigate to AI analysis page.
+ *
+ * Flow:
+ *   1. Disable button and show "Analyzing documents..."
+ *   2. Call API to run analysis (includes DOCUMENT_ANALYSIS_MESSAGE from env)
+ *   3. On success, navigate to /admin/countries/<profile-id>/ai-analysis
+ *   4. On error, show alert and re-enable button
  */
 export function initDocumentsGoAnalysis(): void {
   const btn = document.getElementById('btn-go-analysis');
   if (!(btn instanceof HTMLButtonElement)) return;
+
+  // Store original button text for restoration on error
+  const originalText = btn.innerHTML;
 
   btn.addEventListener('click', async () => {
     const href = btn.dataset.href ?? '';
@@ -44,7 +53,15 @@ export function initDocumentsGoAnalysis(): void {
       return;
     }
 
+    // Disable button and show analyzing state
     btn.disabled = true;
+    btn.innerHTML = `
+      <span class="animate-pulse">Analyzing documents</span>
+      <svg class="animate-spin" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+      </svg>
+    `;
+
     try {
       const res = await fetch('/api/pa/admin/wizard/run-analysis', {
         method: 'POST',
@@ -55,13 +72,22 @@ export function initDocumentsGoAnalysis(): void {
           calculation_profile_id: profileId,
           country_id: countryId,
           provider_id: providerId,
+          // message is injected server-side from DOCUMENT_ANALYSIS_MESSAGE env var
         }),
       });
       const data = (await res.json().catch(() => ({}))) as {
         error?: string;
         message?: string;
+        analysis_id?: string;
+        rules_proposed?: number;
+        plans_proposed?: number;
       };
+
       if (!res.ok) {
+        // Restore button state on error
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+
         const msg =
           typeof data.error === 'string'
             ? data.error
@@ -71,9 +97,23 @@ export function initDocumentsGoAnalysis(): void {
         alert(msg || `Analysis failed (${res.status})`);
         return;
       }
+
+      console.log('[Go to Analysis] Analysis completed:', {
+        analysis_id: data.analysis_id,
+        rules_proposed: data.rules_proposed,
+        plans_proposed: data.plans_proposed,
+      });
+
+      // Navigate to AI analysis page on success
+      // The page will fetch and display the transaction_rules
       window.location.href = href;
-    } finally {
+    } catch (err) {
+      // Restore button state on network error
       btn.disabled = false;
+      btn.innerHTML = originalText;
+
+      const message = err instanceof Error ? err.message : 'Network error';
+      alert(`Failed to start analysis: ${message}`);
     }
   });
 }

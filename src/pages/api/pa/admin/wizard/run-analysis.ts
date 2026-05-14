@@ -12,6 +12,12 @@ function json(status: number, body: unknown) {
   });
 }
 
+/**
+ * POST /api/pa/admin/wizard/run-analysis
+ *
+ * Triggers document analysis for the given profile.
+ * The analysis message is injected server-side from DOCUMENT_ANALYSIS_MESSAGE env var.
+ */
 export const POST: APIRoute = async ({ request, cookies }) => {
   const session = getSession(cookies);
   if (!session || !isAdminRole(session.role)) {
@@ -53,6 +59,12 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     });
   }
 
+  // Get the analysis message from environment variable
+  // This is the prompt/instruction sent to the document analysis agent
+  const analysisMessage = import.meta.env.DOCUMENT_ANALYSIS_MESSAGE ||
+    process.env.DOCUMENT_ANALYSIS_MESSAGE ||
+    '';
+
   const result = await paPostJson<unknown>(
     '/admin/wizard/run-analysis',
     fresh.accessToken,
@@ -61,6 +73,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       calculation_profile_id,
       country_id,
       provider_id,
+      message: analysisMessage, // Pass the analysis message to the API
     },
   );
 
