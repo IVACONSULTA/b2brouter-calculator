@@ -94,26 +94,30 @@
     font-size: 0.83rem;
   }
 
-  /* ── Main layout: form | results ── */
+  /* ── Main layout ── */
+  /* Left col (col 1): row 1 = form, row 2 = plans.  Right col (col 2): results spans both rows. */
   .admin-calc-layout {
     display: grid;
     grid-template-columns: 380px 1fr;
-    grid-template-rows: auto auto;
+    grid-template-rows: auto 1fr;
     gap: 1.25rem;
     align-items: start;
   }
 
-  /* Plans section spans full width below both columns */
-  .admin-plans-section {
-    grid-column: 1 / -1;
-  }
+  .admin-calc-form-panel  { grid-column: 1; grid-row: 1; }
+  .admin-plans-section    { grid-column: 1; grid-row: 2; }
+  .admin-calc-results-panel { grid-column: 2; grid-row: 1 / 3; }
 
   @media (max-width: 900px) {
     .admin-calc-layout {
       grid-template-columns: 1fr;
+      grid-template-rows: auto;
     }
-    .admin-plans-section {
+    .admin-calc-form-panel,
+    .admin-plans-section,
+    .admin-calc-results-panel {
       grid-column: 1;
+      grid-row: auto;
     }
   }
 
@@ -244,101 +248,6 @@
     color: var(--color-text-muted);
     margin-top: -0.3rem;
     padding-left: 0.25rem;
-  }
-
-  /* ── Calculate button ── */
-  .admin-btn-calculate {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.5rem;
-    padding: 0.65rem 1.25rem;
-    border-radius: 8px;
-    font-size: 0.84rem;
-    font-weight: 700;
-    font-family: inherit;
-    cursor: pointer;
-    border: none;
-    background: var(--color-admin, #6366f1);
-    color: #fff;
-    transition: opacity 0.15s;
-    width: 100%;
-  }
-
-  .admin-btn-calculate:disabled {
-    opacity: 0.55;
-    cursor: not-allowed;
-  }
-
-  .admin-btn-calculate:not(:disabled):hover { opacity: 0.88; }
-
-  .admin-calc-error {
-    font-size: 0.78rem;
-    color: #b91c1c;
-    margin: 0;
-    padding: 0.5rem 0.75rem;
-    background: color-mix(in srgb, #ef4444 8%, transparent);
-    border-radius: 6px;
-  }
-
-  /* ── AI Summary ── */
-  .admin-summary-panel {
-    border-top: 1px solid var(--color-border);
-    padding-top: 0.85rem;
-    display: none;
-    flex-direction: column;
-    gap: 0.45rem;
-  }
-
-  .admin-summary-panel.admin-summary-visible {
-    display: flex;
-  }
-
-  .admin-summary-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-
-  .admin-summary-head h3 {
-    font-size: 0.8rem;
-    font-weight: 700;
-    margin: 0;
-    color: var(--color-text);
-  }
-
-  .admin-summary-refresh {
-    background: none;
-    border: none;
-    cursor: pointer;
-    font-size: 1rem;
-    color: var(--color-text-muted);
-    padding: 0 0.25rem;
-    border-radius: 4px;
-    transition: color 0.12s;
-  }
-
-  .admin-summary-refresh:hover { color: var(--color-text); }
-
-  .admin-summary-loading, .admin-summary-empty {
-    font-size: 0.78rem;
-    color: var(--color-text-muted);
-    font-style: italic;
-    margin: 0;
-  }
-
-  .admin-summary-error {
-    font-size: 0.78rem;
-    color: #b91c1c;
-    margin: 0;
-  }
-
-  .admin-summary-text {
-    font-size: 0.81rem;
-    color: var(--color-text);
-    line-height: 1.65;
-    margin: 0;
-    white-space: pre-wrap;
   }
 
   /* ── Results panel ── */
