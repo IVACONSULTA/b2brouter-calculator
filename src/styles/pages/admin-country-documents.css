@@ -160,6 +160,46 @@
     .banner-title { font-size: 0.82rem; font-weight: 700; margin-bottom: 0.25rem; }
     .banner-desc  { font-size: 0.75rem; color: var(--color-text-muted); line-height: 1.5; }
 
+    .info-banner {
+      display: flex;
+      gap: 0.75rem;
+      align-items: flex-start;
+      background: rgba(59,130,246,.05);
+      border: 1px solid rgba(59,130,246,.2);
+      border-radius: 8px;
+      padding: 0.8rem 1rem;
+      margin-bottom: 1rem;
+      color: #3b82f6;
+      font-size: 0.78rem;
+      line-height: 1.5;
+    }
+
+    .info-banner p { margin: 0; color: var(--color-text); }
+    .info-banner strong { color: #2563eb; }
+
+    /* Copyright Issues Panel */
+    .copyright-issues-panel {
+      margin-top: 1.5rem;
+      border: 1px solid rgba(217, 119, 6, 0.3);
+      background: rgba(217, 119, 6, 0.03);
+    }
+
+    .copyright-issues-panel .panel-head {
+      border-bottom-color: rgba(217, 119, 6, 0.2);
+    }
+
+    .copyright-issues-panel .c-badge.c-restricted {
+      background: rgba(217, 119, 6, 0.15);
+      color: #b45309;
+      border: 1px solid rgba(217, 119, 6, 0.3);
+    }
+
+    .copyright-issues-panel .c-badge.c-blocked {
+      background: rgba(239, 68, 68, 0.15);
+      color: #dc2626;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+
     /* Table */
     .table {
       width: 100%;

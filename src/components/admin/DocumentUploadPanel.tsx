@@ -38,6 +38,19 @@ type CopyrightCheckResult = {
   action_required?: string;
 };
 
+/** Document that failed copyright check - stored client-side only */
+type CopyrightFailedDocument = {
+  id: string;
+  filename: string;
+  document_type: string;
+  description?: string;
+  copyright_status: Exclude<CopyrightStatus, 'clear'>;
+  copyright_reason: string;
+  legal_basis?: string;
+  action_required?: string;
+  failed_at: string;
+};
+
 /** Phase tracks what is currently happening in the panel. */
 type Phase =
   | 'idle'
@@ -53,6 +66,57 @@ const ACCEPT =
 const MAX_BYTES = 50 * 1024 * 1024;
 
 const DEFAULT_COPYRIGHT_CHECK_ENDPOINT = '/api/pa/admin/documents/copyright-check';
+
+const COPYRIGHT_FAILED_KEY = 'pa_copyright_failed_docs';
+
+function getCopyrightFailedDocs(): CopyrightFailedDocument[] {
+  try {
+    const raw = localStorage.getItem(COPYRIGHT_FAILED_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as CopyrightFailedDocument[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveCopyrightFailedDoc(doc: CopyrightFailedDocument): void {
+  try {
+    const existing = getCopyrightFailedDocs();
+    // Prevent duplicates by filename + document_type
+    const filtered = existing.filter(
+      (d) => !(d.filename === doc.filename && d.document_type === doc.document_type)
+    );
+    filtered.unshift(doc);
+    // Keep only last 50 failed docs
+    const trimmed = filtered.slice(0, 50);
+    localStorage.setItem(COPYRIGHT_FAILED_KEY, JSON.stringify(trimmed));
+  } catch {
+    /* ignore storage errors */
+  }
+}
+
+function removeCopyrightFailedDoc(id: string): void {
+  try {
+    const existing = getCopyrightFailedDocs();
+    const filtered = existing.filter((d) => d.id !== id);
+    localStorage.setItem(COPYRIGHT_FAILED_KEY, JSON.stringify(filtered));
+  } catch {
+    /* ignore storage errors */
+  }
+}
+
+function clearAllCopyrightFailedDocs(): void {
+  try {
+    localStorage.removeItem(COPYRIGHT_FAILED_KEY);
+  } catch {
+    /* ignore storage errors */
+  }
+}
+
+// Export for use by parent components/pages
+export { getCopyrightFailedDocs, removeCopyrightFailedDoc, clearAllCopyrightFailedDocs };
+export type { CopyrightFailedDocument };
 
 export default function DocumentUploadPanel({
   uploadEndpoint,
@@ -244,23 +308,41 @@ export default function DocumentUploadPanel({
         return;
       }
 
-      // RESTRICTED — allow upload but surface the paraphrase warning
+      // RESTRICTED — do NOT upload, store in client-side failed list
       if (checkData.copyright_status === 'restricted') {
         setCopyrightResult(checkData);
+        const failedDoc: CopyrightFailedDocument = {
+          id: crypto.randomUUID(),
+          filename: file.name,
+          document_type: documentType,
+          description: description.trim() || undefined,
+          copyright_status: 'restricted',
+          copyright_reason: checkData.reason,
+          legal_basis: checkData.legal_basis,
+          failed_at: new Date().toISOString(),
+        };
+        saveCopyrightFailedDoc(failedDoc);
+        setPhase('done');
         setMessage({
           kind: 'warn',
-          text: checkData.paraphrase_required
-            ? 'Reproduction rights detected. AI will extract factual rules only — no verbatim text.'
-            : 'Document has copyright restrictions. Proceeding with upload.',
+          text: 'Copyright restricted — document not uploaded. See "Copyright Issues" list below.',
         });
-      } else {
-        // CLEAR
-        setCopyrightResult(checkData);
-        setMessage({ kind: 'ok', text: 'Copyright check passed. Uploading…' });
+        // Clear form for next upload
+        setFile(null);
+        setDocumentType('');
+        setDescription('');
+        if (inputRef.current) inputRef.current.value = '';
+        // Emit event to notify parent page
+        window.dispatchEvent(new CustomEvent('copyright-failed-docs-changed'));
+        return;
       }
+
+      // CLEAR — proceed with upload
+      setCopyrightResult(checkData);
+      setMessage({ kind: 'ok', text: 'Copyright check passed. Uploading…' });
     }
 
-    // ── Phase 2: Upload ──────────────────────────────────────────────────────
+    // ── Phase 2: Upload (only for 'clear' status) ───────────────────────────
     await runUpload(file);
   };
 
