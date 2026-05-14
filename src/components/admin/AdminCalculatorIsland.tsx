@@ -244,9 +244,7 @@ export default function AdminCalculatorIsland({ profileId, currency: currencyPro
               .slice()
               .sort((a, b) => a.included_pa_transactions - b.included_pa_transactions)
               .map((plan) => {
-                const isRec =
-                  (recPlanName && plan.plan_name === recPlanName) ||
-                  (!recPlanName && liveRec && plan.id === liveRec.id);
+                const isRec = liveRec != null && plan.id === liveRec.id;
                 const extra = Math.max(0, totalPa - plan.included_pa_transactions);
                 const totalCost = plan.annual_fee + extra * plan.extra_transaction_cost;
                 return (
