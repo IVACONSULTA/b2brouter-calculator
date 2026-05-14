@@ -668,6 +668,15 @@
     color: var(--color-text-muted);
   }
 
+  .btn-approve-analysis.btn-approved,
+  .btn-approve-analysis.btn-approved:disabled {
+    opacity: 1;
+    background: color-mix(in srgb, #22c55e 15%, transparent);
+    border-color: #22c55e;
+    color: #15803d;
+    cursor: default;
+  }
+
   .btn-secondary {
     display: inline-flex;
     align-items: center;

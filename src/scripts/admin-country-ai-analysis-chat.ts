@@ -437,6 +437,9 @@ export function initWizardApproveAnalysis(): void {
         message?: string;
         approved_rules?: number;
         approved_plans?: number;
+        profile_status?: string;
+        active_from?: string;
+        approved_at?: string;
         artifact_path?: string;
       };
       if (!res.ok) {
@@ -453,13 +456,23 @@ export function initWizardApproveAnalysis(): void {
         typeof data.approved_rules === "number" ? data.approved_rules : 0;
       const plans =
         typeof data.approved_plans === "number" ? data.approved_plans : 0;
-      const pathHint =
-        typeof data.artifact_path === "string"
-          ? `\nArtifact: ${data.artifact_path}`
-          : "";
-      alert(`Approved ${rules} rule(s) and ${plans} plan(s).${pathHint}`);
+      const activeFrom = data.active_from
+        ? new Date(data.active_from).toLocaleDateString()
+        : "today";
+      alert(
+        `Profile activated ✓\n\n` +
+        `${rules} rule(s) and ${plans} plan(s) approved.\n` +
+        `Active from: ${activeFrom}`
+      );
+      // Mark the button as approved — keep it disabled so it can't be triggered again.
+      btn.textContent = "Analysis approved ✓";
+      btn.classList.add("btn-approved");
+      return; // skip the finally re-enable
     } finally {
-      btn.disabled = false;
+      // Only re-enable on error paths (success returns early above).
+      if (!btn.classList.contains("btn-approved")) {
+        btn.disabled = false;
+      }
     }
   });
 }
