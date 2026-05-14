@@ -108,7 +108,8 @@
   .animate-spin { animation: spin 0.8s linear infinite; }
 
   /* ── Main layout ── */
-  /* Left col (col 1): row 1 = form, row 2 = plans.  Right col (col 2): results spans both rows. */
+  /* Left col (col 1): form spans both rows.
+     Right col (col 2): row 1 = plans, row 2 = breakdown. */
   .admin-calc-layout {
     display: grid;
     grid-template-columns: 380px 1fr;
@@ -117,9 +118,9 @@
     align-items: start;
   }
 
-  .admin-calc-form-panel  { grid-column: 1; grid-row: 1; }
-  .admin-plans-section    { grid-column: 1; grid-row: 2; }
-  .admin-calc-results-panel { grid-column: 2; grid-row: 1 / 3; }
+  .admin-calc-form-panel    { grid-column: 1; grid-row: 1 / 3; }
+  .admin-plans-section      { grid-column: 2; grid-row: 1; }
+  .admin-calc-results-panel { grid-column: 2; grid-row: 2; }
 
   @media (max-width: 900px) {
     .admin-calc-layout {
