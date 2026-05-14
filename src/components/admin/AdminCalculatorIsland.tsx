@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { buildRuleDisplayGroups, type CalcRuleRow } from '../../lib/calculator-rule-groups';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -15,9 +15,8 @@ export type AdminPlan = {
 };
 
 type Props = {
-  rules: CalcRuleRow[];
-  plans: AdminPlan[];
-  currency: string;
+  profileId: string;
+  currency?: string;
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -42,13 +41,106 @@ function recommendedPlan(plans: AdminPlan[], totalPa: number): AdminPlan | null 
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export default function AdminCalculatorIsland({ rules, plans, currency }: Props) {
+export default function AdminCalculatorIsland({ profileId, currency: currencyProp }: Props) {
+  const [loadState, setLoadState] = useState<'loading' | 'done' | 'error'>('loading');
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [rules, setRules] = useState<CalcRuleRow[]>([]);
+  const [plans, setPlans] = useState<AdminPlan[]>([]);
+  const [currency, setCurrency] = useState(currencyProp ?? 'EUR');
+
+  // Fetch profile detail (rules + plans) via same-origin BFF on every mount/refresh.
+  useEffect(() => {
+    setLoadState('loading');
+    setLoadError(null);
+
+    fetch(`/api/pa/admin/profiles/${encodeURIComponent(profileId)}`, {
+      credentials: 'same-origin',
+    })
+      .then((r) => r.json().then((d) => ({ ok: r.ok, status: r.status, data: d })))
+      .then(({ ok, status, data }) => {
+        if (!ok) {
+          setLoadError(
+            (data as { error?: string; message?: string }).error ||
+            (data as { message?: string }).message ||
+            `HTTP ${status}`
+          );
+          setLoadState('error');
+          return;
+        }
+
+        const raw = data as {
+          currency?: string;
+          rules?: Array<{
+            input_key: string;
+            label: string;
+            direction?: string;
+            obligation?: string;
+            operation_group?: string;
+            pa_transactions_per_item: number | string;
+            index_ui?: number | null;
+          }>;
+          plans?: Array<{
+            id: string;
+            plan_name: string;
+            included_pa_transactions: number | string;
+            annual_fee: number | string;
+            monthly_fee?: number | string | null;
+            extra_transaction_cost: number | string;
+            confidence?: string;
+            status: string;
+          }>;
+        };
+
+        if (raw.currency) setCurrency(raw.currency);
+
+        setRules(
+          (raw.rules ?? []).map((r) => ({
+            input_key: r.input_key,
+            label: r.label,
+            direction: r.direction ?? '',
+            obligation: r.obligation ?? '',
+            operation_group: r.operation_group ?? '',
+            pa_transactions_per_item: Number(r.pa_transactions_per_item) || 0,
+            placeholder: 0,
+            index_ui: r.index_ui ?? null,
+          }))
+        );
+
+        setPlans(
+          (raw.plans ?? []).map((p) => ({
+            id: p.id,
+            plan_name: p.plan_name,
+            included_pa_transactions: Number(p.included_pa_transactions) || 0,
+            annual_fee: Number(p.annual_fee) || 0,
+            monthly_fee: p.monthly_fee != null ? Number(p.monthly_fee) : null,
+            extra_transaction_cost: Number(p.extra_transaction_cost) || 0,
+            confidence: p.confidence,
+            status: p.status,
+          }))
+        );
+
+        setLoadState('done');
+
+        // Let the static Astro header update itself with the fetched profile info.
+        document.dispatchEvent(
+          new CustomEvent('admin-calc-profile-loaded', { detail: data })
+        );
+      })
+      .catch((err) => {
+        setLoadError(err instanceof Error ? err.message : 'Network error');
+        setLoadState('error');
+      });
+  }, [profileId]);
+
   const groups = buildRuleDisplayGroups(rules);
   const sym = currency === 'EUR' ? '€' : currency;
 
-  const [volumes, setVolumes] = useState<Record<string, number>>(() =>
-    Object.fromEntries(rules.map((r) => [r.input_key, r.placeholder ?? 0]))
-  );
+  const [volumes, setVolumes] = useState<Record<string, number>>({});
+
+  // Re-initialise volumes whenever rules change.
+  useEffect(() => {
+    setVolumes(Object.fromEntries(rules.map((r) => [r.input_key, 0])));
+  }, [rules]);
 
   const setVol = useCallback((key: string, val: number) => {
     setVolumes((prev) => ({ ...prev, [key]: val }));
@@ -70,6 +162,25 @@ export default function AdminCalculatorIsland({ rules, plans, currency }: Props)
     .filter((r) => r.volume > 0);
 
   const hasVolumes = breakdown.length > 0;
+
+  if (loadState === 'loading') {
+    return (
+      <div className="admin-calc-loading">
+        <svg className="animate-spin" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+        </svg>
+        Loading profile data…
+      </div>
+    );
+  }
+
+  if (loadState === 'error') {
+    return (
+      <div className="admin-calc-load-error" role="alert">
+        <strong>Could not load profile:</strong> {loadError}
+      </div>
+    );
+  }
 
   return (
     <div className="admin-calc-layout">

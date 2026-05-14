@@ -84,7 +84,8 @@
 
   .admin-calc-back:hover { color: var(--color-text); }
 
-  .admin-calc-fetch-error {
+  .admin-calc-fetch-error,
+  .admin-calc-load-error {
     padding: 0.85rem 1rem;
     margin-bottom: 1rem;
     border-radius: 8px;
@@ -93,6 +94,18 @@
     color: #b91c1c;
     font-size: 0.83rem;
   }
+
+  .admin-calc-loading {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    font-size: 0.84rem;
+    color: var(--color-text-muted);
+    padding: 2.5rem 0;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .animate-spin { animation: spin 0.8s linear infinite; }
 
   /* ── Main layout ── */
   /* Left col (col 1): row 1 = form, row 2 = plans.  Right col (col 2): results spans both rows. */
