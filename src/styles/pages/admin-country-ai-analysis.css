@@ -277,6 +277,17 @@
     margin-bottom: 0.75rem;
   }
 
+  .rule-input-key-display {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--color-text);
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .rule-confidence-dot {
     font-size: 0.72rem;
     font-weight: 600;

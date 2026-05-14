@@ -60,6 +60,13 @@ function toEditable(r: TransactionRule): EditableFields {
   };
 }
 
+/** `domestic_issued` → `Domestic issued` */
+function formatInputKey(key: string): string {
+  return key
+    .replace(/_/g, ' ')
+    .replace(/^(.)/, (ch) => ch.toUpperCase());
+}
+
 function confidenceBadge(c: string) {
   const map: Record<string, string> = { high: '#22c55e', medium: '#f59e0b', low: '#ef4444' };
   return map[c] ?? map.medium;
@@ -160,7 +167,7 @@ export default function ExtractedRulesPanel({ initialRules, profileId }: Props) 
     setDeleteConfirm({
       ruleIdx: idx,
       ruleId: rule.original.id,
-      label: rule.edits.label || rule.original.input_key,
+      label: formatInputKey(rule.edits.input_key || rule.original.input_key),
       deleting: false,
       error: null,
     });
@@ -273,6 +280,9 @@ export default function ExtractedRulesPanel({ initialRules, profileId }: Props) 
               {/* Header row */}
               <div className="rule-card-header">
                 <span className={statusBadgeClass(original.status)}>{original.status}</span>
+                <span className="rule-input-key-display" title={original.input_key}>
+                  {formatInputKey(edits.input_key || original.input_key)}
+                </span>
                 <span
                   className="rule-confidence-dot"
                   style={{ color: confidenceBadge(edits.confidence) }}
@@ -286,7 +296,7 @@ export default function ExtractedRulesPanel({ initialRules, profileId }: Props) 
                 <button
                   type="button"
                   className="rule-delete-btn"
-                  aria-label={`Delete rule ${edits.label || original.input_key}`}
+                  aria-label={`Delete rule ${formatInputKey(edits.input_key || original.input_key)}`}
                   title="Delete rule"
                   onClick={() => confirmDelete(idx)}
                 >
@@ -304,7 +314,7 @@ export default function ExtractedRulesPanel({ initialRules, profileId }: Props) 
               )}
 
               <div className="rule-fields">
-                {/* input_key — read-only identifier */}
+                {/* input_key — editable slug */}
                 <div className="rule-field">
                   <label htmlFor={`ik-${original.id}`}>Input key</label>
                   <input
@@ -315,14 +325,14 @@ export default function ExtractedRulesPanel({ initialRules, profileId }: Props) 
                   />
                 </div>
 
-                {/* label */}
+                {/* operation_group — replaces label in the top-right slot */}
                 <div className="rule-field">
-                  <label htmlFor={`lbl-${original.id}`}>Label</label>
+                  <label htmlFor={`og-${original.id}`}>Operation group</label>
                   <input
-                    id={`lbl-${original.id}`}
+                    id={`og-${original.id}`}
                     type="text"
-                    value={edits.label}
-                    onChange={(e) => update(idx, 'label', e.target.value)}
+                    value={edits.operation_group}
+                    onChange={(e) => update(idx, 'operation_group', e.target.value)}
                   />
                 </div>
 
@@ -356,17 +366,6 @@ export default function ExtractedRulesPanel({ initialRules, profileId }: Props) 
                       </option>
                     ))}
                   </select>
-                </div>
-
-                {/* operation_group */}
-                <div className="rule-field full">
-                  <label htmlFor={`og-${original.id}`}>Operation group</label>
-                  <input
-                    id={`og-${original.id}`}
-                    type="text"
-                    value={edits.operation_group}
-                    onChange={(e) => update(idx, 'operation_group', e.target.value)}
-                  />
                 </div>
 
                 {/* pa_transactions_per_item */}
