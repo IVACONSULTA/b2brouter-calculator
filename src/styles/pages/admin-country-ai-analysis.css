@@ -365,6 +365,140 @@
     border-color: var(--color-admin);
   }
 
+  /* ── Delete button inside card header ── */
+  .rule-delete-btn {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.12s, color 0.12s, border-color 0.12s;
+  }
+
+  .rule-delete-btn:hover {
+    background: color-mix(in srgb, #ef4444 12%, transparent);
+    border-color: color-mix(in srgb, #ef4444 30%, transparent);
+    color: #ef4444;
+  }
+
+  /* ── Delete confirmation overlay ── */
+  .rule-delete-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: rgba(0, 0, 0, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    backdrop-filter: blur(2px);
+  }
+
+  .rule-delete-dialog {
+    background: var(--color-surface, #fff);
+    border: 1px solid var(--color-border);
+    border-radius: 14px;
+    padding: 2rem 1.75rem 1.5rem;
+    max-width: 380px;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.65rem;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.18);
+  }
+
+  .rule-delete-dialog-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: color-mix(in srgb, #ef4444 12%, transparent);
+    color: #ef4444;
+    margin-bottom: 0.25rem;
+  }
+
+  .rule-delete-dialog-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--color-text);
+    margin: 0;
+    text-align: center;
+  }
+
+  .rule-delete-dialog-body {
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+    text-align: center;
+    margin: 0;
+    line-height: 1.55;
+  }
+
+  .rule-delete-dialog-error {
+    font-size: 0.78rem;
+    color: #ef4444;
+    text-align: center;
+    margin: 0;
+  }
+
+  .rule-delete-dialog-actions {
+    display: flex;
+    gap: 0.65rem;
+    margin-top: 0.5rem;
+    width: 100%;
+  }
+
+  .btn-dialog-cancel {
+    flex: 1;
+    padding: 0.55rem 1rem;
+    border-radius: 7px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    color: var(--color-text);
+    transition: background 0.12s;
+  }
+
+  .btn-dialog-cancel:hover:not(:disabled) {
+    background: var(--color-bg);
+  }
+
+  .btn-dialog-cancel:disabled,
+  .btn-dialog-confirm:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .btn-dialog-confirm {
+    flex: 1;
+    padding: 0.55rem 1rem;
+    border-radius: 7px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    background: #ef4444;
+    border: none;
+    color: #fff;
+    transition: opacity 0.12s;
+  }
+
+  .btn-dialog-confirm:hover:not(:disabled) {
+    opacity: 0.88;
+  }
+
   /* ── Update rules bar (below the list) ── */
   .rules-update-bar {
     display: flex;

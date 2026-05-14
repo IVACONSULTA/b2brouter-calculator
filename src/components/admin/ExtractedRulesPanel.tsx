@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 
 export type TransactionRule = {
   id: string;
@@ -34,6 +34,14 @@ type RuleState = {
 };
 
 type SaveState = 'idle' | 'saving' | 'done' | 'error';
+
+type DeleteConfirm = {
+  ruleIdx: number;
+  ruleId: string;
+  label: string;
+  deleting: boolean;
+  error: string | null;
+};
 
 const CONFIDENCE_OPTIONS = ['high', 'medium', 'low'];
 const DIRECTION_OPTIONS = ['Issued', 'Received', ''];
@@ -81,6 +89,23 @@ export default function ExtractedRulesPanel({ initialRules, profileId }: Props) 
   );
   const [saveAll, setSaveAll] = useState<SaveState>('idle');
   const [saveAllError, setSaveAllError] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirm | null>(null);
+  const cancelBtnRef = useRef<HTMLButtonElement>(null);
+
+  // Focus the cancel button whenever the modal opens.
+  useEffect(() => {
+    if (deleteConfirm) cancelBtnRef.current?.focus();
+  }, [deleteConfirm?.ruleIdx]);
+
+  // Close modal on Escape key.
+  useEffect(() => {
+    if (!deleteConfirm) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !deleteConfirm.deleting) setDeleteConfirm(null);
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [deleteConfirm]);
 
   const update = useCallback((idx: number, field: keyof EditableFields, value: string) => {
     setRules((prev) =>
@@ -128,6 +153,41 @@ export default function ExtractedRulesPanel({ initialRules, profileId }: Props) 
       );
     }
     return res.json() as Promise<TransactionRule>;
+  }
+
+  function confirmDelete(idx: number) {
+    const rule = rules[idx];
+    setDeleteConfirm({
+      ruleIdx: idx,
+      ruleId: rule.original.id,
+      label: rule.edits.label || rule.original.input_key,
+      deleting: false,
+      error: null,
+    });
+  }
+
+  async function handleDeleteConfirmed() {
+    if (!deleteConfirm) return;
+    setDeleteConfirm((d) => d && { ...d, deleting: true, error: null });
+
+    try {
+      const res = await fetch(
+        `/api/pa/admin/rules/${encodeURIComponent(deleteConfirm.ruleId)}`,
+        { method: 'DELETE', credentials: 'same-origin' },
+      );
+      if (!res.ok && res.status !== 204) {
+        const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+        throw new Error(
+          (err as { error?: string }).error || `HTTP ${res.status}`,
+        );
+      }
+      // Remove from local list.
+      setRules((prev) => prev.filter((_, i) => i !== deleteConfirm.ruleIdx));
+      setDeleteConfirm(null);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Could not delete rule.';
+      setDeleteConfirm((d) => d && { ...d, deleting: false, error: msg });
+    }
   }
 
   async function handleUpdateAll() {
@@ -223,6 +283,20 @@ export default function ExtractedRulesPanel({ initialRules, profileId }: Props) 
                 {dirty && <span className="rule-dirty-badge">unsaved</span>}
                 {saving === 'saved' && <span className="rule-saved-badge">✓ saved</span>}
                 {saving === 'saving' && <span className="rule-saving-badge">saving…</span>}
+                <button
+                  type="button"
+                  className="rule-delete-btn"
+                  aria-label={`Delete rule ${edits.label || original.input_key}`}
+                  title="Delete rule"
+                  onClick={() => confirmDelete(idx)}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                    <path d="M10 11v6M14 11v6" />
+                    <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                  </svg>
+                </button>
               </div>
 
               {saving === 'error' && errorMsg && (
@@ -347,6 +421,59 @@ export default function ExtractedRulesPanel({ initialRules, profileId }: Props) 
           );
         })}
       </div>
+
+      {/* Delete confirmation modal */}
+      {deleteConfirm && (
+        <div
+          className="rule-delete-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-dialog-title"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !deleteConfirm.deleting) setDeleteConfirm(null);
+          }}
+        >
+          <div className="rule-delete-dialog">
+            <div className="rule-delete-dialog-icon" aria-hidden="true">
+              <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="3 6 5 6 21 6" />
+                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                <path d="M10 11v6M14 11v6" />
+                <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+              </svg>
+            </div>
+            <h3 id="delete-dialog-title" className="rule-delete-dialog-title">
+              Delete rule?
+            </h3>
+            <p className="rule-delete-dialog-body">
+              <strong>{deleteConfirm.label}</strong> will be permanently removed. This cannot be
+              undone.
+            </p>
+            {deleteConfirm.error && (
+              <p className="rule-delete-dialog-error">{deleteConfirm.error}</p>
+            )}
+            <div className="rule-delete-dialog-actions">
+              <button
+                ref={cancelBtnRef}
+                type="button"
+                className="btn-dialog-cancel"
+                disabled={deleteConfirm.deleting}
+                onClick={() => setDeleteConfirm(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn-dialog-confirm"
+                disabled={deleteConfirm.deleting}
+                onClick={handleDeleteConfirmed}
+              >
+                {deleteConfirm.deleting ? 'Deleting…' : 'Delete rule'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Update button */}
       <div className="rules-update-bar">
