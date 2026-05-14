@@ -1,0 +1,164 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { getSession, isAdminRole } from '../../../lib/session';
+import { canUsePlanAdvisorApi, paFetchJson } from '../../../lib/pa-api';
+import { getFreshSupabaseAccessToken } from '../../../lib/supabase-session';
+import AdminCalculatorIsland from '../../../components/admin/AdminCalculatorIsland';
+import type { AdminPlan } from '../../../components/admin/AdminCalculatorIsland';
+import { buildRuleDisplayGroups, type CalcRuleRow } from '../../../lib/calculator-rule-groups';
+import '../../../styles/pages/admin-calculator.css';
+
+const session = getSession(Astro.cookies);
+if (!session) return Astro.redirect('/admin/login');
+if (!isAdminRole(session.role)) return Astro.redirect('/dashboard');
+
+const { profile_id } = Astro.params;
+if (!profile_id) return Astro.redirect('/countries');
+
+let paToken: string | null = null;
+if (session.supabaseAccessToken?.trim()) {
+  const fresh = await getFreshSupabaseAccessToken(Astro.cookies);
+  if (fresh.ok) paToken = fresh.accessToken;
+}
+
+const apiReady = canUsePlanAdvisorApi(session);
+
+// ─── Fetch profile detail (rules + plans) ────────────────────────────────────
+type ProfileDetail = {
+  id: string;
+  version: string;
+  currency: string;
+  status: string;
+  country_id: string;
+  provider_id: string;
+  country_name?: string;
+  country_code?: string;
+  provider_name?: string;
+  provider_type?: string;
+  calculation_basis?: string;
+  rules: Array<{
+    id: string;
+    input_key: string;
+    label: string;
+    direction?: string;
+    obligation?: string;
+    operation_group?: string;
+    pa_transactions_per_item: number;
+    index_ui?: number | null;
+    confidence?: string;
+    status?: string;
+  }>;
+  plans: Array<{
+    id: string;
+    plan_name: string;
+    included_pa_transactions: number;
+    annual_fee: number;
+    monthly_fee: number | null;
+    extra_transaction_cost: number;
+    confidence?: string;
+    status: string;
+  }>;
+};
+
+let profileDetail: ProfileDetail | null = null;
+let fetchError: string | null = null;
+
+if (apiReady && paToken) {
+  const res = await paFetchJson<ProfileDetail>(
+    `/admin/profiles/${encodeURIComponent(profile_id)}`,
+    paToken,
+  );
+  if (res.ok && res.data) {
+    profileDetail = res.data;
+  } else if (!res.ok) {
+    const err = res.error;
+    fetchError =
+      typeof err === 'string'
+        ? err
+        : (err as { message?: string } | undefined)?.message ?? `Could not load profile (HTTP ${res.status})`;
+  }
+}
+
+if (!profileDetail) {
+  if (!apiReady) fetchError = 'API not configured. Set API_BASE_URL and sign in with Supabase.';
+  // Don't hard-redirect — show the error inline so the admin can navigate back.
+}
+
+// ─── Build rule rows for the calculator ──────────────────────────────────────
+const calcRules: CalcRuleRow[] = (profileDetail?.rules ?? []).map((r) => ({
+  input_key: r.input_key,
+  label: r.label,
+  direction: r.direction ?? '',
+  obligation: r.obligation ?? '',
+  operation_group: r.operation_group ?? '',
+  pa_transactions_per_item: Number(r.pa_transactions_per_item) || 0,
+  placeholder: 0,
+  index_ui: r.index_ui ?? null,
+}));
+
+const plans: AdminPlan[] = (profileDetail?.plans ?? []).map((p) => ({
+  id: p.id,
+  plan_name: p.plan_name,
+  included_pa_transactions: Number(p.included_pa_transactions) || 0,
+  annual_fee: Number(p.annual_fee) || 0,
+  monthly_fee: p.monthly_fee != null ? Number(p.monthly_fee) : null,
+  extra_transaction_cost: Number(p.extra_transaction_cost) || 0,
+  confidence: p.confidence,
+  status: p.status,
+}));
+
+const countryName = profileDetail?.country_name ?? 'Country';
+const countryCode = profileDetail?.country_code ?? '??';
+const providerName = profileDetail?.provider_name ?? 'Provider';
+const version = profileDetail?.version ?? '';
+const currency = profileDetail?.currency ?? 'EUR';
+const calcBasis = profileDetail?.calculation_basis ?? 'PA transactions';
+const profileStatus = profileDetail?.status ?? '';
+---
+
+<AdminLayout
+  title={`Admin Calculator — ${countryName} / ${providerName}`}
+  breadcrumbs={[
+    { label: 'Countries', href: '/countries' },
+    { label: `${countryName} / ${providerName}`, href: `/admin/profiles/${profile_id}` },
+    { label: 'Calculator' },
+  ]}
+>
+  <div class="page-admin-calculator">
+
+    {/* Profile header */}
+    <div class="admin-calc-header">
+      <div class="admin-calc-header-info">
+        <span class="admin-calc-code">{countryCode}</span>
+        <div>
+          <p class="admin-calc-title">{countryName} — {providerName}</p>
+          <p class="admin-calc-meta">Version {version} · {currency} · {calcBasis}</p>
+        </div>
+      </div>
+      <div class="admin-calc-header-right">
+        <span class={`admin-calc-status status-${profileStatus}`}>{profileStatus}</span>
+        <a href="/countries" class="admin-calc-back">
+          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+          Back to Countries
+        </a>
+      </div>
+    </div>
+
+    {fetchError && (
+      <div class="admin-calc-fetch-error" role="alert">
+        {fetchError}
+      </div>
+    )}
+
+    {profileDetail && (
+      <AdminCalculatorIsland
+        client:only="react"
+        rules={calcRules}
+        plans={plans}
+        profileId={profile_id}
+        currency={currency}
+      />
+    )}
+
+  </div>
+</AdminLayout>
