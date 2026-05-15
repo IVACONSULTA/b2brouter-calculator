@@ -1,7 +1,8 @@
 ---
 import AdminLayout from '../../../../layouts/AdminLayout.astro';
 import { getSession, isAdminRole } from '../../../../lib/session';
-import { DUMMY_PROFILES } from '../../../../lib/dummy-data';
+import { resolveAdminWizardProfile } from '../../../../lib/admin-wizard-profile-fallback';
+import WizardCountryDraftIsland from '../../../../components/admin/WizardCountryDraftIsland';
 import '../../../../styles/pages/admin-country-setup.css';
 
 const session = getSession(Astro.cookies);
@@ -9,7 +10,9 @@ if (!session) return Astro.redirect('/admin/login');
 if (!isAdminRole(session.role)) return Astro.redirect('/dashboard');
 
 const { id } = Astro.params;
-const profile = DUMMY_PROFILES.find(p => p.id === id) ?? DUMMY_PROFILES[2]; // fallback to draft
+if (!id) return Astro.redirect('/countries');
+
+const profile = resolveAdminWizardProfile(id);
 ---
 
 <AdminLayout
@@ -20,8 +23,9 @@ const profile = DUMMY_PROFILES.find(p => p.id === id) ?? DUMMY_PROFILES[2]; // f
     { label: 'Setup' },
   ]}
 >
+  <div class="page-admin-country-setup">
   <!-- Step tabs -->
-  <div class="page-admin-country-setup step-bar">
+  <div class="step-bar">
     <a href={`/admin/countries/${profile.id}/setup`} class="step-tab active">
       <span class="step-num">1</span> Profile Setup
     </a>
@@ -30,9 +34,9 @@ const profile = DUMMY_PROFILES.find(p => p.id === id) ?? DUMMY_PROFILES[2]; // f
       <span class="step-num">2</span> Documents
     </a>
     <div class="step-connector"></div>
-    <span class="step-tab disabled">
+    <a href={`/admin/countries/${profile.id}/ai-analysis`} class="step-tab">
       <span class="step-num">3</span> AI Analysis
-    </span>
+    </a>
     <div class="step-connector"></div>
     <span class="step-tab disabled">
       <span class="step-num">4</span> Activate
@@ -41,16 +45,12 @@ const profile = DUMMY_PROFILES.find(p => p.id === id) ?? DUMMY_PROFILES[2]; // f
 
   <div class="form-layout">
     <div class="form-card">
-      <div class="card-header">
-        <div class="header-left">
-          <div class="country-badge">
-            <span class="code">{profile.country.code}</span>
-            <span class="cname">{profile.country.name}</span>
-          </div>
-          <span class="provider-tag">{profile.provider.name} · {profile.provider.type}</span>
-        </div>
-        <span class={`status-badge status-${profile.status}`}>{profile.status.replace('_', ' ')}</span>
-      </div>
+      <WizardCountryDraftIsland
+        client:only="react"
+        routeProfileId={id}
+        fallbackProfileJson={JSON.stringify(profile)}
+        mode="setup"
+      />
 
       <!-- TODO: PATCH /admin/profiles/{id} via App 2 API -->
       <form id="setup-form" class="form" action="#" method="POST">
@@ -132,6 +132,7 @@ const profile = DUMMY_PROFILES.find(p => p.id === id) ?? DUMMY_PROFILES[2]; // f
         </div>
       </div>
     </aside>
+  </div>
   </div>
 </AdminLayout>
 

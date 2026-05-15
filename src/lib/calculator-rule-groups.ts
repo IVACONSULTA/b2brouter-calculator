@@ -7,10 +7,12 @@ export type CalcRuleRow = {
   operation_group: string;
   pa_transactions_per_item: number;
   placeholder: number;
+  /** Optional display order set in transaction_rules.index_ui. NULL / undefined = unset (sorted last). */
+  index_ui?: number | null;
 };
 
 export type RuleDisplayGroup = {
-  /** Shown in the form — `operation_group` when set, otherwise the row `label`. */
+  /** Shown in the form — formatted from `input_key` (snake_case → Title Case). */
   displayLabel: string;
   input_keys: string[];
   rules: CalcRuleRow[];
@@ -24,49 +26,65 @@ function multiplierHintFromMults(mults: number[]): string {
   return `×${u[0]}–×${u[u.length - 1]} PA`;
 }
 
-/** Same merge key as Plan Advisor `POST /calculator/calculate` (must stay in sync). */
-export function transactionRuleMergeBucketKey(r: CalcRuleRow): string {
-  const og = (r.operation_group ?? '').trim();
-  const dir = String(r.direction ?? '').trim();
-  const obl = String(r.obligation ?? '').trim();
-  let mult = Number(r.pa_transactions_per_item);
-  if (!Number.isFinite(mult)) mult = 0;
-  const multKey = Math.round(mult * 1e9) / 1e9;
-  return JSON.stringify([og, dir, obl, multKey]);
+/** Words that should always be rendered in full uppercase. */
+const UPPERCASE_WORDS = new Set(['b2b', 'b2c', 'vat', 'tva', 'id', 'edi', 'api', 'ui']);
+
+function formatWord(word: string): string {
+  const lower = word.toLowerCase();
+  if (UPPERCASE_WORDS.has(lower)) return word.toUpperCase();
+  return word.charAt(0).toUpperCase() + word.slice(1);
 }
 
 /**
- * One form field per group of rules that share
- * `operation_group`, `direction`, `obligation`, and `pa_transactions_per_item`.
+ * Formats a snake_case input_key into a human-readable label.
+ * Known acronyms (B2B, B2C, VAT, TVA, …) are fully uppercased.
+ * Segments that contain "/" are split, each part formatted, then rejoined with " / ".
+ * e.g. "issued_b2b_domestic"  → "Issued B2B Domestic"
+ *      "issued_b2b/b2c"       → "Issued B2B / B2C"
+ *      "received_b2c/tva"     → "Received B2C / TVA"
+ */
+export function formatInputKey(key: string): string {
+  return key
+    .split('_')
+    .map((segment) =>
+      segment.includes('/')
+        ? segment.split('/').map(formatWord).join(' / ')
+        : formatWord(segment),
+    )
+    .join(' ');
+}
+
+/**
+ * One form field per unique `input_key`.
+ * Rows are sorted by `index_ui` (nulls last) before processing.
+ * Duplicate input_keys are silently skipped (keeps the first occurrence).
+ * The display label is derived from the input_key via `formatInputKey`.
  */
 export function buildRuleDisplayGroups(rows: CalcRuleRow[]): RuleDisplayGroup[] {
-  const bucket = new Map<string, CalcRuleRow[]>();
-  const order: string[] = [];
+  const sorted = [...rows].sort((a, b) => {
+    const ai = a.index_ui ?? null;
+    const bi = b.index_ui ?? null;
+    if (ai === null && bi === null) return 0;
+    if (ai === null) return 1;
+    if (bi === null) return -1;
+    return ai - bi;
+  });
 
-  for (const r of rows) {
-    const k = transactionRuleMergeBucketKey(r);
-    if (!bucket.has(k)) {
-      bucket.set(k, []);
-      order.push(k);
-    }
-    bucket.get(k)!.push(r);
+  const seen = new Set<string>();
+  const groups: RuleDisplayGroup[] = [];
+
+  for (const r of sorted) {
+    if (seen.has(r.input_key)) continue;
+    seen.add(r.input_key);
+
+    groups.push({
+      displayLabel: formatInputKey(r.input_key),
+      input_keys: [r.input_key],
+      rules: [r],
+      multiplierHint: multiplierHintFromMults([r.pa_transactions_per_item]),
+      placeholder: r.placeholder,
+    });
   }
 
-  return order.map((k) => {
-    const list = bucket.get(k)!;
-    const og = list[0].operation_group?.trim();
-    const labels = [...new Set(list.map((x) => x.label))];
-    const displayLabel =
-      og && og.length > 0 ? og : labels.length === 1 ? (labels[0] as string) : list[0].label;
-    const mults = list.map((x) => x.pa_transactions_per_item);
-    const placeholder = Math.max(...list.map((x) => x.placeholder));
-
-    return {
-      displayLabel,
-      input_keys: list.map((x) => x.input_key),
-      rules: list,
-      multiplierHint: multiplierHintFromMults(mults),
-      placeholder,
-    };
-  });
+  return groups;
 }

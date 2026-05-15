@@ -58,7 +58,7 @@ function mapAdminProfileRow(row: AdminProfileApiRow): (typeof DUMMY_PROFILES)[nu
     ? (st as (typeof DUMMY_PROFILES)[number]['status'])
     : 'draft';
 
-  return {
+  const mapped = {
     id: String(row.id),
     country: {
       code: row.country_code ?? '—',
@@ -77,6 +77,7 @@ function mapAdminProfileRow(row: AdminProfileApiRow): (typeof DUMMY_PROFILES)[nu
     plans_count: Number(row.plans_count ?? 0),
     analysis_id: null,
   };
+  return mapped as (typeof DUMMY_PROFILES)[number];
 }
 
 let activeProfiles = DUMMY_ACTIVE_PROFILES;
@@ -184,7 +185,7 @@ if (!isAdmin) {
           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
           </svg>
-          New Country
+          New Profile
         </a>
       </div>
     </div>
@@ -238,19 +239,31 @@ if (!isAdmin) {
                   {(p.status === 'active' || p.status === 'pending_approval') && (
                     <a href={`/admin/profiles/${p.id}`} class="btn-action">Profile</a>
                   )}
+                  {(p.status === 'active' || p.status === 'pending_approval') && p.rules_count > 0 && (
+                    <a href={`/admin/calculator/${p.id}`} class="btn-action btn-calc-action" title="Open admin calculator for this profile">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <rect x="4" y="2" width="16" height="20" rx="2"/>
+                        <line x1="8" y1="10" x2="12" y2="10"/><line x1="12" y1="6" x2="12" y2="14"/>
+                        <line x1="8" y1="18" x2="16" y2="18"/><line x1="8" y1="14" x2="10" y2="14"/>
+                      </svg>
+                      Calculate
+                    </a>
+                  )}
                   {p.status === 'archived' && (
                     <span class="muted" style="font-size:0.75rem">Archived</span>
                   )}
-                  <button
-                    class="btn-icon"
-                    title="More actions"
-                    data-profile-id={p.id}
-                    onclick="alert('API: more actions for ' + this.dataset.profileId)"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>
-                    </svg>
-                  </button>
+                  {p.status !== 'active' && (
+                    <button
+                      class="btn-delete"
+                      title="Delete profile"
+                      data-profile-id={p.id}
+                      data-profile-name={`${p.country.name} × ${p.provider.name} (${p.version})`}
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                      </svg>
+                    </button>
+                  )}
                 </div>
               </td>
             </tr>
@@ -517,5 +530,88 @@ if (!isAdmin) {
         uTbody.innerHTML = `<tr><td colspan="7" class="u-muted">Request failed: ${esc(message)}</td></tr>`;
       });
   }
+
+  // Delete profile functionality (admin only)
+  document.addEventListener('click', async (e) => {
+    const target = e.target as HTMLElement;
+    const deleteBtn = target.closest('.btn-delete') as HTMLButtonElement | null;
+    
+    if (!deleteBtn) return;
+
+    const profileId = deleteBtn.dataset.profileId;
+    const profileName = deleteBtn.dataset.profileName || 'this profile';
+
+    if (!profileId) {
+      alert('Profile ID is missing.');
+      return;
+    }
+
+    const confirmed = confirm(
+      `Are you sure you want to delete ${profileName}?\n\nThis action cannot be undone and will delete all related documents, rules, plans, and assumptions.`
+    );
+
+    if (!confirmed) return;
+
+    deleteBtn.disabled = true;
+    deleteBtn.style.opacity = '0.5';
+    deleteBtn.style.cursor = 'wait';
+
+    try {
+      const response = await fetch(`/api/pa/admin/profiles/delete?id=${encodeURIComponent(profileId)}`, {
+        method: 'DELETE',
+        credentials: 'same-origin',
+      });
+
+      const raw = await response.text();
+      let payload: unknown = null;
+      if (raw.length) {
+        try {
+          payload = JSON.parse(raw);
+        } catch {
+          payload = null;
+        }
+      }
+
+      if (!response.ok) {
+        const detail = formatPlanAdvisorError(payload, response.status, response.statusText);
+        alert(`Delete failed: ${detail}`);
+        deleteBtn.disabled = false;
+        deleteBtn.style.opacity = '';
+        deleteBtn.style.cursor = '';
+        return;
+      }
+
+      // Remove the row from the table
+      const row = deleteBtn.closest('tr');
+      if (row) {
+        row.style.transition = 'opacity 0.3s';
+        row.style.opacity = '0';
+        setTimeout(() => row.remove(), 300);
+      }
+
+      // Update counts
+      const statusFilter = row?.dataset.status;
+      if (statusFilter) {
+        const countBadge = document.querySelector(`.filter-tab[data-filter="${statusFilter}"] .count`);
+        if (countBadge) {
+          const current = parseInt(countBadge.textContent || '0', 10);
+          countBadge.textContent = String(Math.max(0, current - 1));
+        }
+      }
+
+      const allCountBadge = document.querySelector('.filter-tab[data-filter="all"] .count');
+      if (allCountBadge) {
+        const current = parseInt(allCountBadge.textContent || '0', 10);
+        allCountBadge.textContent = String(Math.max(0, current - 1));
+      }
+
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      alert(`Request failed: ${message}`);
+      deleteBtn.disabled = false;
+      deleteBtn.style.opacity = '';
+      deleteBtn.style.cursor = '';
+    }
+  });
 </script>
 

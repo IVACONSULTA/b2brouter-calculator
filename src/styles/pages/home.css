@@ -22,20 +22,6 @@
     text-align: center;
   }
 
-  .badge {
-    display: inline-block;
-    padding: 0.3rem 0.9rem;
-    background: var(--color-surface-2);
-    border: 1px solid var(--color-border);
-    border-radius: 100px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    color: var(--color-text-muted);
-    margin-bottom: 1.5rem;
-  }
-
   h1 {
     font-size: clamp(2.5rem, 6vw, 4rem);
     font-weight: 800;
@@ -53,6 +39,57 @@
     max-width: 480px;
     margin: 0 auto 3rem;
     line-height: 1.7;
+  }
+
+  .signed-in-strip {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem 0.85rem;
+    max-width: 520px;
+    margin: -1.5rem auto 2rem;
+    padding: 0.65rem 1rem;
+    font-size: 0.88rem;
+    color: var(--color-text-muted);
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    line-height: 1.5;
+  }
+
+  .signed-in-strip strong {
+    color: var(--color-text);
+    font-weight: 600;
+  }
+
+  .signed-in-app {
+    color: var(--color-admin);
+    font-weight: 600;
+  }
+
+  .signed-in-app:hover {
+    text-decoration: underline;
+  }
+
+  .signed-in-logout-form {
+    display: inline;
+    margin: 0;
+  }
+
+  .signed-in-signout {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    text-decoration: underline;
+  }
+
+  .signed-in-signout:hover {
+    color: var(--color-text);
   }
 
   .portal-grid {

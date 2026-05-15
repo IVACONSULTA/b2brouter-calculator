@@ -120,3 +120,98 @@ export async function paFetchJson<T>(
     };
   }
 }
+
+/** JSON POST to Plan Advisor REST routes (wizard helpers, etc.). */
+export async function paPostJson<T>(
+  apiPath: string,
+  token: string,
+  body: unknown,
+  extraHeaders?: Record<string, string>,
+): Promise<PaOk<T>> {
+  const url = paApiAbsoluteUrl(apiPath);
+  if (!url) {
+    return { ok: false, status: 0, error: { message: 'API_BASE_URL is not set.' } };
+  }
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        ...paAuthHeaders(token),
+        'Content-Type': 'application/json',
+        ...(extraHeaders ?? {}),
+      },
+      body: JSON.stringify(body ?? {}),
+    });
+
+    const text = await res.text();
+    let data: unknown = null;
+    if (text.length) {
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = { raw: text };
+      }
+    }
+
+    if (!res.ok) {
+      return { ok: false, status: res.status, error: data };
+    }
+
+    return { ok: true, status: res.status, data: data as T };
+  } catch (e) {
+    return {
+      ok: false,
+      status: 0,
+      error: e instanceof Error ? { message: e.message } : e,
+    };
+  }
+}
+
+/** Multipart POST to Plan Advisor (e.g. document upload). Do not set Content-Type — boundary is set automatically. */
+export async function paPostFormData(
+  apiPath: string,
+  token: string,
+  form: FormData,
+): Promise<PaOk<unknown>> {
+  const url = paApiAbsoluteUrl(apiPath);
+  if (!url) {
+    return { ok: false, status: 0, error: { message: 'API_BASE_URL is not set.' } };
+  }
+
+  const key = planAdvisorApiKey();
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+    ...(key ? { 'X-API-Key': key } : {}),
+  };
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: form,
+    });
+
+    const text = await res.text();
+    let data: unknown = null;
+    if (text.length) {
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = { raw: text };
+      }
+    }
+
+    if (!res.ok) {
+      return { ok: false, status: res.status, error: data };
+    }
+
+    return { ok: true, status: res.status, data };
+  } catch (e) {
+    return {
+      ok: false,
+      status: 0,
+      error: e instanceof Error ? { message: e.message } : e,
+    };
+  }
+}

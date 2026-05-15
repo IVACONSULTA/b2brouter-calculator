@@ -1,0 +1,292 @@
+---
+import AdminLayout from '../../../../layouts/AdminLayout.astro';
+import { getSession, isAdminRole } from '../../../../lib/session';
+import { canUsePlanAdvisorApi, paFetchJson } from '../../../../lib/pa-api';
+import { getFreshSupabaseAccessToken } from '../../../../lib/supabase-session';
+import { resolveAdminWizardProfile } from '../../../../lib/admin-wizard-profile-fallback';
+import { formatInputKey } from '../../../../lib/calculator-rule-groups';
+import PlansManagerPanel from '../../../../components/admin/PlansManagerPanel';
+import type { Plan } from '../../../../components/admin/PlansManagerPanel';
+import '../../../../styles/pages/admin-country-activate.css';
+
+const session = getSession(Astro.cookies);
+if (!session) return Astro.redirect('/admin/login');
+if (!isAdminRole(session.role)) return Astro.redirect('/dashboard');
+
+const { id: routeProfileId } = Astro.params;
+if (!routeProfileId) return Astro.redirect('/countries');
+
+const profile = resolveAdminWizardProfile(routeProfileId);
+
+let paToken: string | null = null;
+if (session.supabaseAccessToken?.trim()) {
+  const fresh = await getFreshSupabaseAccessToken(Astro.cookies);
+  if (fresh.ok) paToken = fresh.accessToken;
+}
+
+const apiReady = canUsePlanAdvisorApi(session);
+
+// ─── Fetch transaction rules ──────────────────────────────────────────────────
+type TransactionRule = {
+  id: string;
+  input_key: string;
+  label: string;
+  direction: string;
+  obligation: string;
+  operation_group: string;
+  pa_transactions_per_item: number;
+  reason?: string;
+  source_excerpt?: string;
+  confidence?: string;
+  status: string;
+};
+
+let transactionRules: TransactionRule[] = [];
+let rulesError: string | null = null;
+
+if (apiReady && paToken) {
+  const rulesRes = await paFetchJson<TransactionRule[]>(
+    `/admin/transaction-rules?profile_id=${encodeURIComponent(routeProfileId)}`,
+    paToken,
+  );
+  if (rulesRes.ok && Array.isArray(rulesRes.data)) {
+    transactionRules = rulesRes.data.map((r) => ({
+      id: String(r.id),
+      input_key: String(r.input_key),
+      label: String(r.label),
+      direction: String(r.direction),
+      obligation: String(r.obligation),
+      operation_group: String(r.operation_group),
+      pa_transactions_per_item: Number(r.pa_transactions_per_item) || 0,
+      reason: r.reason,
+      source_excerpt: r.source_excerpt,
+      confidence: r.confidence,
+      status: String(r.status),
+    }));
+  } else if (!rulesRes.ok) {
+    const errMsg =
+      typeof rulesRes.error === 'string'
+        ? rulesRes.error
+        : (rulesRes.error as { message?: string })?.message ?? 'Could not load transaction rules';
+    rulesError = errMsg;
+  }
+}
+
+// ─── Fetch plans ──────────────────────────────────────────────────────────────
+let plans: Plan[] = [];
+let plansError: string | null = null;
+
+if (apiReady && paToken) {
+  const plansRes = await paFetchJson<Plan[]>(
+    `/admin/plans?profile_id=${encodeURIComponent(routeProfileId)}`,
+    paToken,
+  );
+  if (plansRes.ok && Array.isArray(plansRes.data)) {
+    plans = plansRes.data.map((p) => ({
+      id: String(p.id),
+      plan_name: String(p.plan_name),
+      included_pa_transactions: Number(p.included_pa_transactions) || 0,
+      annual_fee: Number(p.annual_fee) || 0,
+      monthly_fee: p.monthly_fee != null ? Number(p.monthly_fee) : null,
+      extra_transaction_cost: Number(p.extra_transaction_cost) || 0,
+      confidence: p.confidence,
+      status: String(p.status),
+    }));
+  } else if (!plansRes.ok) {
+    const errMsg =
+      typeof plansRes.error === 'string'
+        ? plansRes.error
+        : (plansRes.error as { message?: string })?.message ?? 'Could not load plans';
+    plansError = errMsg;
+  }
+}
+
+const currency = profile.currency ?? 'EUR';
+---
+
+<AdminLayout
+  title={`Activate — ${profile.country.name} / ${profile.provider.name}`}
+  breadcrumbs={[
+    { label: 'Countries', href: '/countries' },
+    { label: `${profile.country.name} / ${profile.provider.name}` },
+    { label: 'Activate' },
+  ]}
+>
+  <div class="page-admin-country-activate">
+    <!-- Step tabs -->
+    <div class="step-bar">
+      <a href={`/admin/countries/${profile.id}/setup`} class="step-tab">
+        <span class="step-num done">✓</span> Profile Setup
+      </a>
+      <div class="step-connector"></div>
+      <a href={`/admin/countries/${profile.id}/documents`} class="step-tab">
+        <span class="step-num done">✓</span> Documents
+      </a>
+      <div class="step-connector"></div>
+      <a href={`/admin/countries/${profile.id}/ai-analysis`} class="step-tab">
+        <span class="step-num done">✓</span> AI Analysis
+      </a>
+      <div class="step-connector"></div>
+      <span class="step-tab active">
+        <span class="step-num">4</span> Activate
+      </span>
+    </div>
+
+    <div class="activate-layout">
+      <!-- Left: Transaction Rules (read-only) -->
+      <section class="rules-panel panel-surface" aria-label="Transaction rules">
+        <div class="panel-head">
+          <h2>Transaction Rules</h2>
+          <p>
+            {rulesError
+              ? `Error loading rules: ${rulesError}`
+              : `${transactionRules.length} rule${transactionRules.length === 1 ? '' : 's'} for this profile.`}
+          </p>
+        </div>
+
+        {rulesError ? (
+          <div class="panel-error">{rulesError}</div>
+        ) : transactionRules.length === 0 ? (
+          <p class="panel-empty">No transaction rules configured.</p>
+        ) : (
+          <div class="rules-list">
+            {transactionRules.map((rule) => (
+              <div class="rule-card readonly">
+                <div class="rule-card-header">
+                  <span class="rule-input-key">{formatInputKey(rule.input_key)}</span>
+                  <span class={`rule-status-badge status-${rule.status}`}>{rule.status}</span>
+                </div>
+                <div class="rule-fields">
+                  <div class="rule-field">
+                    <span class="field-label">Input key</span>
+                    <span class="field-value mono">{rule.input_key}</span>
+                  </div>
+                  <div class="rule-field">
+                    <span class="field-label">Operation Group</span>
+                    <span class="field-value">{rule.operation_group || '—'}</span>
+                  </div>
+                  <div class="rule-field">
+                    <span class="field-label">Label</span>
+                    <span class="field-value">{rule.label}</span>
+                  </div>
+                  <div class="rule-field">
+                    <span class="field-label">PA tx per item</span>
+                    <span class="field-value">×{rule.pa_transactions_per_item}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <!-- Right: Plans (editable) -->
+      <section class="plans-panel panel-surface" aria-label="Pricing plans">
+        <div class="panel-head">
+          <h2>Pricing Plans</h2>
+          <p>
+            {plansError
+              ? `Error loading plans: ${plansError}`
+              : `Manage ${plans.length} plan${plans.length === 1 ? '' : 's'} for this profile.`}
+          </p>
+        </div>
+
+        {plansError ? (
+          <div class="panel-error">{plansError}</div>
+        ) : (
+          <PlansManagerPanel
+            client:only="react"
+            initialPlans={plans}
+            profileId={routeProfileId}
+            currency={currency}
+          />
+        )}
+      </section>
+    </div>
+
+    <div class="activate-footer">
+      <a href={`/admin/countries/${profile.id}/ai-analysis`} class="btn-secondary">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M19 12H5M12 19l-7-7 7-7"/>
+        </svg>
+        Back to AI Analysis
+      </a>
+      <button
+        type="button"
+        id="btn-activate-profile"
+        class="btn-activate"
+        data-profile-id={routeProfileId}
+        data-profile-slug={profile.id}
+      >
+        <span class="btn-text">Activate</span>
+        <span class="btn-spinner" style="display:none;">
+          <svg class="animate-spin" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+          </svg>
+        </span>
+        <svg class="btn-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M5 12h14M12 5l7 7-7 7"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+</AdminLayout>
+
+<script define:vars={{ profile_id: routeProfileId, profile_slug: profile.id }}>
+  document.addEventListener('DOMContentLoaded', () => {
+    const btn = document.getElementById('btn-activate-profile');
+    if (!btn) return;
+
+    btn.addEventListener('click', async () => {
+      const profileId = btn.dataset.profileId;
+      const profileSlug = btn.dataset.profileSlug;
+      const textSpan = btn.querySelector('.btn-text');
+      const spinner = btn.querySelector('.btn-spinner');
+      const icon = btn.querySelector('.btn-icon');
+
+      // Loading state
+      btn.disabled = true;
+      textSpan.textContent = 'Activating…';
+      spinner.style.display = 'inline-flex';
+      icon.style.display = 'none';
+
+      try {
+        const res = await fetch('/api/pa/admin/wizard/approve-analysis', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ profile_id: profileId, profile_slug: profileSlug }),
+        });
+
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+          const msg = data.error || data.message || `HTTP ${res.status}`;
+          alert(`Activation failed: ${msg}`);
+          btn.disabled = false;
+          textSpan.textContent = 'Activate';
+          spinner.style.display = 'none';
+          icon.style.display = 'inline';
+          return;
+        }
+
+        // Success
+        textSpan.textContent = 'Activated ✓';
+        spinner.style.display = 'none';
+        btn.classList.add('btn-activated');
+
+        // Redirect to calculator or show success
+        alert(`Profile activated successfully!\nApproved ${data.approved_rules || 0} rules and ${data.approved_plans || 0} plans.`);
+
+        // Navigate to calculator
+        window.location.href = `/admin/calculator/${profileId}`;
+      } catch (err) {
+        alert(`Activation failed: ${err instanceof Error ? err.message : 'Network error'}`);
+        btn.disabled = false;
+        textSpan.textContent = 'Activate';
+        spinner.style.display = 'none';
+        icon.style.display = 'inline';
+      }
+    });
+  });
+</script>

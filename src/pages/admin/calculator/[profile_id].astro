@@ -1,0 +1,63 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { getSession, isAdminRole } from '../../../lib/session';
+import AdminCalculatorIsland from '../../../components/admin/AdminCalculatorIsland';
+import '../../../styles/pages/admin-calculator.css';
+
+const session = getSession(Astro.cookies);
+if (!session) return Astro.redirect('/admin/login');
+if (!isAdminRole(session.role)) return Astro.redirect('/dashboard');
+
+const { profile_id } = Astro.params;
+if (!profile_id) return Astro.redirect('/countries');
+---
+
+<AdminLayout title="Admin Calculator">
+  <div class="page-admin-calculator">
+
+    <div class="admin-calc-header">
+      <div class="admin-calc-header-info">
+        <span class="admin-calc-code" id="calc-country-code">—</span>
+        <div>
+          <p class="admin-calc-title" id="calc-profile-title">Loading…</p>
+          <p class="admin-calc-meta" id="calc-profile-meta"></p>
+        </div>
+      </div>
+      <div class="admin-calc-header-right">
+        <span class="admin-calc-status" id="calc-profile-status"></span>
+        <a href="/countries" class="admin-calc-back">
+          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M19 12H5M12 19l-7-7 7-7"/>
+          </svg>
+          Back to Countries
+        </a>
+      </div>
+    </div>
+
+    <AdminCalculatorIsland
+      client:only="react"
+      profileId={profile_id}
+    />
+
+  </div>
+</AdminLayout>
+
+<script define:vars={{ profile_id }}>
+  // Populate the static header once the BFF data arrives.
+  // The island fires a custom event after its first successful load.
+  document.addEventListener('admin-calc-profile-loaded', (e) => {
+    const d = e.detail;
+    const code = document.getElementById('calc-country-code');
+    const title = document.getElementById('calc-profile-title');
+    const meta = document.getElementById('calc-profile-meta');
+    const status = document.getElementById('calc-profile-status');
+    if (code)   code.textContent   = d.country_code ?? '—';
+    if (title)  title.textContent  = `${d.country_name ?? ''} — ${d.provider_name ?? ''}`;
+    if (meta)   meta.textContent   = `Version ${d.version ?? ''} · ${d.currency ?? ''} · ${d.calculation_basis ?? 'PA transactions'}`;
+    if (status) {
+      status.textContent = d.status ?? '';
+      status.className = `admin-calc-status status-${d.status ?? ''}`;
+    }
+  });
+</script>

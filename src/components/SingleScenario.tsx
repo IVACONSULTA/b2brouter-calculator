@@ -6,6 +6,7 @@ import {
   scenarioIdFromScenariosPath,
 } from "../lib/pa-generate-summary-client";
 import { summaryMarkdownToHtml } from "../lib/pa-summary-markdown-to-html";
+import { formatInputKey } from "../lib/calculator-rule-groups";
 import type { ScenarioView } from "../lib/scenario-view";
 
 declare global {
@@ -25,7 +26,7 @@ const SUMMARY_AUTH_ERROR =
   "We couldn't verify your session for this action. Please sign out, sign in again, and retry.";
 
 const SUMMARY_SIGN_IN_REQUIRED =
-  'AI summary requires a full sign-in (not demo login). Use your email and password, then try again.';
+  "AI summary requires a full sign-in (not demo login). Use your email and password, then try again.";
 
 async function showScenarioUserMessage(message: string): Promise<void> {
   if (typeof window.paScenarioDialogAlert === "function") {
@@ -78,6 +79,10 @@ const SingleScenario = ({
 }: SingleScenarioProps) => {
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [copyDone, setCopyDone] = useState(false);
+
+  if (scenario === null || scenario === undefined) {
+    return;
+  }
 
   const postGenerateSummary = useCallback(async () => {
     if (!hasSupabaseToken) {
@@ -140,12 +145,10 @@ const SingleScenario = ({
     });
   }, [scenario.ai_summary]);
 
-  const handleExportJson = useCallback(async () => {
+  const handleExportPdf = useCallback(async () => {
     try {
       const res = await fetch(
-        `/api/pa/scenarios/${encodeURIComponent(
-          scenario.id,
-        )}/export?format=json`,
+        `/api/pa/scenarios/${encodeURIComponent(scenario.id)}/export-pdf`,
         { credentials: "same-origin" },
       );
       if (!res.ok) {
@@ -157,14 +160,14 @@ const SingleScenario = ({
           typeof data.message === "string"
             ? data.message
             : typeof data.error === "string"
-            ? data.error
-            : `HTTP ${res.status}`;
-        alert(`Download failed: ${msg}`);
+              ? data.error
+              : `HTTP ${res.status}`;
+        alert(`PDF download failed: ${msg}`);
         return;
       }
       const blob = await res.blob();
       const cd = res.headers.get("Content-Disposition");
-      let safeName = `scenario-${scenario.id.slice(0, 8)}.json`;
+      let safeName = `scenario-${scenario.id.slice(0, 8)}.pdf`;
       const quoted = cd && /filename="([^"]+)"/.exec(cd);
       if (quoted?.[1]) safeName = quoted[1];
       const url = URL.createObjectURL(blob);
@@ -177,7 +180,7 @@ const SingleScenario = ({
       URL.revokeObjectURL(url);
     } catch (e) {
       console.error(e);
-      alert("Download failed. Check your connection and try again.");
+      alert("PDF download failed. Check your connection and try again.");
     }
   }, [scenario.id]);
 
@@ -211,8 +214,8 @@ const SingleScenario = ({
         typeof data.message === "string"
           ? data.message
           : typeof data.error === "string"
-          ? data.error
-          : JSON.stringify(data);
+            ? data.error
+            : JSON.stringify(data);
       const detail = `Delete failed (${res.status}): ${msg}`;
       if (typeof alertDlg === "function") await alertDlg(detail);
       else alert(detail);
@@ -249,7 +252,7 @@ const SingleScenario = ({
       <div className="scenario-header">
         <div className="sh-left">
           <div className="sh-meta">
-            <span className="sh-id">#{scenario.id}</span>
+            <span className="sh-id">{scenario.id}</span>
             <span className="sh-date">{dateDisplay}</span>
             {isInternal && scenario.created_by ? (
               <span className="sh-author">by {scenario.created_by}</span>
@@ -319,7 +322,7 @@ const SingleScenario = ({
           <button
             type="button"
             className="btn-export"
-            onClick={() => void handleExportJson()}
+            onClick={() => void handleExportPdf()}
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -336,7 +339,7 @@ const SingleScenario = ({
               <polyline points="7 10 12 15 17 10" />
               <line x1="12" y1="15" x2="12" y2="3" />
             </svg>
-            Download JSON
+            Download PDF
           </button>
         ) : (
           <button
@@ -360,7 +363,7 @@ const SingleScenario = ({
               <polyline points="7 10 12 15 17 10" />
               <line x1="12" y1="15" x2="12" y2="3" />
             </svg>
-            Download JSON
+            Download PDF
           </button>
         )}
 
@@ -581,7 +584,7 @@ const SingleScenario = ({
                 ? scenario.calculator_form.groups.map((g, gi) => {
                     const v =
                       g.input_keys.length > 0
-                        ? scenario.inputs[g.input_keys[0]!] ?? 0
+                        ? (scenario.inputs[g.input_keys[0]!] ?? 0)
                         : 0;
                     return (
                       <div
@@ -595,7 +598,7 @@ const SingleScenario = ({
                   })
                 : Object.entries(scenario.inputs).map(([key, val]) => (
                     <div key={key} className="input-chip">
-                      <p className="input-key">{key.replace(/_/g, " ")}</p>
+                      <p className="input-key">{formatInputKey(key)}</p>
                       <p className="input-val">{val.toLocaleString()}</p>
                     </div>
                   ))}

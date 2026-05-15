@@ -10,8 +10,8 @@ interface ImportMetaEnv {
   readonly PUBLIC_SUPABASE_ANON_KEY?: string;
   /** Plan Advisor Express API (Railway), e.g. http://localhost:3000 — no trailing slash required. */
   readonly API_BASE_URL: string;
-  /** Must match Railway `PA_PLAN_API_KEY` when the API key gate is enabled. */
-  readonly PA_PLAN_API_KEY?: string;
+  /** AgenteDocumental crew base URL (CrewAI FastAPI), e.g. http://127.0.0.1:8788 */
+  readonly PLAN_ADVISOR_CREW_URL?: string;
 }
 
 interface ImportMeta {

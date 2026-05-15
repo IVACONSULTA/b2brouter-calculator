@@ -2,6 +2,18 @@
   publish = "dist"
   command = "npm run build"
 
+# Admin AI analysis (POST /api/pa/admin/ai-analysis/chat) runs inside the Astro SSR
+# serverless function. It awaits PlanAdvisorAPI → AgenteDocumental (Crew), which often
+# exceeds Netlify's default synchronous function limit (~60s). Without a higher limit the
+# browser gets 504 ("no data") while Railway logs still show the request in progress and
+# the document agent eventually returns 200.
+#
+# `timeout` is in seconds. Max allowed depends on your Netlify plan; if deploy rejects
+# this value, lower it or raise the limit in Site settings → Functions.
+# See: https://docs.netlify.com/build/functions/overview/#default-deployment-options
+[functions.ssr]
+  timeout = 300
+
 # Real auth on Netlify requires these in Site settings → Environment variables
 # (scope to Production + Previews / “All scopes”):
 #   SUPABASE_URL, SUPABASE_ANON_KEY (optional: PUBLIC_SUPABASE_URL / PUBLIC_SUPABASE_ANON_KEY),

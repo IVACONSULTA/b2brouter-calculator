@@ -1,38 +1,321 @@
 ---
 import AdminLayout from '../../../../layouts/AdminLayout.astro';
+import DocumentUploadPanel from '../../../../components/admin/DocumentUploadPanel';
+import WizardCountryDraftIsland from '../../../../components/admin/WizardCountryDraftIsland';
 import { getSession, isAdminRole } from '../../../../lib/session';
-import { DUMMY_PROFILES, DUMMY_DOCUMENTS, DOCUMENT_TYPES } from '../../../../lib/dummy-data';
+import {
+  canUsePlanAdvisorApi,
+  paFetchJson,
+} from '../../../../lib/pa-api';
+import { getFreshSupabaseAccessToken } from '../../../../lib/supabase-session';
+import { resolvePlanAdvisorProfileIds } from '../../../../lib/admin-resolve-profile-api';
+import { resolveAdminWizardProfile } from '../../../../lib/admin-wizard-profile-fallback';
+import {
+  hasLocalDocumentFiles,
+  readLocalDocumentsCombined,
+  useLocalDocumentStorage,
+} from '../../../../lib/admin-documents-local';
+import { paUploadLog } from '../../../../lib/pa-upload-debug';
+import { parsePaUiProfileUuidMap } from '../../../../lib/pa-ui-profile-uuid-map';
+import { isDraftProfileRouteId } from '../../../../lib/country-wizard-draft';
+import { DUMMY_DOCUMENTS, DOCUMENT_TYPES } from '../../../../lib/dummy-data';
 import '../../../../styles/pages/admin-country-documents.css';
 
 const session = getSession(Astro.cookies);
 if (!session) return Astro.redirect('/admin/login');
 if (!isAdminRole(session.role)) return Astro.redirect('/dashboard');
 
-const { id } = Astro.params;
-const profile = DUMMY_PROFILES.find(p => p.id === id) ?? DUMMY_PROFILES[0];
-const documents = DUMMY_DOCUMENTS;
+const { id: routeProfileId } = Astro.params;
+if (!routeProfileId) return Astro.redirect('/countries');
 
-const copyrightMeta: Record<string, { label: string; cls: string; desc: string }> = {
-  pending:    { label: 'Pending',    cls: 'c-pending',    desc: 'Not yet analyzed' },
-  clear:      { label: 'Clear',      cls: 'c-clear',      desc: 'No restrictions detected' },
-  restricted: { label: 'Restricted', cls: 'c-restricted', desc: 'Verbatim extraction prohibited; factual rules only' },
-  blocked:    { label: 'Blocked',    cls: 'c-blocked',    desc: 'AI opt-out clause detected — must be reviewed manually' },
+const profile = resolveAdminWizardProfile(routeProfileId);
+
+// Check if this is a wizard draft with stored API UUIDs (server-side cannot read sessionStorage directly)
+const isDraft = isDraftProfileRouteId(routeProfileId);
+
+// For draft routes the client-side script below detects apiProfileId in sessionStorage and reloads
+// with ?profile_id=<uuid>.  On that reload SSR can read it here and list documents by UUID directly.
+const draftApiProfileId = isDraft ? (Astro.url.searchParams.get('profile_id') ?? '') : '';
+
+const localDocMode = useLocalDocumentStorage();
+const devLocalFolder =
+  import.meta.env.DEV && hasLocalDocumentFiles(routeProfileId);
+const useLocalDocumentsListing = localDocMode || devLocalFolder;
+
+let paToken: string | null = null;
+if (session.supabaseAccessToken?.trim()) {
+  const fresh = await getFreshSupabaseAccessToken(Astro.cookies);
+  if (fresh.ok) paToken = fresh.accessToken;
+}
+
+const apiReady = canUsePlanAdvisorApi(session);
+
+type DocRow = {
+  id: string;
+  filename: string;
+  document_type: string;
+  description?: string;
+  copyright_status: string;
+  uploaded_at: string;
+  size: string;
+  selected?: boolean;
 };
 
-const clearDocs    = documents.filter(d => d.copyright_status === 'clear' || d.copyright_status === 'restricted');
-const blockedDocs  = documents.filter(d => d.copyright_status === 'blocked');
+const copyrightMeta: Record<string, { label: string; cls: string; desc: string }> = {
+  pending: { label: 'Pending', cls: 'c-pending', desc: 'Not yet analyzed' },
+  clear: { label: 'Clear', cls: 'c-clear', desc: 'No restrictions detected' },
+  restricted: { label: 'Restricted', cls: 'c-restricted', desc: 'Verbatim extraction prohibited; factual rules only' },
+  blocked: { label: 'Blocked', cls: 'c-blocked', desc: 'AI opt-out clause detected — must be reviewed manually' },
+};
+
+function formatApiDate(raw: string): string {
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return raw;
+  return d.toLocaleDateString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+}
+
+let adminNotice: string | null = null;
+let documents: DocRow[] = DUMMY_DOCUMENTS.map((d) => ({
+  id: d.id,
+  filename: d.filename,
+  document_type: d.document_type,
+  description: d.description,
+  copyright_status: d.copyright_status,
+  uploaded_at: d.uploaded_at,
+  size: d.size,
+  selected: d.selected,
+}));
+
+let apiTarget: {
+  profile_id: string;
+  country_id: string;
+  provider_id: string;
+} | null = null;
+
+const uiProfileUuidBySlug = parsePaUiProfileUuidMap();
+const uuidOverrideForSlug = uiProfileUuidBySlug[routeProfileId] ?? null;
+
+// Helper to check if a string looks like a valid UUID (v4 or similar)
+function isValidUuid(str: string): boolean {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(str);
+}
+
+/**
+ * Wizard drafts have API UUIDs stored in sessionStorage (created at step 1 via /admin/countries/new).
+ * For draft routes, skip SSR resolution — resolving by country+provider+version would return the
+ * already-active profile UUID, causing documents to be linked to the wrong profile.
+ * The island hydrates with the correct UUID from sessionStorage and passes it to the upload panel.
+ *
+ * For non-draft (static/legacy) routes, SSR resolution is still used.
+ *
+ * For real profile IDs (UUIDs from database), use them directly without resolution.
+ */
+if (!isDraft && apiReady && paToken && (import.meta.env.API_BASE_URL ?? '').trim()) {
+  // If the route ID is a valid UUID, use it directly as the profile ID
+  if (isValidUuid(routeProfileId)) {
+    // For real profile IDs, we need to fetch the profile detail to get country_id and provider_id
+    const detail = await paFetchJson<{
+      id: string;
+      country_id: string;
+      provider_id: string;
+    }>(`/admin/profiles/${encodeURIComponent(routeProfileId)}`, paToken);
+    if (detail.ok && detail.data) {
+      apiTarget = {
+        profile_id: String(detail.data.id),
+        country_id: String(detail.data.country_id),
+        provider_id: String(detail.data.provider_id),
+      };
+    }
+  } else {
+    // For static/legacy routes, resolve by country+provider+version
+    const resolved = await resolvePlanAdvisorProfileIds(
+      paToken,
+      {
+        countryCode: profile.country.code,
+        providerName: profile.provider.name,
+        version: profile.version,
+      },
+      { uuidOverride: uuidOverrideForSlug },
+    );
+    if (resolved) {
+      apiTarget = {
+        profile_id: resolved.id,
+        country_id: resolved.country_id,
+        provider_id: resolved.provider_id,
+      };
+    }
+  }
+}
+
+if (useLocalDocumentsListing) {
+  const local = readLocalDocumentsCombined(routeProfileId);
+  documents = local.map((item) => ({
+    id: item.id,
+    filename: item.filename,
+    document_type: item.document_type,
+    description: item.description ?? undefined,
+    copyright_status: item.copyright_status,
+    uploaded_at: formatApiDate(item.created_at),
+    size: item.size_label,
+    selected: item.copyright_status !== 'blocked',
+  }));
+  if (localDocMode) {
+    adminNotice =
+      'Local document storage (PA_LOCAL_DOCUMENT_STORAGE): files in docs/uploads/ are not sent to Railway.';
+  } else if (devLocalFolder) {
+    adminNotice = apiTarget
+      ? 'Development: listing files from docs/uploads/' +
+        routeProfileId +
+        '/. New uploads use Plan Advisor (Railway) when signed in.'
+      : 'Development: listing files from docs/uploads/' +
+        routeProfileId +
+        '/. Resolve API profile UUIDs (same country/provider/version as Plan Advisor) to enable Railway upload, or set PA_LOCAL_DOCUMENT_STORAGE=1 for local-only uploads.';
+  }
+} else if (apiReady && paToken && (import.meta.env.API_BASE_URL ?? '').trim()) {
+  if (apiTarget) {
+    const list = await paFetchJson<
+      Array<{
+        id: string;
+        filename: string;
+        document_type: string;
+        description?: string | null;
+        copyright_status: string;
+        created_at: string;
+      }>
+    >(`/admin/documents?profile_id=${encodeURIComponent(apiTarget.profile_id)}`, paToken);
+    if (list.ok && Array.isArray(list.data)) {
+      documents = list.data.map((r) => ({
+        id: r.id,
+        filename: r.filename,
+        document_type: r.document_type,
+        description: r.description ?? undefined,
+        copyright_status: r.copyright_status,
+        uploaded_at: formatApiDate(r.created_at),
+        size: '—',
+        selected: r.copyright_status !== 'blocked',
+      }));
+    } else if (!list.ok) {
+      const suffix = ` Could not load documents (HTTP ${list.status}). Showing demo list.`;
+      const noticeBefore: string | null = adminNotice;
+      adminNotice = `${noticeBefore ?? ''}${suffix}`.trim();
+    }
+  } else if (draftApiProfileId) {
+    // Draft route — UUID injected via ?profile_id= by the client-side script below.
+    // List documents by profile_id directly so uploaded files are visible immediately.
+    const list = await paFetchJson<
+      Array<{
+        id: string;
+        filename: string;
+        document_type: string;
+        description?: string | null;
+        copyright_status: string;
+        created_at: string;
+      }>
+    >(`/admin/documents?profile_id=${encodeURIComponent(draftApiProfileId)}`, paToken);
+    if (list.ok && Array.isArray(list.data)) {
+      documents = list.data.map((r) => ({
+        id: r.id,
+        filename: r.filename,
+        document_type: r.document_type,
+        description: r.description ?? undefined,
+        copyright_status: r.copyright_status,
+        uploaded_at: formatApiDate(r.created_at),
+        size: '—',
+        selected: r.copyright_status !== 'blocked',
+      }));
+    } else if (!list.ok) {
+      const suffix = ` Could not load documents (HTTP ${list.status}). Showing demo list.`;
+      adminNotice = (adminNotice ?? '').concat(suffix).trim();
+    }
+  } else {
+    // No UUID yet — the client-side script will inject ?profile_id= and trigger a reload.
+    adminNotice = 'Resolving profile…';
+  }
+} else if (!session.supabaseAccessToken) {
+  adminNotice = 'Demo session (no JWT). Sign in with Supabase + set API_BASE_URL for live uploads.';
+} else if (!(import.meta.env.API_BASE_URL ?? '').trim()) {
+  adminNotice = 'Set API_BASE_URL or PA_LOCAL_DOCUMENT_STORAGE=1 for document uploads.';
+}
+
+// All uploaded documents should have 'clear' copyright status (restricted/blocked are shown in Copyright Issues panel)
+const clearDocs = documents.filter((d) => d.copyright_status === 'clear');
+const nonClearDocs = documents.filter((d) => d.copyright_status !== 'clear');
+
+const aiAnalysisHref = `/admin/countries/${routeProfileId}/ai-analysis`;
+
+const hasApiBase = Boolean((import.meta.env.API_BASE_URL ?? '').trim());
+const canUpload = Boolean(
+  localDocMode || apiTarget || (apiReady && paToken && hasApiBase && !localDocMode),
+);
+
+const uploadMode: 'local' | 'live' | 'staging' = localDocMode ? 'local' : apiTarget ? 'live' : 'staging';
+
+const uploadConfig = {
+  profileSlug: routeProfileId,
+  localMode: localDocMode,
+  uploadMode,
+  countryId: apiTarget?.country_id ?? '',
+  providerId: apiTarget?.provider_id ?? '',
+  profileId: apiTarget?.profile_id ?? '',
+  canUpload,
+};
+
+paUploadLog('documents page SSR', {
+  routeProfileId,
+  apiReady,
+  hasPaToken: Boolean(paToken),
+  hasApiBaseUrl: Boolean((import.meta.env.API_BASE_URL ?? '').trim()),
+  uuidMapOverride: Boolean(uuidOverrideForSlug),
+  localDocMode,
+  devLocalFolder,
+  useLocalDocumentsListing,
+  dummyProfileMatch: {
+    countryCode: profile.country.code,
+    providerName: profile.provider.name,
+    version: profile.version,
+  },
+  apiTarget: apiTarget
+    ? {
+        profile_id: apiTarget.profile_id,
+        country_id: apiTarget.country_id,
+        provider_id: apiTarget.provider_id,
+      }
+    : null,
+  canUpload,
+  uploadMode,
+});
+
+const metaFor = (status: string) =>
+  copyrightMeta[status] ?? copyrightMeta.pending;
 ---
 
 <AdminLayout
   title={`Documents — ${profile.country.name} / ${profile.provider.name}`}
+  notice={adminNotice}
   breadcrumbs={[
     { label: 'Countries', href: '/countries' },
     { label: `${profile.country.name} / ${profile.provider.name}`, href: `/admin/countries/${profile.id}/setup` },
     { label: 'Documents' },
   ]}
 >
+  <div class="page-admin-country-documents">
+  <WizardCountryDraftIsland
+    client:only="react"
+    routeProfileId={routeProfileId}
+    fallbackProfileJson={JSON.stringify(profile)}
+    fallbackApiTarget={apiTarget ? JSON.stringify(apiTarget) : null}
+    mode="documents"
+  />
   <!-- Step bar -->
-  <div class="page-admin-country-documents step-bar">
+  <div class="step-bar">
     <a href={`/admin/countries/${profile.id}/setup`} class="step-tab">
       <span class="step-num done">✓</span> Profile Setup
     </a>
@@ -41,14 +324,16 @@ const blockedDocs  = documents.filter(d => d.copyright_status === 'blocked');
       <span class="step-num">2</span> Documents
     </a>
     <div class="step-connector"></div>
-    <span class="step-tab disabled">
+    <a href={aiAnalysisHref} class="step-tab">
       <span class="step-num">3</span> AI Analysis
-    </span>
+    </a>
     <div class="step-connector"></div>
     <span class="step-tab disabled">
       <span class="step-num">4</span> Activate
     </span>
   </div>
+
+
 
   <div class="two-col">
     <!-- Left: existing docs -->
@@ -57,34 +342,16 @@ const blockedDocs  = documents.filter(d => d.copyright_status === 'blocked');
         <div class="panel-head">
           <div>
             <h2 class="panel-title">Uploaded Documents</h2>
-            <p class="panel-subtitle">{documents.length} documents · {clearDocs.length} processable · {blockedDocs.length} blocked</p>
+            <p class="panel-subtitle">{documents.length} documents · {clearDocs.length} ready for analysis</p>
           </div>
-          <!-- TODO: POST /admin/documents/analyze via App 2 API → App 3 CrewAI -->
-          <button
-            id="analyze-btn"
-            class="btn-analyze"
-            onclick="handleAnalyze()"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 2a10 10 0 1 0 10 10"/><path d="M12 6v6l4 2"/>
-              <path d="M18 2l4 4-4 4"/><path d="M22 2v8h-8"/>
-            </svg>
-            Analyze selected with AI
-          </button>
         </div>
 
-        {blockedDocs.length > 0 && (
-          <div class="guardrail-banner">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"/>
-              <line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-            </svg>
-            <div>
-              <p class="banner-title">AI opt-out detected in {blockedDocs.length} document(s)</p>
-              <p class="banner-desc">These documents contain an explicit AI processing restriction (DSM Directive Art. 4 opt-out). They are excluded from AI analysis and must be reviewed manually.</p>
-            </div>
-          </div>
-        )}
+        <div class="info-banner">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+          </svg>
+          <p>Only documents that pass copyright check are stored. Restricted or blocked documents appear in the <strong>Copyright Issues</strong> section below.</p>
+        </div>
 
         <table class="table">
           <thead>
@@ -100,8 +367,8 @@ const blockedDocs  = documents.filter(d => d.copyright_status === 'blocked');
             </tr>
           </thead>
           <tbody>
-            {documents.map(doc => {
-              const meta = copyrightMeta[doc.copyright_status];
+            {documents.map((doc) => {
+              const meta = metaFor(doc.copyright_status);
               return (
                 <tr class={doc.copyright_status === 'blocked' ? 'row-blocked' : ''}>
                   <td>
@@ -109,13 +376,13 @@ const blockedDocs  = documents.filter(d => d.copyright_status === 'blocked');
                       type="checkbox"
                       class="doc-checkbox"
                       data-doc-id={doc.id}
-                      checked={doc.selected && doc.copyright_status !== 'blocked'}
+                      checked={doc.selected !== false && doc.copyright_status !== 'blocked'}
                       disabled={doc.copyright_status === 'blocked'}
                     />
                   </td>
                   <td>
                     <div class="file-cell">
-                      <div class={`file-icon fi-${doc.copyright_status}`}>
+                      <div class={`file-icon fi-${doc.copyright_status === 'restricted' ? 'restricted' : doc.copyright_status === 'blocked' ? 'blocked' : doc.copyright_status === 'clear' ? 'clear' : 'pending'}`}>
                         <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                           <polyline points="14 2 14 8 20 8"/>
@@ -129,7 +396,7 @@ const blockedDocs  = documents.filter(d => d.copyright_status === 'blocked');
                   </td>
                   <td>
                     <span class="type-label">
-                      {DOCUMENT_TYPES.find(t => t.value === doc.document_type)?.label ?? doc.document_type}
+                      {DOCUMENT_TYPES.find((t) => t.value === doc.document_type)?.label ?? doc.document_type}
                     </span>
                   </td>
                   <td>
@@ -141,15 +408,19 @@ const blockedDocs  = documents.filter(d => d.copyright_status === 'blocked');
                   <td class="muted">{doc.uploaded_at}</td>
                   <td>
                     <div class="row-actions">
-                      <!-- TODO: GET /admin/documents/{doc.id}/download via App 2 API -->
-                      <button class="btn-icon" title="Download" onclick={`alert('TODO: download ${doc.filename}')`}>
+                      <button class="btn-icon" title="Download" type="button" onclick={`alert('Download is not implemented yet for ${doc.filename}')`}>
                         <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                           <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
                         </svg>
                       </button>
-                      <!-- TODO: DELETE /admin/documents/{doc.id} via App 2 API -->
-                      <button class="btn-icon btn-danger" title="Delete" onclick={`alert('TODO: delete ${doc.filename}')`}>
+                      <button 
+                        class="btn-icon btn-danger btn-delete-doc" 
+                        title="Delete" 
+                        type="button"
+                        data-doc-id={doc.id}
+                        data-doc-filename={doc.filename}
+                      >
                         <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                           <polyline points="3 6 5 6 21 6"/>
                           <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
@@ -164,6 +435,71 @@ const blockedDocs  = documents.filter(d => d.copyright_status === 'blocked');
             })}
           </tbody>
         </table>
+
+       
+        <div class="documents-footer">
+          <a href={`/admin/countries/${profile.id}/setup`} class="btn-secondary">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M19 12H5M12 19l-7-7 7-7"/>
+            </svg>
+            Back to Profile setup
+          </a>
+
+          <div class="documents-footer-right">
+            <button
+              type="button"
+              id="btn-go-analysis"
+              class="btn-go-analysis"
+              data-href={aiAnalysisHref}
+              data-profile-slug={routeProfileId}
+              data-profile-id={uploadConfig.profileId}
+              data-country-id={uploadConfig.countryId}
+              data-provider-id={uploadConfig.providerId}
+            >
+              Go to Analysis
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M5 12h14M12 5l7 7-7 7"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Copyright Issues Panel (client-side only for failed copyright checks) -->
+      <div class="panel copyright-issues-panel" id="copyright-issues-panel" style="display: none;">
+        <div class="panel-head">
+          <div>
+            <h2 class="panel-title" style="color: #d97706;">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: middle; margin-right: 0.5rem;">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+              Copyright Issues
+            </h2>
+            <p class="panel-subtitle">Documents that failed copyright check — not stored in database</p>
+          </div>
+          <button type="button" class="btn-ghost btn-sm" id="clear-all-copyright-failed" title="Clear all failed entries">
+            Clear All
+          </button>
+        </div>
+        <table class="table" id="copyright-issues-table">
+          <thead>
+            <tr>
+              <th>File</th>
+              <th>Type</th>
+              <th>Status</th>
+              <th>Reason</th>
+              <th>Failed At</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="copyright-issues-tbody">
+            <!-- Populated client-side -->
+          </tbody>
+        </table>
+        <div id="copyright-issues-empty" class="empty-state" style="padding: 1.5rem; text-align: center; color: #6b7280;">
+          No documents with copyright issues.
+        </div>
       </div>
     </div>
 
@@ -171,48 +507,27 @@ const blockedDocs  = documents.filter(d => d.copyright_status === 'blocked');
     <div class="right-col">
       <div class="panel">
         <h2 class="panel-title">Upload Document</h2>
-        <p class="panel-subtitle" style="margin-bottom:1rem">PDF, DOCX, XLSX, CSV, TXT, MD — max 20 MB</p>
+        <p class="panel-subtitle" style="margin-bottom:1rem">PDF, DOCX, XLSX, CSV, TXT, MD — max 50 MB</p>
 
-        <!-- TODO: POST /admin/documents/upload via App 2 API → saves to Railway Volume + DB -->
-        <form id="upload-form" class="upload-form" action="#" method="POST" enctype="multipart/form-data">
-          <div class="drop-zone" id="drop-zone">
-            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
-            </svg>
-            <p class="drop-label">Drop file here or <label for="file-input" class="drop-link">browse</label></p>
-            <input type="file" id="file-input" name="file" accept=".pdf,.docx,.xlsx,.csv,.txt,.md" class="hidden" />
-          </div>
-
-          <div class="field">
-            <label for="doc_type">Document Type <span class="required">*</span></label>
-            <select id="doc_type" name="document_type" required>
-              <option value="" disabled selected>Select type…</option>
-              {DOCUMENT_TYPES.map(t => (
-                <option value={t.value}>{t.label}</option>
-              ))}
-            </select>
-          </div>
-
-          <div class="field">
-            <label for="description">Description</label>
-            <textarea id="description" name="description" rows="2" placeholder="Brief description of this document…"></textarea>
-          </div>
-
-          <button type="submit" class="btn-upload">
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-            </svg>
-            Upload Document
-          </button>
-        </form>
+        <DocumentUploadPanel
+          client:load
+          uploadEndpoint="/api/pa/admin/documents/upload"
+          copyrightCheckEndpoint="/api/pa/admin/documents/copyright-check"
+          canUpload={canUpload}
+          localMode={localDocMode}
+          uploadMode={uploadConfig.uploadMode}
+          profileSlug={routeProfileId}
+          countryId={uploadConfig.countryId}
+          providerId={uploadConfig.providerId}
+          profileId={uploadConfig.profileId}
+          documentTypes={DOCUMENT_TYPES}
+        />
       </div>
 
       <!-- Copyright legend -->
       <div class="panel legend-panel">
         <h3 class="legend-title">Copyright status legend</h3>
-        {Object.entries(copyrightMeta).map(([key, meta]) => (
+        {Object.entries(copyrightMeta).map(([, meta]) => (
           <div class="legend-row">
             <span class={`c-badge ${meta.cls}`}>{meta.label}</span>
             <span class="legend-desc">{meta.desc}</span>
@@ -221,55 +536,304 @@ const blockedDocs  = documents.filter(d => d.copyright_status === 'blocked');
       </div>
     </div>
   </div>
+  </div>
 </AdminLayout>
 
-<script>
-  // Select all checkbox
-  const selectAll = document.getElementById('select-all') as HTMLInputElement;
-  const checkboxes = document.querySelectorAll<HTMLInputElement>('.doc-checkbox:not(:disabled)');
+<script is:inline>
+  const selectAll = document.getElementById('select-all');
+  const checkboxes = document.querySelectorAll('.doc-checkbox:not(:disabled)');
 
-  selectAll.addEventListener('change', () => {
-    checkboxes.forEach(cb => cb.checked = selectAll.checked);
-  });
-
-  // Drag-and-drop visual
-  const dropZone = document.getElementById('drop-zone')!;
-  const fileInput = document.getElementById('file-input') as HTMLInputElement;
-
-  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
-  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
-  dropZone.addEventListener('drop', e => {
-    e.preventDefault();
-    dropZone.classList.remove('drag-over');
-    const files = e.dataTransfer?.files;
-    if (files?.[0]) {
-      dropZone.querySelector('.drop-label')!.textContent = `Selected: ${files[0].name}`;
-    }
-  });
-
-  fileInput.addEventListener('change', () => {
-    if (fileInput.files?.[0]) {
-      dropZone.querySelector('.drop-label')!.innerHTML = `Selected: <strong>${fileInput.files[0].name}</strong>`;
-    }
-  });
-
-  // Upload form submit
-  document.getElementById('upload-form')!.addEventListener('submit', e => {
-    e.preventDefault();
-    alert('TODO: POST to API_BASE_URL/admin/documents/upload');
-  });
-
-  // Analyze button
-  function handleAnalyze() {
-    const selected = Array.from(document.querySelectorAll<HTMLInputElement>('.doc-checkbox:checked'))
-      .map(cb => cb.dataset.docId);
-    if (selected.length === 0) {
-      alert('Please select at least one document to analyze.');
-      return;
-    }
-    alert(`TODO: POST to API_BASE_URL/admin/documents/analyze\nDocuments: ${selected.join(', ')}`);
+  if (selectAll instanceof HTMLInputElement) {
+    selectAll.addEventListener('change', () => {
+      const on = selectAll.checked;
+      checkboxes.forEach((cb) => {
+        if (cb instanceof HTMLInputElement) cb.checked = on;
+      });
+    });
   }
-
-  (window as any).handleAnalyze = handleAnalyze;
 </script>
 
+<script>
+  import { initDocumentsGoAnalysis } from '../../../../scripts/documents-go-analysis';
+  initDocumentsGoAnalysis();
+</script>
+
+<script>
+  /**
+   * For wizard draft routes the real DB profile UUID lives in sessionStorage — the SSR cannot
+   * read it.  This script reads it and, if the current URL is missing ?profile_id=<uuid>,
+   * reloads once with that param so the SSR can list the correct documents.
+   */
+  import { loadCountryWizardDraft } from '../../../../lib/country-wizard-draft';
+
+  // Extract the [id] segment from /admin/countries/{id}/documents
+  const pathParts = window.location.pathname.split('/').filter(Boolean);
+  const routeProfileId = pathParts[pathParts.length - 2] ?? '';
+
+  if (routeProfileId.startsWith('profile-draft-')) {
+    const draft = loadCountryWizardDraft(routeProfileId);
+    if (draft?.apiProfileId) {
+      const url = new URL(window.location.href);
+      if (url.searchParams.get('profile_id') !== draft.apiProfileId) {
+        url.searchParams.set('profile_id', draft.apiProfileId);
+        window.location.replace(url.toString());
+      }
+    }
+  }
+</script>
+
+<script>
+  // Delete document functionality
+  document.addEventListener('click', async (e) => {
+    const target = e.target as HTMLElement;
+    const deleteBtn = target.closest('.btn-delete-doc') as HTMLButtonElement | null;
+    
+    if (!deleteBtn) return;
+
+    const docId = deleteBtn.dataset.docId;
+    const filename = deleteBtn.dataset.docFilename || 'this document';
+
+    if (!docId) {
+      alert('Document ID is missing.');
+      return;
+    }
+
+    const confirmed = confirm(
+      `Are you sure you want to delete "${filename}"?\n\nThis action cannot be undone.`
+    );
+
+    if (!confirmed) return;
+
+    deleteBtn.disabled = true;
+    deleteBtn.style.opacity = '0.5';
+    deleteBtn.style.cursor = 'wait';
+
+    try {
+      const response = await fetch(`/api/pa/admin/documents/delete?id=${encodeURIComponent(docId)}`, {
+        method: 'DELETE',
+        credentials: 'same-origin',
+      });
+
+      const raw = await response.text();
+      let payload: unknown = null;
+      if (raw.length) {
+        try {
+          payload = JSON.parse(raw);
+        } catch {
+          payload = null;
+        }
+      }
+
+      if (!response.ok) {
+        const errorMsg = typeof payload === 'object' && payload !== null && 'error' in payload
+          ? String((payload as any).error)
+          : `HTTP ${response.status}`;
+        alert(`Delete failed: ${errorMsg}`);
+        deleteBtn.disabled = false;
+        deleteBtn.style.opacity = '';
+        deleteBtn.style.cursor = '';
+        return;
+      }
+
+      // Remove the row from the table with animation
+      const row = deleteBtn.closest('tr');
+      if (row) {
+        row.style.transition = 'opacity 0.3s';
+        row.style.opacity = '0';
+        setTimeout(() => {
+          row.remove();
+          
+          // Update document count in subtitle
+          const subtitle = document.querySelector('.panel-subtitle');
+          if (subtitle) {
+            const currentText = subtitle.textContent || '';
+            const match = currentText.match(/(\d+) documents/);
+            if (match) {
+              const currentCount = parseInt(match[1], 10);
+              const newCount = Math.max(0, currentCount - 1);
+              subtitle.textContent = currentText.replace(/\d+ documents/, `${newCount} documents`);
+            }
+          }
+        }, 300);
+      }
+
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      alert(`Request failed: ${message}`);
+      deleteBtn.disabled = false;
+      deleteBtn.style.opacity = '';
+      deleteBtn.style.cursor = '';
+    }
+  });
+</script>
+
+<script>
+  /**
+   * Copyright Issues List - Client-side display for documents that failed copyright check.
+   * These documents are stored in localStorage only and not uploaded to the API.
+   */
+  const COPYRIGHT_FAILED_KEY = 'pa_copyright_failed_docs';
+
+  type CopyrightFailedDoc = {
+    id: string;
+    filename: string;
+    document_type: string;
+    description?: string;
+    copyright_status: 'restricted' | 'blocked';
+    copyright_reason: string;
+    legal_basis?: string;
+    action_required?: string;
+    failed_at: string;
+  };
+
+  function getCopyrightFailedDocs(): CopyrightFailedDoc[] {
+    try {
+      const raw = localStorage.getItem(COPYRIGHT_FAILED_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw) as CopyrightFailedDoc[];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function removeCopyrightFailedDoc(id: string): void {
+    try {
+      const existing = getCopyrightFailedDocs();
+      const filtered = existing.filter((d) => d.id !== id);
+      localStorage.setItem(COPYRIGHT_FAILED_KEY, JSON.stringify(filtered));
+      renderCopyrightIssues();
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function clearAllCopyrightFailedDocs(): void {
+    try {
+      localStorage.removeItem(COPYRIGHT_FAILED_KEY);
+      renderCopyrightIssues();
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function formatDate(raw: string): string {
+    const d = new Date(raw);
+    if (Number.isNaN(d.getTime())) return raw;
+    return d.toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+  }
+
+  function getStatusBadge(status: string): { label: string; cls: string } {
+    if (status === 'blocked') return { label: 'Blocked', cls: 'c-blocked' };
+    if (status === 'restricted') return { label: 'Restricted', cls: 'c-restricted' };
+    return { label: status, cls: '' };
+  }
+
+  function renderCopyrightIssues(): void {
+    const docs = getCopyrightFailedDocs();
+    const panel = document.getElementById('copyright-issues-panel');
+    const tbody = document.getElementById('copyright-issues-tbody');
+    const table = document.getElementById('copyright-issues-table');
+    const emptyState = document.getElementById('copyright-issues-empty');
+
+    if (!panel || !tbody || !table || !emptyState) return;
+
+    if (docs.length === 0) {
+      panel.style.display = 'none';
+      return;
+    }
+
+    panel.style.display = '';
+    tbody.innerHTML = '';
+
+    docs.forEach((doc) => {
+      const status = getStatusBadge(doc.copyright_status);
+      const row = document.createElement('tr');
+      row.className = doc.copyright_status === 'blocked' ? 'row-blocked' : '';
+      row.innerHTML = `
+        <td>
+          <div class="file-cell">
+            <div class="file-icon fi-${doc.copyright_status}">
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+              </svg>
+            </div>
+            <div>
+              <p class="file-name">${escapeHtml(doc.filename)}</p>
+              ${doc.description ? `<p class="file-size">${escapeHtml(doc.description)}</p>` : ''}
+            </div>
+          </div>
+        </td>
+        <td>
+          <span class="type-label">${escapeHtml(doc.document_type)}</span>
+        </td>
+        <td>
+          <span class="c-badge ${status.cls}">${status.label}</span>
+        </td>
+        <td>
+          <span class="c-desc" title="${escapeHtml(doc.legal_basis || '')}">${escapeHtml(doc.copyright_reason)}</span>
+        </td>
+        <td class="muted">${formatDate(doc.failed_at)}</td>
+        <td>
+          <button type="button" class="btn-icon btn-delete-copyright-failed" data-id="${doc.id}" title="Remove from list">
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+              <path d="M10 11v6"/><path d="M14 11v6"/>
+              <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+            </svg>
+          </button>
+        </td>
+      `;
+      tbody.appendChild(row);
+    });
+
+    // Show/hide table vs empty state
+    if (docs.length > 0) {
+      table.style.display = '';
+      emptyState.style.display = 'none';
+    } else {
+      table.style.display = 'none';
+      emptyState.style.display = '';
+    }
+  }
+
+  function escapeHtml(text: string): string {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  // Initial render
+  renderCopyrightIssues();
+
+  // Listen for changes from upload panel
+  window.addEventListener('copyright-failed-docs-changed', () => {
+    renderCopyrightIssues();
+  });
+
+  // Clear all button
+  document.getElementById('clear-all-copyright-failed')?.addEventListener('click', () => {
+    if (confirm('Clear all copyright issues from the list?')) {
+      clearAllCopyrightFailedDocs();
+    }
+  });
+
+  // Individual delete buttons (delegation)
+  document.getElementById('copyright-issues-tbody')?.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement;
+    const btn = target.closest('.btn-delete-copyright-failed') as HTMLButtonElement | null;
+    if (!btn) return;
+    const id = btn.dataset.id;
+    if (!id) return;
+    removeCopyrightFailedDoc(id);
+  });
+</script>

@@ -8,7 +8,7 @@ Brief description of what this PR accomplishes.
 - [ ] Bug fix
 - [ ] Documentation update
 - [ ] Code refactoring
-- [ ] Other: ****\_****
+- [ ] Other: \***\*\_\*\***
 
 ## 🔍 Changes Made
 

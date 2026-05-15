@@ -1,17 +1,36 @@
 ---
 import Layout from '../layouts/Layout.astro';
+import { getSession, isAdminRole, canAccessUserPortal } from '../lib/session';
 import '../styles/pages/home.css';
+
+const session = getSession(Astro.cookies);
+let signedInLabel = '';
+let signedInHref = '/dashboard';
+if (session) {
+  if (isAdminRole(session.role)) {
+    signedInLabel = 'Admin';
+    signedInHref = '/admin/dashboard';
+  } else if (canAccessUserPortal(session.role)) {
+    signedInLabel = session.role === 'internal' ? 'Internal' : 'Customer';
+  }
+}
 ---
 
 <Layout title="Home">
   <main class="page-home landing">
     <div class="hero">
-      <div class="badge">B2B Router Calculator</div>
       <h1>Welcome</h1>
-      <p class="subtitle">
-        Choose your portal to continue. Each portal has its own dedicated workspace
-        tailored to your role.
-      </p>
+      {session && (
+        <p class="signed-in-strip" role="status">
+          Signed in as <strong>{session.email}</strong>
+          ({signedInLabel})
+          <a href={signedInHref} class="signed-in-app">Open app →</a>
+          <form action="/api/auth/logout" method="POST" class="signed-in-logout-form">
+            <input type="hidden" name="from" value={isAdminRole(session.role) ? 'admin' : 'customer'} />
+            <button type="submit" class="signed-in-signout">Sign out</button>
+          </form>
+        </p>
+      )}
 
       <div class="portal-grid">
         <a href="/admin/login" class="portal-card admin">

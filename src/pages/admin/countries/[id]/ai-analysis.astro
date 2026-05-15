@@ -1,0 +1,299 @@
+---
+import AdminLayout from '../../../../layouts/AdminLayout.astro';
+import { getSession, isAdminRole } from '../../../../lib/session';
+import { canUsePlanAdvisorApi, paFetchJson } from '../../../../lib/pa-api';
+import { getFreshSupabaseAccessToken } from '../../../../lib/supabase-session';
+import { resolvePlanAdvisorProfileIds } from '../../../../lib/admin-resolve-profile-api';
+import { resolveAdminWizardProfile } from '../../../../lib/admin-wizard-profile-fallback';
+import WizardCountryDraftIsland from '../../../../components/admin/WizardCountryDraftIsland';
+import ExtractedRulesPanel from '../../../../components/admin/ExtractedRulesPanel';
+import { parsePaUiProfileUuidMap } from '../../../../lib/pa-ui-profile-uuid-map';
+import { isDraftProfileRouteId } from '../../../../lib/country-wizard-draft';
+import '../../../../styles/pages/admin-country-ai-analysis.css';
+
+const session = getSession(Astro.cookies);
+if (!session) return Astro.redirect('/admin/login');
+if (!isAdminRole(session.role)) return Astro.redirect('/dashboard');
+
+const { id: routeProfileId } = Astro.params;
+if (!routeProfileId) return Astro.redirect('/countries');
+
+const profile = resolveAdminWizardProfile(routeProfileId);
+
+let paToken: string | null = null;
+if (session.supabaseAccessToken?.trim()) {
+  const fresh = await getFreshSupabaseAccessToken(Astro.cookies);
+  if (fresh.ok) paToken = fresh.accessToken;
+}
+
+const apiReady = canUsePlanAdvisorApi(session);
+
+let apiTarget: {
+  profile_id: string;
+  country_id: string;
+  provider_id: string;
+} | null = null;
+
+const uiProfileUuidBySlug = parsePaUiProfileUuidMap();
+const uuidOverrideForSlug = uiProfileUuidBySlug[routeProfileId] ?? null;
+
+// Helper to check if a string looks like a valid UUID (v4 or similar)
+function isValidUuid(str: string): boolean {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(str);
+}
+
+// Skip SSR resolution for wizard draft routes — the correct UUID was stored in sessionStorage at
+// step 1 and will be picked up by WizardAiAnalysisDatasetSync via the island.  Resolving by
+// country+provider+version here would match the existing *active* profile instead of the new draft.
+//
+// For real profile IDs (UUIDs from database), use them directly without resolution.
+const isDraft = isDraftProfileRouteId(routeProfileId);
+if (!isDraft && apiReady && paToken && (import.meta.env.API_BASE_URL ?? '').trim()) {
+  // If the route ID is a valid UUID, use it directly as the profile ID
+  if (isValidUuid(routeProfileId)) {
+    // Fetch profile detail to get country_id and provider_id.
+    const detail = await paFetchJson<{
+      id: string;
+      country_id: string;
+      provider_id: string;
+    }>(`/admin/profiles/${encodeURIComponent(routeProfileId)}`, paToken);
+    if (detail.ok && detail.data) {
+      apiTarget = {
+        profile_id: String(detail.data.id),
+        country_id: String(detail.data.country_id),
+        provider_id: String(detail.data.provider_id),
+      };
+    }
+  } else {
+    // For static/legacy routes, resolve by country+provider+version
+    const resolved = await resolvePlanAdvisorProfileIds(
+      paToken,
+      {
+        countryCode: profile.country.code,
+        providerName: profile.provider.name,
+        version: profile.version,
+      },
+      { uuidOverride: uuidOverrideForSlug },
+    );
+    if (resolved) {
+      apiTarget = {
+        profile_id: resolved.id,
+        country_id: resolved.country_id,
+        provider_id: resolved.provider_id,
+      };
+    }
+  }
+}
+
+const wizardCalculationProfileId = apiTarget?.profile_id ?? '';
+const wizardProfileSlug = routeProfileId;
+
+const fullAnalysisHref = profile.analysis_id
+  ? `/admin/analyses/${profile.analysis_id}`
+  : null;
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Transaction rules — fetched from the API on every SSR render.
+// Uses GET /api/admin/transaction-rules?profile_id=<uuid>
+// ═══════════════════════════════════════════════════════════════════════════
+type TransactionRule = {
+  id: string;
+  input_key: string;
+  label: string;
+  direction: string;
+  obligation: string;
+  operation_group: string;
+  pa_transactions_per_item: number;
+  reason?: string;
+  source_excerpt?: string;
+  confidence?: string;
+  status: string;
+};
+
+let transactionRules: TransactionRule[] = [];
+let rulesError: string | null = null;
+
+if (wizardCalculationProfileId && apiReady && paToken) {
+  const rulesRes = await paFetchJson<TransactionRule[]>(
+    `/admin/transaction-rules?profile_id=${encodeURIComponent(wizardCalculationProfileId)}`,
+    paToken,
+  );
+  if (rulesRes.ok && Array.isArray(rulesRes.data)) {
+    transactionRules = rulesRes.data.map((r) => ({
+      id: String(r.id),
+      input_key: String(r.input_key),
+      label: String(r.label),
+      direction: String(r.direction),
+      obligation: String(r.obligation),
+      operation_group: String(r.operation_group),
+      pa_transactions_per_item: Number(r.pa_transactions_per_item) || 0,
+      reason: r.reason,
+      source_excerpt: r.source_excerpt,
+      confidence: r.confidence,
+      status: String(r.status),
+    }));
+  } else if (!rulesRes.ok) {
+    const errMsg =
+      typeof rulesRes.error === 'string'
+        ? rulesRes.error
+        : (rulesRes.error as { message?: string })?.message ?? 'Could not load transaction rules';
+    rulesError = errMsg;
+    console.warn('[ai-analysis] Failed to load rules:', errMsg);
+  }
+}
+
+const proposedRules = transactionRules.filter((r) => r.status === 'proposed');
+const approvedRules = transactionRules.filter((r) => r.status === 'approved');
+---
+
+<AdminLayout
+  title={`AI analysis — ${profile.country.name} / ${profile.provider.name}`}
+  breadcrumbs={[
+    { label: 'Countries', href: '/countries' },
+    {
+      label: `${profile.country.name} / ${profile.provider.name}`,
+      href: `/admin/countries/${profile.id}/setup`,
+    },
+    { label: 'AI analysis' },
+  ]}
+>
+  <div
+    class="page-admin-country-ai-analysis"
+    data-profile-id={profile.id}
+    data-country={profile.country.name}
+    data-provider={profile.provider.name}
+    data-wizard-calculation-profile-id={wizardCalculationProfileId}
+    data-wizard-profile-slug={wizardProfileSlug}
+  >
+    <WizardCountryDraftIsland
+      client:only="react"
+      routeProfileId={routeProfileId}
+      fallbackProfileJson={JSON.stringify(profile)}
+      fallbackApiTarget={apiTarget ? JSON.stringify(apiTarget) : null}
+      mode="ai-analysis"
+    />
+    <div class="step-bar">
+      <a href={`/admin/countries/${profile.id}/setup`} class="step-tab">
+        <span class="step-num done">✓</span>
+        Profile Setup
+      </a>
+      <div class="step-connector"></div>
+      <a href={`/admin/countries/${profile.id}/documents`} class="step-tab">
+        <span class="step-num done">✓</span>
+        Documents
+      </a>
+      <div class="step-connector"></div>
+      <span class="step-tab active">
+        <span class="step-num">3</span>
+        AI Analysis
+      </span>
+      <div class="step-connector"></div>
+      <a href={`/admin/countries/${profile.id}/activate`} class="step-tab">
+        <span class="step-num">4</span>
+        Activate
+      </a>
+    </div>
+
+    <div class="analysis-split">
+      <section class="chat-panel panel-surface" aria-label="Analysis assistant chat">
+        <div class="panel-head">
+          <h2>Assistant</h2>
+          <p>
+            Discuss uploaded pricing and regulatory documents. Each reply can include structured rule
+            extractions; they appear as editable fields on the right.
+          </p>
+        </div>
+        <div id="chat-messages" class="chat-messages">
+          <div class="chat-bubble assistant">
+            <div class="bubble-role">Assistant</div>
+            <p style="margin:0">
+              I am ready to help refine transaction rules for <strong>{profile.country.name}</strong> /
+              <strong>{profile.provider.name}</strong>. Ask a question or describe a document scenario,
+              and I will propose extractions you can review in the panel on the right.
+            </p>
+          </div>
+        </div>
+        <form id="chat-form" class="chat-input-row">
+          <label for="chat-input" class="visually-hidden">Message</label>
+          <textarea
+            id="chat-input"
+            name="message"
+            rows="2"
+            placeholder="e.g. How should we count PA transactions for issued e-invoices?"
+            autocomplete="off"
+          ></textarea>
+          <button type="submit" class="btn-send" id="chat-send">Send</button>
+        </form>
+      </section>
+
+      <section class="rules-panel panel-surface" aria-label="Extracted rules">
+        <div class="panel-head">
+          <h2>Extracted rules</h2>
+          <p>
+            {rulesError
+              ? `Could not load rules: ${rulesError}`
+              : transactionRules.length > 0
+                ? `${transactionRules.length} rule${transactionRules.length === 1 ? '' : 's'} extracted (${proposedRules.length} proposed, ${approvedRules.length} approved). Edit fields inline and click "Update rules" to save.`
+                : 'No rules extracted yet. Run document analysis to extract rules from uploaded documents.'}
+          </p>
+        </div>
+        <div class="rules-scroll">
+          <ExtractedRulesPanel
+            client:only="react"
+            initialRules={transactionRules}
+            profileId={wizardCalculationProfileId}
+          />
+        </div>
+      </section>
+    </div>
+
+    <div class="analysis-footer">
+      <a href={`/admin/countries/${profile.id}/documents`} class="btn-secondary">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M19 12H5M12 19l-7-7 7-7"/>
+        </svg>
+        Back to Documents
+      </a>
+      <div class="analysis-footer-right">
+        {fullAnalysisHref && (
+          <a href={fullAnalysisHref} class="btn-primary-link">
+            Open full analysis review
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M5 12h14M12 5l7 7-7 7"/>
+            </svg>
+          </a>
+        )}
+        <a
+          href={`/admin/countries/${profile.id}/activate`}
+          class="btn-approve-analysis"
+        >
+          Go to Activation
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M5 12h14M12 5l7 7-7 7"/>
+          </svg>
+        </a>
+      </div>
+    </div>
+  </div>
+</AdminLayout>
+
+<style is:global>
+  .page-admin-country-ai-analysis .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+</style>
+
+<script>
+  import { initAdminCountryAiAnalysisChat } from '../../../../scripts/admin-country-ai-analysis-chat';
+  initAdminCountryAiAnalysisChat();
+</script>

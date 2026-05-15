@@ -174,12 +174,6 @@ const summaryListGenerateAuth =
           : 'Your saved PA plan calculations.'}
       </p>
     </div>
-    <a href="/countries" class="btn-new">
-      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-      </svg>
-      New Calculation
-    </a>
   </div>
 
   <!-- Stats row -->
@@ -298,7 +292,7 @@ const summaryListGenerateAuth =
                     <button
                       type="button"
                       class="btn-icon js-export-scenario"
-                      title="Download scenario (JSON)"
+                      title="Download PDF"
                       data-scenario-id={s.id}
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -363,41 +357,41 @@ const summaryListGenerateAuth =
   </div>
 </UserLayout>
 
-<script define:vars={{ paApiBaseForClient, summaryListGenerateAuth }}>
-  const tabs   = document.querySelectorAll<HTMLButtonElement>('.ftab');
-  const rows   = document.querySelectorAll<HTMLTableRowElement>('#scenarios-table tbody tr');
-  const search = document.getElementById('search-input') as HTMLInputElement | null;
+<script define:vars={{ paApiBaseForClient, summaryListGenerateAuth }} is:inline>
+  const tabs = document.querySelectorAll('.ftab');
+  const rows = document.querySelectorAll('#scenarios-table tbody tr');
+  const search = document.getElementById('search-input');
 
   let activeFilter = 'all';
-  let searchQuery  = '';
+  let searchQuery = '';
 
   function applyFilters() {
-    rows.forEach(row => {
-      const sumAttr   = row.dataset.summary ?? '';
-      const term      = row.dataset.search ?? '';
-      const matchF    = activeFilter === 'all' || sumAttr === activeFilter;
-      const matchS    = term.includes(searchQuery);
+    rows.forEach((row) => {
+      const sumAttr = row.dataset.summary ?? '';
+      const term = row.dataset.search ?? '';
+      const matchF = activeFilter === 'all' || sumAttr === activeFilter;
+      const matchS = term.includes(searchQuery);
       row.style.display = matchF && matchS ? '' : 'none';
     });
   }
 
-  tabs.forEach(tab => {
+  tabs.forEach((tab) => {
     tab.addEventListener('click', () => {
-      tabs.forEach(t => t.classList.remove('active'));
+      tabs.forEach((t) => t.classList.remove('active'));
       tab.classList.add('active');
       activeFilter = tab.dataset.filter ?? 'all';
       applyFilters();
     });
   });
 
-  if (search) {
+  if (search && 'value' in search) {
     search.addEventListener('input', () => {
       searchQuery = search.value.toLowerCase();
       applyFilters();
     });
   }
 
-  function planAdvisorScenarioGenerateSummaryUrl(scenarioId: string): string | null {
+  function planAdvisorScenarioGenerateSummaryUrl(scenarioId) {
     const base = paApiBaseForClient.trim().replace(/\/$/, '');
     if (!base) return null;
     const b = base.replace(/\b0\.0\.0\.0\b/g, '127.0.0.1');
@@ -406,13 +400,19 @@ const summaryListGenerateAuth =
     return `${b}/api${suffix}`;
   }
 
-  document.querySelectorAll<HTMLButtonElement>('.js-gen-summary').forEach((btn) => {
+  document.querySelectorAll('.js-gen-summary').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const id = btn.getAttribute('data-scenario-id');
       if (!id) return;
-      const auth = summaryListGenerateAuth as { bearer: string; apiKey: string } | null;
+      const auth = summaryListGenerateAuth;
       const url = planAdvisorScenarioGenerateSummaryUrl(id);
-      if (!auth || !url) {
+      if (
+        !auth ||
+        typeof auth !== 'object' ||
+        !('bearer' in auth) ||
+        typeof auth.bearer !== 'string' ||
+        !url
+      ) {
         alert('Configure Supabase + API_BASE_URL and load live scenarios to generate summaries.');
         return;
       }
@@ -420,7 +420,7 @@ const summaryListGenerateAuth =
       const prev = btn.textContent;
       btn.textContent = '…';
       try {
-        const headers: Record<string, string> = {
+        const headers = {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${auth.bearer}`,
         };
@@ -432,7 +432,7 @@ const summaryListGenerateAuth =
           body: '{}',
           mode: 'cors',
         });
-        const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+        const data = await res.json().catch(() => ({}));
         if (!res.ok) {
           const msg =
             typeof data.message === 'string'
@@ -456,54 +456,61 @@ const summaryListGenerateAuth =
     });
   });
 
-  async function downloadScenarioJson(id: string) {
-    const res = await fetch(
-      `/api/pa/scenarios/${encodeURIComponent(id)}/export?format=json`,
-      { credentials: 'same-origin' },
-    );
-    if (!res.ok) {
-      const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-      const msg =
-        typeof data.message === 'string'
-          ? data.message
-          : typeof data.error === 'string'
-            ? data.error
-            : `HTTP ${res.status}`;
-      alert(`Download failed: ${msg}`);
-      return;
+  async function downloadScenarioPdf(id, btn) {
+    const prev = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '…';
+    try {
+      const res = await fetch(
+        `/api/pa/scenarios/${encodeURIComponent(id)}/export-pdf`,
+        { credentials: 'same-origin' },
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        const msg =
+          typeof data.message === 'string'
+            ? data.message
+            : typeof data.error === 'string'
+              ? data.error
+              : `HTTP ${res.status}`;
+        alert(`PDF download failed: ${msg}`);
+        return;
+      }
+      const blob = await res.blob();
+      const cd = res.headers.get('Content-Disposition');
+      let safeName = `scenario-${id.slice(0, 8)}.pdf`;
+      const quoted = cd && /filename="([^"]+)"/.exec(cd);
+      if (quoted) safeName = quoted[1] ?? safeName;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = safeName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      alert('PDF download failed. Check your connection and try again.');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = prev;
     }
-    const blob = await res.blob();
-    const cd = res.headers.get('Content-Disposition');
-    let safeName = `scenario-${id.slice(0, 8)}.json`;
-    const quoted = cd && /filename="([^"]+)"/.exec(cd);
-    if (quoted) safeName = quoted[1] ?? safeName;
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = safeName;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
   }
 
-  document.querySelectorAll<HTMLButtonElement>('.js-export-scenario').forEach((btn) => {
+  document.querySelectorAll('.js-export-scenario').forEach((btn) => {
     btn.addEventListener('click', () => {
       const id = btn.getAttribute('data-scenario-id');
       if (!id) return;
-      void downloadScenarioJson(id);
+      void downloadScenarioPdf(id, btn);
     });
   });
 
-  document.querySelectorAll<HTMLButtonElement>('.js-delete-scenario').forEach((btn) => {
+  document.querySelectorAll('.js-delete-scenario').forEach((btn) => {
     btn.addEventListener('click', async () => {
       const id = btn.getAttribute('data-scenario-id');
       if (!id) return;
       const clientName = btn.getAttribute('data-client-name') ?? undefined;
-      const w = window as Window & {
-        paScenarioDeleteConfirm?: (opts?: { clientName?: string }) => Promise<boolean>;
-        paScenarioDialogAlert?: (message: string) => Promise<void>;
-      };
+      const w = window;
       const ok =
         typeof w.paScenarioDeleteConfirm === 'function'
           ? await w.paScenarioDeleteConfirm({ clientName })
@@ -519,7 +526,7 @@ const summaryListGenerateAuth =
           window.location.reload();
           return;
         }
-        const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+        const data = await res.json().catch(() => ({}));
         const msg =
           typeof data.message === 'string'
             ? data.message

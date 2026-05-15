@@ -13,6 +13,10 @@ import tailwindcss from "@tailwindcss/vite";
  */
 const netlifyVitePluginSkipped = process.env.NETLIFY_DEV === "1";
 
+/** React 19's production `jsx-dev-runtime` sets `jsxDEV` to `undefined`; if Vite prebundles deps with `NODE_ENV=production` while JSX is still emitted as `jsxDEV`, hydration throws. Keep dependency optimize + app transforms aligned. */
+const viteNodeEnv =
+  process.env.NODE_ENV === "production" ? "production" : "development";
+
 export default defineConfig({
   output: "server",
   integrations: [react()],
@@ -26,5 +30,20 @@ export default defineConfig({
 
   vite: {
     plugins: [tailwindcss()],
+    resolve: {
+      dedupe: ["react", "react-dom"],
+    },
+    esbuild: {
+      jsx: "automatic",
+      jsxDev: viteNodeEnv !== "production",
+    },
+    optimizeDeps: {
+      esbuildOptions: {
+        jsx: "automatic",
+        define: {
+          "process.env.NODE_ENV": JSON.stringify(viteNodeEnv),
+        },
+      },
+    },
   },
 });

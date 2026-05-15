@@ -1,0 +1,528 @@
+/* Admin calculator page — /admin/calculator/[profile_id] */
+.page-admin-calculator {
+
+  /* ── Profile header ── */
+  .admin-calc-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius, 10px);
+    padding: 1rem 1.25rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .admin-calc-header-info {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+  }
+
+  .admin-calc-code {
+    font-size: 0.8rem;
+    font-weight: 800;
+    color: var(--color-admin);
+    background: color-mix(in srgb, var(--color-admin) 10%, transparent);
+    border-radius: 7px;
+    padding: 0.35rem 0.6rem;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+  }
+
+  .admin-calc-title {
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: var(--color-text);
+    margin: 0 0 0.1rem;
+  }
+
+  .admin-calc-meta {
+    font-size: 0.74rem;
+    color: var(--color-text-muted);
+    margin: 0;
+  }
+
+  .admin-calc-header-right {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .admin-calc-status {
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0.2rem 0.55rem;
+    border-radius: 100px;
+    background: color-mix(in srgb, #22c55e 12%, transparent);
+    color: #15803d;
+  }
+
+  .admin-calc-status.status-draft {
+    background: color-mix(in srgb, #f59e0b 12%, transparent);
+    color: #b45309;
+  }
+
+  .admin-calc-status.status-pending_approval {
+    background: color-mix(in srgb, #a78bfa 12%, transparent);
+    color: #7c3aed;
+  }
+
+  .admin-calc-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.78rem;
+    color: var(--color-text-muted);
+    text-decoration: none;
+    transition: color 0.12s;
+  }
+
+  .admin-calc-back:hover { color: var(--color-text); }
+
+  .admin-calc-fetch-error,
+  .admin-calc-load-error {
+    padding: 0.85rem 1rem;
+    margin-bottom: 1rem;
+    border-radius: 8px;
+    background: color-mix(in srgb, #ef4444 8%, transparent);
+    border: 1px solid color-mix(in srgb, #ef4444 25%, transparent);
+    color: #b91c1c;
+    font-size: 0.83rem;
+  }
+
+  .admin-calc-loading {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    font-size: 0.84rem;
+    color: var(--color-text-muted);
+    padding: 2.5rem 0;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .animate-spin { animation: spin 0.8s linear infinite; }
+
+  /* ── Main layout ── */
+  /* Left col (col 1): form spans both rows.
+     Right col (col 2): row 1 = plans, row 2 = breakdown. */
+  .admin-calc-layout {
+    display: grid;
+    grid-template-columns: 380px 1fr;
+    grid-template-rows: auto 1fr;
+    gap: 1.25rem;
+    align-items: start;
+  }
+
+  .admin-calc-form-panel    { grid-column: 1; grid-row: 1 / 3; }
+  .admin-plans-section      { grid-column: 2; grid-row: 1; }
+  .admin-calc-results-panel { grid-column: 2; grid-row: 2; }
+
+  @media (max-width: 900px) {
+    .admin-calc-layout {
+      grid-template-columns: 1fr;
+      grid-template-rows: auto;
+    }
+    .admin-calc-form-panel,
+    .admin-plans-section,
+    .admin-calc-results-panel {
+      grid-column: 1;
+      grid-row: auto;
+    }
+  }
+
+  /* ── Form panel ── */
+  .admin-calc-form-panel {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius, 10px);
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+  }
+
+  .admin-calc-section-head h2 {
+    font-size: 0.9rem;
+    font-weight: 700;
+    margin: 0 0 0.2rem;
+    color: var(--color-text);
+  }
+
+  .admin-calc-section-head p {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    margin: 0;
+    line-height: 1.5;
+  }
+
+  /* ── Rule input cards ── */
+  .admin-rules-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .admin-rule-card {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-rows: auto auto auto;
+    gap: 0.15rem 0.5rem;
+    align-items: center;
+    padding: 0.6rem 0.75rem;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: var(--color-bg);
+  }
+
+  .admin-rule-label {
+    font-size: 0.77rem;
+    font-weight: 600;
+    color: var(--color-text);
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .admin-rule-hint {
+    font-size: 0.67rem;
+    color: var(--color-text-muted);
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .admin-number-wrap {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    grid-column: 2;
+    grid-row: 1 / 3;
+  }
+
+  .admin-number-input {
+    width: 100px;
+    font-size: 0.82rem;
+    padding: 0.38rem 0.5rem;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    background: var(--color-surface);
+    color: var(--color-text);
+    font-family: inherit;
+    text-align: right;
+  }
+
+  .admin-number-input:focus {
+    outline: none;
+    border-color: var(--color-admin);
+  }
+
+  .admin-unit {
+    font-size: 0.68rem;
+    color: var(--color-text-muted);
+    white-space: nowrap;
+  }
+
+  .admin-rule-pa-preview {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    font-size: 0.68rem;
+    color: var(--color-admin, #6366f1);
+    font-weight: 600;
+  }
+
+  /* ── Running total bar ── */
+  .admin-calc-total-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.6rem 0.75rem;
+    background: color-mix(in srgb, var(--color-admin, #6366f1) 6%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-admin, #6366f1) 20%, transparent);
+    border-radius: 8px;
+  }
+
+  .admin-calc-total-label {
+    font-size: 0.74rem;
+    color: var(--color-text-muted);
+    font-weight: 500;
+  }
+
+  .admin-calc-total-val {
+    font-size: 1rem;
+    font-weight: 800;
+    color: var(--color-admin, #6366f1);
+    letter-spacing: -0.02em;
+  }
+
+  .admin-calc-live-hint {
+    font-size: 0.72rem;
+    color: var(--color-text-muted);
+    margin-top: -0.3rem;
+    padding-left: 0.25rem;
+  }
+
+  /* ── Results panel ── */
+  .admin-calc-results-panel {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius, 10px);
+    padding: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+
+  .admin-results-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.85rem;
+    min-height: 180px;
+    color: var(--color-text-muted);
+    text-align: center;
+  }
+
+  .admin-results-placeholder p {
+    font-size: 0.82rem;
+    max-width: 280px;
+    line-height: 1.55;
+    margin: 0;
+  }
+
+  .admin-result-block h3 {
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-text-muted);
+    margin: 0 0 0.6rem;
+  }
+
+  .admin-result-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+  }
+
+  .admin-result-table th {
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-text-muted);
+    text-align: left;
+    padding: 0.4rem 0.5rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .admin-result-table th.num,
+  .admin-result-table td.num { text-align: right; }
+
+  .admin-result-table td {
+    padding: 0.42rem 0.5rem;
+    border-bottom: 1px solid color-mix(in srgb, var(--color-border) 50%, transparent);
+    vertical-align: middle;
+  }
+
+  .breakdown-text {
+    display: block;
+    font-weight: 500;
+    color: var(--color-text);
+  }
+
+  .dir-mini {
+    display: inline-block;
+    font-size: 0.62rem;
+    font-weight: 700;
+    padding: 0.08rem 0.35rem;
+    border-radius: 4px;
+    margin-top: 0.15rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .dir-issued  { background: color-mix(in srgb, #22c55e 12%, transparent); color: #15803d; }
+  .dir-received { background: color-mix(in srgb, #6366f1 12%, transparent); color: #4338ca; }
+
+  .muted { color: var(--color-text-muted); }
+  .strong, .total-val { font-weight: 700; }
+
+  .total-row td { border-top: 2px solid var(--color-border); font-weight: 700; }
+  .total-label { color: var(--color-text-muted); font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.04em; }
+  .total-val { color: var(--color-admin, #6366f1); font-size: 0.95rem; }
+
+  /* Plan comparison rows */
+  .plan-row td { color: var(--color-text-muted); }
+  .plan-recommended td { background: color-mix(in srgb, #22c55e 5%, transparent); }
+
+  .plan-name-cell {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .plan-name { font-weight: 600; color: var(--color-text); }
+  .plan-name.rec { color: #15803d; }
+
+  .rec-badge {
+    font-size: 0.62rem;
+    font-weight: 700;
+    background: color-mix(in srgb, #22c55e 15%, transparent);
+    color: #15803d;
+    padding: 0.12rem 0.4rem;
+    border-radius: 4px;
+    white-space: nowrap;
+  }
+
+  .rec-cost { color: #15803d; }
+
+  /* ── Plans grid ── */
+  .admin-plans-section {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius, 10px);
+    padding: 1.25rem;
+  }
+
+  .admin-plans-title {
+    font-size: 0.88rem;
+    font-weight: 700;
+    margin: 0 0 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--color-text);
+  }
+
+  .admin-plans-count {
+    font-size: 0.68rem;
+    font-weight: 600;
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    color: var(--color-text-muted);
+    padding: 0.1rem 0.45rem;
+    border-radius: 100px;
+  }
+
+  .admin-plans-empty {
+    font-size: 0.82rem;
+    color: var(--color-text-muted);
+    font-style: italic;
+  }
+
+  .admin-plans-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 0.75rem;
+  }
+
+  .admin-plan-card {
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    padding: 0.85rem 0.9rem;
+    background: var(--color-bg);
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    position: relative;
+    transition: border-color 0.12s;
+  }
+
+  .admin-plan-recommended {
+    border-color: #22c55e;
+    background: color-mix(in srgb, #22c55e 4%, var(--color-bg));
+  }
+
+  .admin-plan-rec-badge {
+    font-size: 0.62rem;
+    font-weight: 700;
+    color: #15803d;
+    background: color-mix(in srgb, #22c55e 12%, transparent);
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    align-self: flex-start;
+  }
+
+  .admin-plan-name {
+    font-size: 0.92rem;
+    font-weight: 800;
+    color: var(--color-text);
+    letter-spacing: -0.01em;
+  }
+
+  .admin-plan-included {
+    font-size: 0.72rem;
+    color: var(--color-text-muted);
+    font-weight: 500;
+  }
+
+  .admin-plan-fees {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    margin-top: 0.25rem;
+    border-top: 1px solid var(--color-border);
+    padding-top: 0.4rem;
+  }
+
+  .admin-plan-fee-line {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.72rem;
+    color: var(--color-text-muted);
+  }
+
+  .admin-plan-fee-line strong {
+    color: var(--color-text);
+    font-weight: 700;
+  }
+
+  .admin-plan-estimate {
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--color-admin, #6366f1);
+    margin-top: 0.3rem;
+    border-top: 1px solid var(--color-border);
+    padding-top: 0.35rem;
+  }
+
+  .admin-plan-extra-note {
+    font-size: 0.65rem;
+    font-weight: 500;
+    color: var(--color-text-muted);
+  }
+
+  .admin-plan-confidence {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-top: 0.2rem;
+  }
+
+  .conf-dot {
+    font-size: 0.62rem;
+    color: var(--color-text-muted);
+    text-transform: capitalize;
+  }
+
+  .plan-status-badge {
+    font-size: 0.6rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0.1rem 0.35rem;
+    border-radius: 4px;
+    background: color-mix(in srgb, #f59e0b 12%, transparent);
+    color: #b45309;
+  }
+
+  .plan-status-badge.status-approved {
+    background: color-mix(in srgb, #22c55e 12%, transparent);
+    color: #15803d;
+  }
+
+}

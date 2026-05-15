@@ -39,7 +39,8 @@ const currencies = ['EUR', 'GBP', 'PLN', 'RON'];
     { label: 'New Country / Provider' },
   ]}
 >
-  <div class="page-admin-countries-new form-layout">
+  <div class="page-admin-countries-new">
+  <div class="form-layout">
     <!-- Main form -->
     <div class="form-card">
       <div class="card-header">
@@ -178,13 +179,20 @@ const currencies = ['EUR', 'GBP', 'PLN', 'RON'];
       </div>
     </aside>
   </div>
+  </div>
 </AdminLayout>
 
 <script>
-  // Show/hide custom provider fields
+  import {
+    makeDraftProfileRouteId,
+    saveCountryWizardDraft,
+    type CountryWizardDraft,
+  } from '../../../lib/country-wizard-draft';
+
   const providerSelect = document.getElementById('provider') as HTMLSelectElement;
   const customWrap = document.getElementById('custom-provider-wrap')!;
   const customTypeWrap = document.getElementById('custom-type-wrap')!;
+  const submitBtn = document.getElementById('submit-btn') as HTMLButtonElement;
 
   providerSelect.addEventListener('change', () => {
     const isCustom = providerSelect.value === '__custom__';
@@ -192,13 +200,123 @@ const currencies = ['EUR', 'GBP', 'PLN', 'RON'];
     customTypeWrap.style.display = isCustom ? '' : 'none';
   });
 
-  // Form submit — wired up later to POST /admin/countries via App 2 API
-  document.getElementById('new-country-form')!.addEventListener('submit', (e) => {
+  function inferProviderType(optionText: string): 'PA' | 'PDP' | 'other' {
+    const m = optionText.match(/—\s*(PA|PDP)\s*$/);
+    if (m?.[1] === 'PA' || m?.[1] === 'PDP') return m[1];
+    return 'PA';
+  }
+
+  document.getElementById('new-country-form')!.addEventListener('submit', async (e) => {
     e.preventDefault();
-    // TODO: POST to API_BASE_URL/admin/countries
-    // On success: redirect to /admin/countries/{newId}/setup
-    const demoId = 'profile-new-demo';
-    window.location.href = `/admin/countries/${demoId}/setup`;
+
+    const countrySelect = document.getElementById('country_code') as HTMLSelectElement;
+    const currencySelect = document.getElementById('currency') as HTMLSelectElement;
+    const versionInput = document.getElementById('version') as HTMLInputElement;
+    const calcInput = document.getElementById('calculation_basis') as HTMLInputElement;
+    const notesInput = document.getElementById('notes') as HTMLTextAreaElement;
+    const providerTypeSelect = document.getElementById('provider_type') as HTMLSelectElement;
+    const providerCustomInput = document.getElementById('provider_custom') as HTMLInputElement;
+
+    const countryCode = countrySelect.value.trim();
+    const countryLabel = countrySelect.options[countrySelect.selectedIndex]?.text ?? countryCode;
+
+    let providerName: string;
+    let providerType: 'PA' | 'PDP' | 'other';
+
+    if (providerSelect.value === '__custom__') {
+      providerName = providerCustomInput.value.trim() || 'Custom provider';
+      const t = providerTypeSelect.value;
+      providerType = t === 'PDP' ? 'PDP' : t === 'other' ? 'other' : 'PA';
+    } else {
+      const opt = providerSelect.options[providerSelect.selectedIndex]?.text ?? '';
+      providerName = providerSelect.value.trim();
+      providerType = inferProviderType(opt);
+    }
+
+    const currency = currencySelect.value;
+    const version = versionInput.value.trim() || 'v1.0';
+    const calculationBasis = calcInput.value.trim() || 'PA transactions';
+    const notes = notesInput.value.trim();
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Creating profile…';
+
+    // Create profile on Railway (auto-creates country/provider if needed)
+    let apiProfileId: string | undefined;
+    let apiCountryId: string | undefined;
+    let apiProviderId: string | undefined;
+
+    try {
+      console.log('[New Country] Creating profile with auto-create for country/provider...');
+      const res = await fetch('/api/pa/admin/profiles/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          country_code: countryCode,
+          country_name: countryLabel.split('(')[0]?.trim() || countryLabel,
+          provider_name: providerName,
+          provider_type: providerType,
+          version,
+          currency,
+          calculation_basis: calculationBasis,
+          notes,
+        }),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as { 
+          id: string; 
+          country_id: string; 
+          provider_id: string;
+          reused?: boolean;
+          message?: string;
+        };
+        apiProfileId = data.id;
+        apiCountryId = data.country_id;
+        apiProviderId = data.provider_id;
+        console.log('[New Country] Profile on Railway:', {
+          profile_id: apiProfileId,
+          country_id: apiCountryId,
+          provider_id: apiProviderId,
+          reused: data.reused || false,
+          message: data.message,
+        });
+      } else {
+        const errorText = await res.text();
+        console.warn('[New Country] Profile creation failed:', res.status, errorText);
+      }
+    } catch (err) {
+      console.error('[New Country] Profile creation error:', err);
+      // Continue with local draft only
+    }
+
+    // Use the real profile ID from API if available, otherwise generate a draft ID
+    const profileRouteId = apiProfileId || makeDraftProfileRouteId();
+
+    const draft: CountryWizardDraft = {
+      profileRouteId,
+      countryCode,
+      countryName: countryLabel.split('(')[0]?.trim() || countryLabel,
+      providerName,
+      providerType,
+      currency,
+      version,
+      calculationBasis,
+      notes,
+      savedAt: new Date().toISOString(),
+      apiProfileId,
+      apiCountryId,
+      apiProviderId,
+    };
+
+    console.log('[New Country] Saving draft to sessionStorage:', {
+      profileRouteId: draft.profileRouteId,
+      hasApiUUIDs: Boolean(apiProfileId && apiCountryId && apiProviderId),
+    });
+
+    saveCountryWizardDraft(draft);
+
+    window.location.href = `/admin/countries/${encodeURIComponent(profileRouteId)}/setup`;
   });
 </script>
 

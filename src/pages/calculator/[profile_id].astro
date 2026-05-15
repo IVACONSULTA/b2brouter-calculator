@@ -44,6 +44,7 @@ type ApiProfile = {
     obligation?: string;
     operation_group?: string;
     pa_transactions_per_item: number;
+    index_ui?: number | null;
   }>;
 };
 
@@ -102,6 +103,8 @@ if (liveApi && paToken && profile_id) {
     }
   }
 
+  console.log('clientSummaryFromApi', clientSummaryFromApi);
+
   const loaded = await paFetchJson<ApiProfile>(`/calculator/profile/${profile_id}`, paToken);
   if (loaded.ok && loaded.data) {
     useProxyCalculate = true;
@@ -128,6 +131,7 @@ if (liveApi && paToken && profile_id) {
       obligation: inp.obligation ?? '—',
       operation_group: String(inp.operation_group ?? '').trim(),
       pa_transactions_per_item: Number(inp.pa_transactions_per_item ?? 0),
+      index_ui: inp.index_ui ?? null,
       placeholder: 0,
     }));
   } else {
@@ -207,7 +211,7 @@ const showSummaryBtn =
         </p>
       </div>
 
-      <form id="calc-form" data-profile-id={profile.id} data-use-proxy={useProxyCalculate ? '1' : '0'}>
+      <form id="calc-form" data-profile-id={profile.id} data-use-proxy={useProxyCalculate ? '1' : '0'} data-show-summary={showSummaryBtn ? '1' : '0'}>
         <div class="form-field">
           <label class="field-label" for="client-name">Client Name <span class="req">*</span></label>
           <input
@@ -228,22 +232,15 @@ const showSummaryBtn =
           <h3 class="rules-heading">Transaction inputs</h3>
           <div class="rules-grid">
             {displayGroups.map((g, idx) => {
-              const lead = g.rules[0];
+              // Get unique obligations in this group
+              const uniqueObligations = [...new Set(g.rules.map(r => r.obligation))];
+              
               return (
                 <div
                   class="rule-input-card"
                   data-group-keys={g.input_keys.join(',')}
                   data-display-label={g.displayLabel}
                 >
-                  <div class="rule-card-top">
-                    <div class="rule-badges">
-                      <span class={`dir-badge ${lead.direction === 'Issued' ? 'dir-issued' : 'dir-received'}`}>
-                        {lead.direction}
-                      </span>
-                      <span class="obl-badge">{lead.obligation}</span>
-                    </div>
-                    <span class="mult-hint">{g.multiplierHint}</span>
-                  </div>
                   <label class="field-label" for={`input-group-${idx}`}>
                     {g.displayLabel}
                   </label>
@@ -466,6 +463,19 @@ const showSummaryBtn =
         }
         const sid = typeof data.scenario_id === 'string' ? data.scenario_id : null;
         if (sid) {
+          if (form.getAttribute('data-show-summary') === '1') {
+            if (btn) btn.textContent = 'Generating summary…';
+            try {
+              await fetch(`/api/pa/scenarios/${encodeURIComponent(sid)}/generate-summary`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: '{}',
+              });
+            } catch {
+              // summary failure is non-blocking — navigate anyway
+            }
+          }
           window.location.href = `/scenarios/${sid}`;
           return;
         }
