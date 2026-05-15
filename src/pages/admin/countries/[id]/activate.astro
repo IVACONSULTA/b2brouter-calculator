@@ -157,13 +157,13 @@ const currency = profile.currency ?? 'EUR';
                   <span class={`rule-status-badge status-${rule.status}`}>{rule.status}</span>
                 </div>
                 <div class="rule-fields">
-                  <div class="rule-field">
-                    <span class="field-label">Direction</span>
-                    <span class="field-value">{rule.direction || '—'}</span>
+                  <div class="rule-field full-width">
+                    <span class="field-label">Input key</span>
+                    <span class="field-value mono">{rule.input_key}</span>
                   </div>
-                  <div class="rule-field">
-                    <span class="field-label">Obligation</span>
-                    <span class="field-value">{rule.obligation || '—'}</span>
+                  <div class="rule-field full-width">
+                    <span class="field-label">Label</span>
+                    <span class="field-value">{rule.label}</span>
                   </div>
                   <div class="rule-field">
                     <span class="field-label">Operation Group</span>
@@ -173,21 +173,7 @@ const currency = profile.currency ?? 'EUR';
                     <span class="field-label">PA tx per item</span>
                     <span class="field-value">×{rule.pa_transactions_per_item}</span>
                   </div>
-                  {rule.confidence && (
-                    <div class="rule-field">
-                      <span class="field-label">Confidence</span>
-                      <span class="field-value">
-                        <span class={`conf-dot conf-${rule.confidence}`}>{rule.confidence}</span>
-                      </span>
-                    </div>
-                  )}
                 </div>
-                {rule.reason && (
-                  <div class="rule-reason">
-                    <span class="field-label">Reason</span>
-                    <p class="reason-text">{rule.reason}</p>
-                  </div>
-                )}
               </div>
             ))}
           </div>
@@ -225,12 +211,82 @@ const currency = profile.currency ?? 'EUR';
         </svg>
         Back to AI Analysis
       </a>
-      <a href={`/admin/calculator/${routeProfileId}`} class="btn-primary-link">
-        Test in Calculator
-        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <button
+        type="button"
+        id="btn-activate-profile"
+        class="btn-activate"
+        data-profile-id={routeProfileId}
+        data-profile-slug={profile.id}
+      >
+        <span class="btn-text">Activate</span>
+        <span class="btn-spinner" style="display:none;">
+          <svg class="animate-spin" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+          </svg>
+        </span>
+        <svg class="btn-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M5 12h14M12 5l7 7-7 7"/>
         </svg>
-      </a>
+      </button>
     </div>
   </div>
 </AdminLayout>
+
+<script define:vars={{ profile_id: routeProfileId, profile_slug: profile.id }}>
+  document.addEventListener('DOMContentLoaded', () => {
+    const btn = document.getElementById('btn-activate-profile');
+    if (!btn) return;
+
+    btn.addEventListener('click', async () => {
+      const profileId = btn.dataset.profileId;
+      const profileSlug = btn.dataset.profileSlug;
+      const textSpan = btn.querySelector('.btn-text');
+      const spinner = btn.querySelector('.btn-spinner');
+      const icon = btn.querySelector('.btn-icon');
+
+      // Loading state
+      btn.disabled = true;
+      textSpan.textContent = 'Activating…';
+      spinner.style.display = 'inline-flex';
+      icon.style.display = 'none';
+
+      try {
+        const res = await fetch('/api/pa/admin/wizard/approve-analysis', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ profile_id: profileId, profile_slug: profileSlug }),
+        });
+
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+          const msg = data.error || data.message || `HTTP ${res.status}`;
+          alert(`Activation failed: ${msg}`);
+          btn.disabled = false;
+          textSpan.textContent = 'Activate';
+          spinner.style.display = 'none';
+          icon.style.display = 'inline';
+          return;
+        }
+
+        // Success
+        textSpan.textContent = 'Activated ✓';
+        spinner.style.display = 'none';
+        btn.classList.add('btn-activated');
+
+        // Redirect to calculator or show success
+        alert(`Profile activated successfully!\nApproved ${data.approved_rules || 0} rules and ${data.approved_plans || 0} plans.`);
+
+        // Navigate to calculator
+        window.location.href = `/admin/calculator/${profileId}`;
+      } catch (err) {
+        alert(`Activation failed: ${err instanceof Error ? err.message : 'Network error'}`);
+        btn.disabled = false;
+        textSpan.textContent = 'Activate';
+        spinner.style.display = 'none';
+        icon.style.display = 'inline';
+      }
+    });
+  });
+</script>
