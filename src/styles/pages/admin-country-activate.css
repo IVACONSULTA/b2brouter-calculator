@@ -1,0 +1,565 @@
+/* Step 4 — Activate page */
+.page-admin-country-activate {
+  /* Step bar (shared style with other wizard pages) */
+  .step-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1.25rem;
+    padding: 0.75rem 1rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius, 10px);
+  }
+
+  .step-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    text-decoration: none;
+    padding: 0.35rem 0.6rem;
+    border-radius: 6px;
+    transition: all 0.12s;
+  }
+
+  .step-tab:hover:not(.active):not(.disabled) {
+    color: var(--color-text);
+    background: var(--color-bg);
+  }
+
+  .step-tab.active {
+    color: var(--color-admin);
+    background: color-mix(in srgb, var(--color-admin) 8%, transparent);
+  }
+
+  .step-tab.disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .step-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.4rem;
+    height: 1.4rem;
+    font-size: 0.7rem;
+    font-weight: 700;
+    border-radius: 100px;
+    background: var(--color-bg);
+    color: var(--color-text-muted);
+  }
+
+  .step-num.done {
+    background: var(--color-success);
+    color: #fff;
+  }
+
+  .step-connector {
+    flex: 0 0 1.25rem;
+    height: 1px;
+    background: var(--color-border);
+    margin: 0 0.25rem;
+  }
+
+  /* Main layout */
+  .activate-layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.25rem;
+    align-items: start;
+  }
+
+  @media (max-width: 900px) {
+    .activate-layout {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  /* Panel styling */
+  .panel-surface {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius, 10px);
+    padding: 1.25rem;
+  }
+
+  .panel-head {
+    margin-bottom: 1rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .panel-head h2 {
+    font-size: 0.95rem;
+    font-weight: 700;
+    margin: 0 0 0.25rem;
+    color: var(--color-text);
+  }
+
+  .panel-head p {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    margin: 0;
+  }
+
+  .panel-error {
+    padding: 0.75rem;
+    background: color-mix(in srgb, #ef4444 8%, transparent);
+    border: 1px solid color-mix(in srgb, #ef4444 25%, transparent);
+    border-radius: 6px;
+    color: #b91c1c;
+    font-size: 0.8rem;
+  }
+
+  .panel-empty {
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+    font-style: italic;
+    padding: 1rem 0;
+  }
+
+  /* Rules panel (read-only) */
+  .rules-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    max-height: 600px;
+    overflow-y: auto;
+    padding-right: 0.5rem;
+  }
+
+  .rule-card {
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    padding: 0.85rem;
+    background: var(--color-bg);
+  }
+
+  .rule-card.readonly {
+    opacity: 0.95;
+  }
+
+  .rule-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.6rem;
+  }
+
+  .rule-input-key {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--color-text);
+  }
+
+  .rule-status-badge {
+    font-size: 0.62rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    background: color-mix(in srgb, #f59e0b 12%, transparent);
+    color: #b45309;
+  }
+
+  .rule-status-badge.status-approved {
+    background: color-mix(in srgb, #22c55e 12%, transparent);
+    color: #15803d;
+  }
+
+  .rule-fields {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.5rem 1rem;
+  }
+
+  .rule-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+
+  .field-label {
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-text-muted);
+  }
+
+  .field-value {
+    font-size: 0.78rem;
+    color: var(--color-text);
+  }
+
+  .conf-dot {
+    display: inline-block;
+    font-size: 0.6rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    padding: 0.1rem 0.35rem;
+    border-radius: 4px;
+  }
+
+  .conf-dot.conf-high {
+    background: color-mix(in srgb, #22c55e 15%, transparent);
+    color: #15803d;
+  }
+
+  .conf-dot.conf-medium {
+    background: color-mix(in srgb, #f59e0b 15%, transparent);
+    color: #b45309;
+  }
+
+  .conf-dot.conf-low {
+    background: color-mix(in srgb, #ef4444 15%, transparent);
+    color: #b91c1c;
+  }
+
+  .rule-reason {
+    margin-top: 0.6rem;
+    padding-top: 0.6rem;
+    border-top: 1px dashed var(--color-border);
+  }
+
+  .reason-text {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    margin: 0.25rem 0 0;
+    line-height: 1.5;
+  }
+
+  /* Footer */
+  .activate-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 1.25rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--color-border);
+  }
+
+  .btn-secondary,
+  .btn-primary-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 0.5rem 0.9rem;
+    border-radius: 6px;
+    text-decoration: none;
+    transition: all 0.12s;
+  }
+
+  .btn-secondary {
+    color: var(--color-text-muted);
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+  }
+
+  .btn-secondary:hover {
+    color: var(--color-text);
+    background: var(--color-surface);
+  }
+
+  .btn-primary-link {
+    color: #fff;
+    background: var(--color-admin, #6366f1);
+    border: none;
+  }
+
+  .btn-primary-link:hover {
+    opacity: 0.9;
+  }
+}
+
+/* Plans Manager Panel (React component styles) */
+.plans-manager {
+  .plans-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    max-height: 520px;
+    overflow-y: auto;
+    padding-right: 0.5rem;
+  }
+
+  .plans-empty {
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+    font-style: italic;
+    padding: 1rem 0;
+  }
+
+  .plan-card {
+    position: relative;
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    padding: 0.9rem;
+    background: var(--color-bg);
+    transition: border-color 0.12s, box-shadow 0.12s;
+  }
+
+  .plan-card.plan-dirty {
+    border-color: var(--color-admin, #6366f1);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-admin, #6366f1) 15%, transparent);
+  }
+
+  .plan-card.plan-saved {
+    border-color: #22c55e;
+    box-shadow: 0 0 0 2px color-mix(in srgb, #22c55e 15%, transparent);
+  }
+
+  .plan-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+  }
+
+  .plan-status-badge {
+    font-size: 0.62rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    background: color-mix(in srgb, #f59e0b 12%, transparent);
+    color: #b45309;
+  }
+
+  .plan-status-badge.status-approved {
+    background: color-mix(in srgb, #22c55e 12%, transparent);
+    color: #15803d;
+  }
+
+  .plan-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .plan-dirty-badge,
+  .plan-saved-badge,
+  .plan-saving-badge {
+    font-size: 0.62rem;
+    font-weight: 700;
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+  }
+
+  .plan-dirty-badge {
+    background: color-mix(in srgb, var(--color-admin, #6366f1) 15%, transparent);
+    color: var(--color-admin, #6366f1);
+  }
+
+  .plan-saved-badge {
+    background: color-mix(in srgb, #22c55e 15%, transparent);
+    color: #15803d;
+  }
+
+  .plan-saving-badge {
+    background: color-mix(in srgb, #f59e0b 15%, transparent);
+    color: #b45309;
+  }
+
+  .plan-delete-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.6rem;
+    height: 1.6rem;
+    font-size: 1rem;
+    font-weight: 700;
+    color: #ef4444;
+    background: color-mix(in srgb, #ef4444 8%, transparent);
+    border: 1px solid color-mix(in srgb, #ef4444 25%, transparent);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.12s;
+  }
+
+  .plan-delete-btn:hover:not(:disabled) {
+    background: color-mix(in srgb, #ef4444 15%, transparent);
+  }
+
+  .plan-delete-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* Delete confirmation overlay */
+  .plan-delete-overlay {
+    position: absolute;
+    inset: 0;
+    background: color-mix(in srgb, var(--color-surface) 95%, transparent);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+  }
+
+  .plan-delete-dialog {
+    text-align: center;
+    padding: 1rem;
+  }
+
+  .plan-delete-dialog p {
+    font-size: 0.85rem;
+    color: var(--color-text);
+    margin: 0 0 0.75rem;
+  }
+
+  .plan-delete-actions {
+    display: flex;
+    justify-content: center;
+    gap: 0.5rem;
+  }
+
+  .btn-cancel,
+  .btn-confirm-delete {
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.4rem 0.75rem;
+    border-radius: 5px;
+    cursor: pointer;
+    border: none;
+    transition: all 0.12s;
+  }
+
+  .btn-cancel {
+    color: var(--color-text-muted);
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+  }
+
+  .btn-cancel:hover {
+    color: var(--color-text);
+  }
+
+  .btn-confirm-delete {
+    color: #fff;
+    background: #ef4444;
+  }
+
+  .btn-confirm-delete:hover:not(:disabled) {
+    background: #dc2626;
+  }
+
+  .btn-confirm-delete:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  /* Plan form fields */
+  .plan-form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.6rem 1rem;
+  }
+
+  .plan-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  .plan-field label {
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-text-muted);
+  }
+
+  .plan-input,
+  .plan-select {
+    font-size: 0.78rem;
+    padding: 0.4rem 0.5rem;
+    border: 1px solid var(--color-border);
+    border-radius: 5px;
+    background: var(--color-surface);
+    color: var(--color-text);
+    font-family: inherit;
+  }
+
+  .plan-input:focus,
+  .plan-select:focus {
+    outline: none;
+    border-color: var(--color-admin, #6366f1);
+  }
+
+  .plan-error {
+    font-size: 0.75rem;
+    color: #b91c1c;
+    margin: 0.5rem 0 0;
+    padding: 0.4rem 0.5rem;
+    background: color-mix(in srgb, #ef4444 8%, transparent);
+    border-radius: 5px;
+  }
+
+  .plan-actions-row {
+    margin-top: 0.6rem;
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .btn-save-plan {
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.4rem 0.75rem;
+    border-radius: 5px;
+    cursor: pointer;
+    border: none;
+    background: var(--color-admin, #6366f1);
+    color: #fff;
+    transition: opacity 0.12s;
+  }
+
+  .btn-save-plan:hover:not(:disabled) {
+    opacity: 0.9;
+  }
+
+  .btn-save-plan:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* Footer bar */
+  .plans-footer-bar {
+    margin-top: 1rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--color-border);
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .btn-update-all {
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    cursor: pointer;
+    border: none;
+    background: var(--color-admin, #6366f1);
+    color: #fff;
+    transition: opacity 0.12s;
+  }
+
+  .btn-update-all:hover:not(:disabled) {
+    opacity: 0.9;
+  }
+
+  .btn-update-all:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: var(--color-text-muted);
+  }
+}
