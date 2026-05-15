@@ -93,12 +93,6 @@ const fullAnalysisHref = profile.analysis_id
   ? `/admin/analyses/${profile.analysis_id}`
   : null;
 
-const approveDisabledReason =
-  !wizardCalculationProfileId && apiReady && paToken && (import.meta.env.API_BASE_URL ?? '').trim()
-    ? 'Link this wizard profile to a draft calculation_profiles row (PUBLIC_PA_UI_PROFILE_UUID_MAP or matching country/provider/version).'
-    : !wizardCalculationProfileId
-      ? 'Sign in with Supabase and set API_BASE_URL to approve analysis against Plan Advisor.'
-      : '';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Transaction rules — fetched from the API on every SSR render.
@@ -271,15 +265,15 @@ const approvedRules = transactionRules.filter((r) => r.status === 'approved');
             </svg>
           </a>
         )}
-        <button
-          type="button"
-          id="btn-approve-analysis"
+        <a
+          href={`/admin/countries/${profile.id}/activate`}
           class="btn-approve-analysis"
-          disabled={!wizardCalculationProfileId}
-          title={approveDisabledReason || undefined}
         >
-          Approve analysis
-        </button>
+          Go to Activation
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M5 12h14M12 5l7 7-7 7"/>
+          </svg>
+        </a>
       </div>
     </div>
   </div>
@@ -300,10 +294,6 @@ const approvedRules = transactionRules.filter((r) => r.status === 'approved');
 </style>
 
 <script>
-  import {
-    initAdminCountryAiAnalysisChat,
-    initWizardApproveAnalysis,
-  } from '../../../../scripts/admin-country-ai-analysis-chat';
+  import { initAdminCountryAiAnalysisChat } from '../../../../scripts/admin-country-ai-analysis-chat';
   initAdminCountryAiAnalysisChat();
-  initWizardApproveAnalysis();
 </script>
