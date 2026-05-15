@@ -184,10 +184,6 @@
     gap: 0.15rem;
   }
 
-  .rule-field.full-width {
-    grid-column: 1 / -1;
-  }
-
   .field-value.mono {
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 0.72rem;

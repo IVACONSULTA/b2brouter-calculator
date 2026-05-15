@@ -136,15 +136,25 @@
     margin-top: 0.2rem;
   }
 
-  .documents-footer-actions {
+  .documents-footer {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 0.75rem;
     flex-wrap: wrap;
-    margin: 1rem -1.25rem 0;
-    padding: 1rem 1.25rem 0;
+    gap: 0.75rem;
+    margin-top: 1.25rem;
+    padding-top: 1.15rem;
     border-top: 1px solid var(--color-border);
+  }
+
+  .documents-footer-right {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+    justify-content: flex-end;
+    flex: 1;
+    min-width: min(100%, 280px);
   }
 
   .btn-go-analysis {

@@ -157,17 +157,17 @@ const currency = profile.currency ?? 'EUR';
                   <span class={`rule-status-badge status-${rule.status}`}>{rule.status}</span>
                 </div>
                 <div class="rule-fields">
-                  <div class="rule-field full-width">
+                  <div class="rule-field">
                     <span class="field-label">Input key</span>
                     <span class="field-value mono">{rule.input_key}</span>
-                  </div>
-                  <div class="rule-field full-width">
-                    <span class="field-label">Label</span>
-                    <span class="field-value">{rule.label}</span>
                   </div>
                   <div class="rule-field">
                     <span class="field-label">Operation Group</span>
                     <span class="field-value">{rule.operation_group || '—'}</span>
+                  </div>
+                  <div class="rule-field">
+                    <span class="field-label">Label</span>
+                    <span class="field-value">{rule.label}</span>
                   </div>
                   <div class="rule-field">
                     <span class="field-label">PA tx per item</span>
