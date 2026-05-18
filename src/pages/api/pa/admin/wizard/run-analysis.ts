@@ -29,6 +29,8 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     calculation_profile_id?: string;
     country_id?: string;
     provider_id?: string;
+    calculation_basis?: string;
+    notes?: string;
   };
   try {
     body = await request.json();
@@ -40,6 +42,8 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   const calculation_profile_id = String(body.calculation_profile_id ?? '').trim();
   const country_id = String(body.country_id ?? '').trim();
   const provider_id = String(body.provider_id ?? '').trim();
+  const calculation_basis = String(body.calculation_basis ?? '').trim();
+  const notes = String(body.notes ?? '').trim();
 
   if (!profile_slug || !calculation_profile_id || !country_id || !provider_id) {
     return json(400, {
@@ -61,9 +65,25 @@ export const POST: APIRoute = async ({ request, cookies }) => {
 
   // Get the analysis message from environment variable
   // This is the prompt/instruction sent to the document analysis agent
-  const analysisMessage = import.meta.env.DOCUMENT_ANALYSIS_MESSAGE ||
+  let analysisMessage = import.meta.env.DOCUMENT_ANALYSIS_MESSAGE ||
     process.env.DOCUMENT_ANALYSIS_MESSAGE ||
     '';
+
+  // Append calculation_basis and notes to the message for the document agent
+  let enhancedMessage = analysisMessage;
+  if (calculation_basis) {
+    enhancedMessage += `\n\nUse as calculation_basis=${calculation_basis} for transaction_rules records.`;
+  }
+  if (notes) {
+    enhancedMessage += `\n\nAdditional context from admin: ${notes}`;
+  }
+
+  console.log('[run-analysis] Sending enhanced message to document agent:', {
+    original_length: analysisMessage.length,
+    enhanced_length: enhancedMessage.length,
+    has_calculation_basis: Boolean(calculation_basis),
+    has_notes: Boolean(notes),
+  });
 
   const result = await paPostJson<unknown>(
     '/admin/wizard/run-analysis',
@@ -73,7 +93,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       calculation_profile_id,
       country_id,
       provider_id,
-      message: analysisMessage, // Pass the analysis message to the API
+      message: enhancedMessage, // Pass the enhanced analysis message to the API
     },
   );
 

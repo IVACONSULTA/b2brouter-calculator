@@ -104,6 +104,9 @@ export function initDocumentsGoAnalysis(): void {
     let countryId = btn.dataset.countryId ?? '';
     let providerId = btn.dataset.providerId ?? '';
 
+    let calculationBasis = '';
+    let notes = '';
+
     if (!profileId || !countryId || !providerId) {
       const draft = loadCountryWizardDraft(slug);
       console.log('[Go to Analysis] Draft from sessionStorage:', {
@@ -117,6 +120,9 @@ export function initDocumentsGoAnalysis(): void {
         countryId = draft.apiCountryId;
         providerId = draft.apiProviderId;
       }
+      // Capture calculation_basis and notes from draft
+      calculationBasis = draft?.calculationBasis || '';
+      notes = draft?.notes || '';
     }
 
     if (!profileId || !countryId || !providerId) {
@@ -139,6 +145,8 @@ export function initDocumentsGoAnalysis(): void {
           calculation_profile_id: profileId,
           country_id: countryId,
           provider_id: providerId,
+          calculation_basis: calculationBasis,
+          notes: notes,
         }),
       });
       const data = (await res.json().catch(() => ({}))) as {
