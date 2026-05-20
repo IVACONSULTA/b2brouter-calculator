@@ -25,7 +25,7 @@ export const GET: APIRoute = async ({ url, cookies }) => {
   }
 
   const res = await paFetchJson(
-    `/admin/rules?profile_id=${encodeURIComponent(profileId)}`,
+    `/admin/transaction-rules?profile_id=${encodeURIComponent(profileId)}`,
     fresh.accessToken,
   );
 
