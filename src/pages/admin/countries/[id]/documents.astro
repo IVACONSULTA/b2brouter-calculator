@@ -18,7 +18,7 @@ import {
 import { paUploadLog } from '../../../../lib/pa-upload-debug';
 import { parsePaUiProfileUuidMap } from '../../../../lib/pa-ui-profile-uuid-map';
 import { isDraftProfileRouteId } from '../../../../lib/country-wizard-draft';
-import { DUMMY_DOCUMENTS, DOCUMENT_TYPES } from '../../../../lib/dummy-data';
+import { DOCUMENT_TYPES } from '../../../../lib/dummy-data';
 import '../../../../styles/pages/admin-country-documents.css';
 
 const session = getSession(Astro.cookies);
@@ -82,16 +82,7 @@ function formatApiDate(raw: string): string {
 }
 
 let adminNotice: string | null = null;
-let documents: DocRow[] = DUMMY_DOCUMENTS.map((d) => ({
-  id: d.id,
-  filename: d.filename,
-  document_type: d.document_type,
-  description: d.description,
-  copyright_status: d.copyright_status,
-  uploaded_at: d.uploaded_at,
-  size: d.size,
-  selected: d.selected,
-}));
+let documents: DocRow[] = [];
 
 let apiTarget: {
   profile_id: string;
@@ -203,7 +194,7 @@ if (useLocalDocumentsListing) {
         selected: r.copyright_status !== 'blocked',
       }));
     } else if (!list.ok) {
-      const suffix = ` Could not load documents (HTTP ${list.status}). Showing demo list.`;
+      const suffix = ` Could not load documents (HTTP ${list.status}).`;
       const noticeBefore: string | null = adminNotice;
       adminNotice = `${noticeBefore ?? ''}${suffix}`.trim();
     }
@@ -232,7 +223,7 @@ if (useLocalDocumentsListing) {
         selected: r.copyright_status !== 'blocked',
       }));
     } else if (!list.ok) {
-      const suffix = ` Could not load documents (HTTP ${list.status}). Showing demo list.`;
+      const suffix = ` Could not load documents (HTTP ${list.status}).`;
       adminNotice = (adminNotice ?? '').concat(suffix).trim();
     }
   } else {
@@ -353,6 +344,9 @@ const metaFor = (status: string) =>
           <p>Only documents that pass copyright check are stored. Restricted or blocked documents appear in the <strong>Copyright Issues</strong> section below.</p>
         </div>
 
+        {documents.length === 0 ? (
+          <div class="empty-state">No documents uploaded yet</div>
+        ) : (
         <table class="table">
           <thead>
             <tr>
@@ -435,6 +429,7 @@ const metaFor = (status: string) =>
             })}
           </tbody>
         </table>
+        )}
       </div>
 
       <!-- Copyright Issues Panel (client-side only for failed copyright checks) -->

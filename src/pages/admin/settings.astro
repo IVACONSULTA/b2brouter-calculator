@@ -6,7 +6,6 @@ import {
   paFetchJson,
 } from '../../lib/pa-api';
 import { getFreshSupabaseAccessToken } from '../../lib/supabase-session';
-import { DUMMY_USERS } from '../../lib/dummy-data';
 import '../../styles/pages/admin-settings.css';
 
 const session = getSession(Astro.cookies);
@@ -48,7 +47,7 @@ type AdminUsersTableRow = {
 };
 
 let adminNotice: string | null = null;
-let users: AdminUsersTableRow[] = DUMMY_USERS as unknown as AdminUsersTableRow[];
+let users: AdminUsersTableRow[] = [];
 
 function formatUserCreatedAt(raw: string): string {
   const d = new Date(raw);
@@ -89,12 +88,10 @@ if (!session.supabaseAccessToken) {
 
 if (apiReady && paToken && (import.meta.env.API_BASE_URL ?? '').trim().length > 0) {
   const res = await paFetchJson<ApiUserRow[]>('/admin/users', paToken);
-  if (res.ok && Array.isArray(res.data) && res.data.length > 0) {
+  if (res.ok && Array.isArray(res.data)) {
     users = res.data.map(mapApiUser);
-  } else if (res.ok && Array.isArray(res.data) && res.data.length === 0) {
-    users = [];
   } else if (!res.ok) {
-    const suffix = ` Plan Advisor unreachable (HTTP ${res.status}). Showing demo placeholders.`;
+    const suffix = ` Plan Advisor unreachable (HTTP ${res.status}).`;
     adminNotice = (adminNotice ? adminNotice.trim() + suffix : suffix.trim());
   }
 }
@@ -130,6 +127,9 @@ const roleMeta: Record<string, { label: string; cls: string }> = {
           </button>
         </div>
 
+        {users.length === 0 ? (
+          <div class="empty-state">No users created yet</div>
+        ) : (
         <table class="table">
           <thead>
             <tr>
@@ -214,6 +214,7 @@ const roleMeta: Record<string, { label: string; cls: string }> = {
             ))}
           </tbody>
         </table>
+        )}
       </div>
 
       <!-- New user form (hidden) -->
