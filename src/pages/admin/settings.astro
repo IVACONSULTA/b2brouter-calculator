@@ -327,17 +327,7 @@ const roleMeta: Record<string, { label: string; cls: string }> = {
   }
 
   function handleEditUser(userId: string) {
-    alert(`TODO: PATCH API_BASE_URL/admin/users/${userId}\nOpen edit modal`);
-  }
-
-  function handleDeactivate(userId: string) {
-    if (confirm('Deactivate this user? They will not be able to log in.')) {
-      alert(`TODO: PATCH API_BASE_URL/admin/users/${userId} { "active": false }`);
-    }
-  }
-
-  function handleReactivate(userId: string) {
-    alert(`TODO: PATCH API_BASE_URL/admin/users/${userId} { "active": true }`);
+    window.location.href = `/admin/users/${userId}`;
   }
 
   document.getElementById('create-user-form')?.addEventListener('submit', e => {
@@ -345,6 +335,6 @@ const roleMeta: Record<string, { label: string; cls: string }> = {
     alert('TODO: POST API_BASE_URL/admin/users\n→ INSERT INTO users_profile (Railway PostgreSQL)');
   });
 
-  Object.assign(window, { showNewUserForm, hideNewUserForm, handleEditUser, handleDeactivate, handleReactivate });
+  Object.assign(window, { showNewUserForm, hideNewUserForm, handleEditUser });
 </script>
 
