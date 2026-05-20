@@ -78,10 +78,13 @@ type AnalysisDetail = {
   id: string;
   profile_id: string;
   country: string;
+  country_code?: string;
   provider: string;
+  provider_type?: string;
   version: string;
   created_at: string;
-  status: 'completed' | 'pending_review';
+  created_by?: string;
+  status: 'completed' | 'pending_review' | 'running' | 'failed';
   summary: string;
   guardrail_audit: {
     eu_ai_act_check: string;
@@ -190,6 +193,9 @@ const planSummary = analysis ? {
     )}
     <div class="guardrail-meta">
       Processing ID: <code>{analysis.guardrail_audit.processing_id}</code> · {new Date(analysis.guardrail_audit.processing_timestamp).toLocaleString()}
+      {analysis.created_by && (
+        <span> · Created by: <strong>{analysis.created_by}</strong></span>
+      )}
     </div>
   </div>
 
@@ -516,4 +522,3 @@ const planSummary = analysis ? {
     handleBulkApprovePlans, handleApproveAssumption, handleRejectAssumption,
   });
 </script>
-
