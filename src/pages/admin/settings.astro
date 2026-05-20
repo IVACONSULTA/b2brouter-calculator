@@ -269,7 +269,8 @@ const roleMeta: Record<string, { label: string; cls: string }> = {
 
     <!-- Right: AI limits + permissions config -->
     <aside class="side-col">
-      <div class="panel">
+      <!-- AI Usage Limits -->
+      <!-- <div class="panel">
         <h3 class="side-title">AI Usage Limits</h3>
         <p class="side-desc">Monthly limits per role for AI calls (document analysis + summaries).</p>
 
@@ -285,7 +286,6 @@ const roleMeta: Record<string, { label: string; cls: string }> = {
                 <p class="limit-value">{item.limit}</p>
                 <p class="limit-desc">{item.desc}</p>
               </div>
-              <!-- TODO: PATCH /admin/settings/ai-limits via App 2 API -->
               <button class="btn-edit-limit" title="Edit limit" onclick={`alert('TODO: PATCH API_BASE_URL/admin/settings/ai-limits for role ${item.role}')`}>
                 <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
@@ -295,9 +295,10 @@ const roleMeta: Record<string, { label: string; cls: string }> = {
             </div>
           ))}
         </div>
-      </div>
+      </div> -->
 
-      <div class="panel">
+      <!-- AI Summary for Clients -->
+      <!-- <div class="panel">
         <h3 class="side-title">AI Summary for Clients</h3>
         <p class="side-desc">Configure whether client users can generate AI summaries.</p>
 
@@ -309,7 +310,6 @@ const roleMeta: Record<string, { label: string; cls: string }> = {
           ].map(item => (
             <div class="toggle-item">
               <span class="company-label">{item.company}</span>
-              <!-- TODO: PATCH /admin/settings/company-permissions via App 2 API -->
               <button
                 class={`toggle-btn ${item.enabled ? 'on' : 'off'}`}
                 onclick={`alert('TODO: PATCH API_BASE_URL/admin/settings/company-permissions\\n${item.company}: toggle summary access')`}
@@ -319,9 +319,10 @@ const roleMeta: Record<string, { label: string; cls: string }> = {
             </div>
           ))}
         </div>
-      </div>
+      </div> -->
 
-      <div class="panel">
+      <!-- AI Models -->
+      <!-- <div class="panel">
         <h3 class="side-title">AI Models</h3>
         <p class="side-desc">Models used for document analysis (App 3) and summaries (App 4).</p>
         <div class="model-list">
@@ -334,7 +335,6 @@ const roleMeta: Record<string, { label: string; cls: string }> = {
                 <p class="model-agent">{m.agent}</p>
                 <code class="model-name">{m.model}</code>
               </div>
-              <!-- TODO: PATCH /admin/settings/models via App 2 API -->
               <button class="btn-edit-limit" onclick={`alert('TODO: PATCH API_BASE_URL/admin/settings/models\\nChange model for ${m.agent}')`}>
                 <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
@@ -344,7 +344,7 @@ const roleMeta: Record<string, { label: string; cls: string }> = {
             </div>
           ))}
         </div>
-      </div>
+      </div> -->
     </aside>
   </div>
 </AdminLayout>
