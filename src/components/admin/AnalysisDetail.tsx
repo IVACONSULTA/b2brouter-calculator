@@ -267,7 +267,7 @@ export default function AnalysisDetail({ analysisId, apiBaseUrl, paToken }: Anal
           </svg>
           Copyright check: <strong>passed</strong>
         </div>
-        {analysis.guardrail_audit.blocked_documents.length > 0 && (
+        {analysis.guardrail_audit?.blocked_documents?.length > 0 && (
           <div className="guardrail-item warn">
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
@@ -276,7 +276,7 @@ export default function AnalysisDetail({ analysisId, apiBaseUrl, paToken }: Anal
           </div>
         )}
         <div className="guardrail-meta">
-          Processing ID: <code>{analysis.guardrail_audit.processing_id}</code> · {new Date(analysis.guardrail_audit.processing_timestamp).toLocaleString()}
+          Processing ID: <code>{analysis.guardrail_audit?.processing_id || 'unknown'}</code> · {new Date(analysis.guardrail_audit?.processing_timestamp || analysis.created_at).toLocaleString()}
           {analysis.created_by && (
             <span> · Created by: <strong>{analysis.created_by}</strong></span>
           )}
@@ -287,7 +287,7 @@ export default function AnalysisDetail({ analysisId, apiBaseUrl, paToken }: Anal
       <div className="summary-card">
         <div className="summary-left">
           <h2 className="summary-title">Analysis Summary</h2>
-          <p className="summary-text">{analysis.summary}</p>
+          <p className="summary-text">{analysis.summary || 'No summary available.'}</p>
         </div>
         <div className="summary-stats">
           <div className="stat-pill">
