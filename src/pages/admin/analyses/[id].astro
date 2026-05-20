@@ -1,6 +1,9 @@
 ---
 import AdminLayout from '../../../layouts/AdminLayout.astro';
 import { getSession, isAdminRole } from '../../../lib/session';
+import { canUsePlanAdvisorApi } from '../../../lib/pa-api';
+import { getFreshSupabaseAccessToken } from '../../../lib/supabase-session';
+import { fetchAnalysesCount } from '../../../lib/admin-analyses-count';
 import AnalysisDetail from '../../../components/admin/AnalysisDetail';
 import '../../../styles/pages/admin-analysis-detail.css';
 
@@ -11,10 +14,26 @@ if (!isAdminRole(session.role)) return Astro.redirect('/dashboard');
 const { id } = Astro.params;
 const safeId = id ?? '';
 
+let paToken: string | null = null;
+if (session.supabaseAccessToken?.trim()) {
+  const fresh = await getFreshSupabaseAccessToken(Astro.cookies);
+  if (fresh.ok) paToken = fresh.accessToken;
+}
+
+const apiReady = canUsePlanAdvisorApi(session);
+
 let adminNotice: string | null = null;
+let analysesCount = 0;
 
 if (!session.supabaseAccessToken) {
   adminNotice = 'Demo session (no JWT). Configure Supabase sign-in for live analysis detail.';
+} else if (!paToken) {
+  adminNotice = 'Session expired. Please sign out and sign in again.';
+}
+
+// Fetch real analyses count for sidebar
+if (apiReady && paToken) {
+  analysesCount = await fetchAnalysesCount(paToken);
 }
 ---
 
@@ -25,6 +44,7 @@ if (!session.supabaseAccessToken) {
     { label: 'Detail' },
   ]}
   notice={adminNotice}
+  analysesCount={analysesCount}
 >
   <div class="page-admin-analyses-index panel">
     {!session.supabaseAccessToken ? (

@@ -246,10 +246,16 @@ export default function AnalysisDetail({ analysisId }: AnalysisDetailProps) {
           </div>
         )}
         <div className="guardrail-meta" style={{ fontSize: '0.875rem', color: '#6b7280', marginTop: '0.5rem' }}>
-          Processing ID: <code>{analysis.guardrail_audit?.processing_id || 'unknown'}</code> · {new Date(analysis.guardrail_audit?.processing_timestamp || analysis.created_at).toLocaleString()}
           {analysis.created_by && (
-            <span> · Created by: <strong>{analysis.created_by}</strong></span>
+            <span>Created by <strong>{analysis.created_by}</strong> · </span>
           )}
+          {new Date(analysis.created_at).toLocaleString('en-GB', {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+          })}
         </div>
       </div>
 

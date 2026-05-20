@@ -73,7 +73,7 @@ const pendingCount = analyses.filter((a) => a.status === 'pending_review').lengt
   title="AI Analyses"
   breadcrumbs={[{ label: 'Admin' }, { label: 'AI Analyses' }]}
   notice={adminNotice}
-  analysesPendingCount={pendingCount}
+  analysesCount={analyses.length}
 >
   <div class="page-admin-analyses-index panel">
     {analyses.length === 0 ? (

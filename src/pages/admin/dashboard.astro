@@ -6,6 +6,7 @@ import {
   paFetchJson,
 } from '../../lib/pa-api';
 import { getFreshSupabaseAccessToken } from '../../lib/supabase-session';
+import { fetchAnalysesList } from '../../lib/admin-analyses-count';
 import '../../styles/pages/admin-dashboard.css';
 
 const session = getSession(Astro.cookies);
@@ -131,6 +132,7 @@ let kpiActive = 0;
 let kpiInProgress = 0;
 let kpiAnalysesPending = 0;
 let kpiRecentScenarioCount = 0;
+let analysesCount = 0;
 
 let reviewQuickHref = '/admin/analyses';
 
@@ -210,6 +212,12 @@ kpiInProgress = tableProfiles.filter((p) => p.status === 'draft' || p.status ===
 kpiAnalysesPending = pendingAnalyses.length;
 kpiRecentScenarioCount = recentScenarios.length;
 
+// Fetch real analyses count for sidebar
+if (apiReady && paToken) {
+  const analysesResult = await fetchAnalysesList(paToken);
+  analysesCount = analysesResult.count;
+}
+
 const statusColor: Record<string, string> = {
   active: 'green',
   draft: 'gray',
@@ -218,7 +226,7 @@ const statusColor: Record<string, string> = {
 };
 ---
 
-<AdminLayout title="Dashboard" notice={adminNotice} analysesPendingCount={kpiAnalysesPending}>
+<AdminLayout title="Dashboard" notice={adminNotice} analysesCount={analysesCount}>
   <div class="page-admin-dashboard">
   <!-- KPI row -->
   <div class="kpi-grid">
