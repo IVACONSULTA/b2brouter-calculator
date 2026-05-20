@@ -198,10 +198,6 @@ if (apiReady && paToken && (import.meta.env.API_BASE_URL ?? '').trim().length > 
       }));
       kpiRecentScenarioCount = recentScenarios.length;
     }
-    if (dash.data.document_analyses?.mock && !adminNotice) {
-      adminNotice =
-        'Document analysis data is mock/fixture until the Documents Agent is connected to the API.';
-    }
   } else if (!dash.ok) {
     const suffix = ` Plan Advisor unreachable (HTTP ${dash.status}).`;
     adminNotice = (adminNotice ? adminNotice.trim() + suffix : suffix.trim());

@@ -60,10 +60,6 @@ if (apiReady && paToken && (import.meta.env.API_BASE_URL ?? '').trim().length > 
   const res = await paFetchJson<DocAnalysisListApi>('/admin/document-analyses', paToken);
   if (res.ok) {
     analyses = res.data.items ?? [];
-    if (res.data.mock && !adminNotice) {
-      adminNotice =
-        'Document analysis data is mock/fixture until the Documents Agent is connected to the API.';
-    }
   } else {
     const suffix = ` Plan Advisor unreachable (HTTP ${res.status}).`;
     adminNotice = (adminNotice ? adminNotice.trim() + suffix : suffix.trim());

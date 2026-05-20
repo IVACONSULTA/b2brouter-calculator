@@ -127,10 +127,6 @@ if (apiReady && paToken && safeId && (import.meta.env.API_BASE_URL ?? '').trim()
   );
   if (res.ok && res.data.data) {
     analysis = res.data.data;
-    if (res.data.mock && !adminNotice) {
-      adminNotice =
-        'Document analysis data is mock/fixture until the Documents Agent is connected to the API.';
-    }
   } else if (!res.ok) {
     const suffix = ` Plan Advisor unreachable (HTTP ${res.status}).`;
     adminNotice = (adminNotice ? adminNotice.trim() + suffix : suffix.trim());
