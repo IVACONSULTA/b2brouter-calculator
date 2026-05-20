@@ -6,7 +6,7 @@ import {
   paFetchJson,
 } from '../../lib/pa-api';
 import { getFreshSupabaseAccessToken } from '../../lib/supabase-session';
-import { DUMMY_PROFILES, DUMMY_ANALYSES, DUMMY_SCENARIOS, DUMMY_DOCUMENTS } from '../../lib/dummy-data';
+import { fetchAnalysesList } from '../../lib/admin-analyses-count';
 import '../../styles/pages/admin-dashboard.css';
 
 const session = getSession(Astro.cookies);
@@ -20,6 +20,20 @@ if (session.supabaseAccessToken?.trim()) {
 }
 
 const apiReady = canUsePlanAdvisorApi(session);
+
+type AI_ANALYSIS = {
+  id: string;
+  profile_id: string;
+  country: string;
+  provider: string;
+  created_at: string;
+  status: 'completed' | 'pending_review';
+  rules_proposed: number;
+  rules_approved: number;
+  plans_proposed: number;
+  plans_approved: number;
+  pending_review: number;
+};
 
 type AdminDashApi = {
   success?: boolean;
@@ -55,7 +69,7 @@ type AdminDashApi = {
   document_analyses?: {
     success?: boolean;
     mock?: boolean;
-    items?: typeof DUMMY_ANALYSES;
+    items?: AI_ANALYSIS[];
   };
 };
 
@@ -98,15 +112,10 @@ type AdminProfileTableRow = {
 
 let adminNotice: string | null = null;
 
-let tableProfiles: AdminProfileTableRow[] = DUMMY_PROFILES.map((p) => ({ ...p })) as AdminProfileTableRow[];
-let pendingAnalyses = DUMMY_ANALYSES.filter((a) => a.status === 'pending_review');
-let mockAnalysesList = DUMMY_ANALYSES;
-let recentDocs: Array<{ filename: string; copyright_status: string; uploaded_at: string }> =
-  DUMMY_DOCUMENTS.slice(0, 3).map((d) => ({
-    filename: d.filename,
-    copyright_status: d.copyright_status,
-    uploaded_at: d.uploaded_at,
-  }));
+let tableProfiles: AdminProfileTableRow[] = [];
+let pendingAnalyses: AI_ANALYSIS[] = [];
+let mockAnalysesList: AI_ANALYSIS[] = [];
+let recentDocs: Array<{ filename: string; copyright_status: string; uploaded_at: string }> = [];
 
 let recentScenarios: Array<{
   id: string;
@@ -117,26 +126,15 @@ let recentScenarios: Array<{
   total_cost: number;
   has_summary: boolean;
   created_at: string;
-}> = DUMMY_SCENARIOS.slice(0, 4).map((s) => ({
-  client_name: s.client_name,
-  country: s.country,
-  provider: s.provider,
-  recommended_plan: s.recommended_plan,
-  total_cost: s.total_cost,
-  has_summary: s.has_summary,
-  created_at: s.created_at,
-  id: s.id,
-}));
+}> = [];
 
-let kpiActive = tableProfiles.filter((p) => p.status === 'active').length;
-let kpiInProgress = tableProfiles.filter((p) => p.status === 'draft' || p.status === 'pending_approval').length;
-let kpiAnalysesPending = pendingAnalyses.length;
-let kpiRecentScenarioCount = recentScenarios.length;
+let kpiActive = 0;
+let kpiInProgress = 0;
+let kpiAnalysesPending = 0;
+let kpiRecentScenarioCount = 0;
+let analysesCount = 0;
 
 let reviewQuickHref = '/admin/analyses';
-if (pendingAnalyses.length && pendingAnalyses[0]?.id) {
-  reviewQuickHref = `/admin/analyses/${pendingAnalyses[0].id}`;
-}
 
 if (!session.supabaseAccessToken) {
   adminNotice =
@@ -171,21 +169,21 @@ if (apiReady && paToken && (import.meta.env.API_BASE_URL ?? '').trim().length > 
       kpiInProgress = dash.data.kpis.profiles_in_progress;
       kpiAnalysesPending = dash.data.kpis.analyses_pending_review;
     }
-    if (dash.data.document_analyses?.items?.length) {
-      mockAnalysesList = dash.data.document_analyses.items as typeof DUMMY_ANALYSES;
+    if (dash.data.document_analyses?.items) {
+      mockAnalysesList = dash.data.document_analyses.items;
       pendingAnalyses = mockAnalysesList.filter((a) => a.status === 'pending_review');
       if (pendingAnalyses.length && pendingAnalyses[0]?.id) {
         reviewQuickHref = `/admin/analyses/${pendingAnalyses[0].id}`;
       }
     }
-    if (dash.data.recent_documents?.length) {
+    if (dash.data.recent_documents) {
       recentDocs = dash.data.recent_documents.slice(0, 3).map((d) => ({
         filename: d.filename,
         copyright_status: d.copyright_status,
         uploaded_at: typeof d.uploaded_at === 'string' ? d.uploaded_at : String(d.uploaded_at),
       }));
     }
-    if (dash.data.recent_scenarios?.length) {
+    if (dash.data.recent_scenarios) {
       recentScenarios = dash.data.recent_scenarios.map((s) => ({
         id: s.id,
         client_name: s.client_name ?? '—',
@@ -202,14 +200,22 @@ if (apiReady && paToken && (import.meta.env.API_BASE_URL ?? '').trim().length > 
       }));
       kpiRecentScenarioCount = recentScenarios.length;
     }
-    if (dash.data.document_analyses?.mock && !adminNotice) {
-      adminNotice =
-        'Document analysis data is mock/fixture until the Documents Agent is connected to the API.';
-    }
   } else if (!dash.ok) {
-    const suffix = ` Plan Advisor unreachable (HTTP ${dash.status}). Showing demo placeholders.`;
+    const suffix = ` Plan Advisor unreachable (HTTP ${dash.status}).`;
     adminNotice = (adminNotice ? adminNotice.trim() + suffix : suffix.trim());
   }
+}
+
+// Recalculate KPIs based on actual data
+kpiActive = tableProfiles.filter((p) => p.status === 'active').length;
+kpiInProgress = tableProfiles.filter((p) => p.status === 'draft' || p.status === 'pending_approval').length;
+kpiAnalysesPending = pendingAnalyses.length;
+kpiRecentScenarioCount = recentScenarios.length;
+
+// Fetch real analyses count for sidebar
+if (apiReady && paToken) {
+  const analysesResult = await fetchAnalysesList(paToken);
+  analysesCount = analysesResult.count;
 }
 
 const statusColor: Record<string, string> = {
@@ -220,7 +226,7 @@ const statusColor: Record<string, string> = {
 };
 ---
 
-<AdminLayout title="Dashboard" notice={adminNotice} analysesPendingCount={kpiAnalysesPending}>
+<AdminLayout title="Dashboard" notice={adminNotice} analysesCount={analysesCount}>
   <div class="page-admin-dashboard">
   <!-- KPI row -->
   <div class="kpi-grid">
@@ -340,35 +346,39 @@ const statusColor: Record<string, string> = {
         <h2 class="section-title" style="margin-bottom:0">Countries & Providers</h2>
         <a href="/countries" class="link-more">View all →</a>
       </div>
-      <table class="table">
-        <thead>
-          <tr>
-            <th>Country</th>
-            <th>Provider</th>
-            <th>Version</th>
-            <th>Status</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {tableProfiles.map(p => (
+      {tableProfiles.length === 0 ? (
+        <div class="empty-state">No profiles created yet</div>
+      ) : (
+        <table class="table">
+          <thead>
             <tr>
-              <td><span class="flag-code">{p.country.code}</span> {p.country.name}</td>
-              <td>{p.provider.name} <span class="tag">{p.provider.type}</span></td>
-              <td class="mono">{p.version}</td>
-              <td><span class={`badge badge-${statusColor[p.status]}`}>{p.status.replace('_', ' ')}</span></td>
-              <td>
-                {p.status === 'draft'
-                  ? <a href={`/admin/countries/${p.id}/setup`} class="tbl-link">Continue setup</a>
-                  : p.status === 'pending_approval' && p.analysis_id
-                  ? <a href={`/admin/analyses/${p.analysis_id}`} class="tbl-link">Review analysis</a>
-                  : <a href={`/countries`} class="tbl-link">View</a>
-                }
-              </td>
+              <th>Country</th>
+              <th>Provider</th>
+              <th>Version</th>
+              <th>Status</th>
+              <th></th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {tableProfiles.map(p => (
+              <tr>
+                <td><span class="flag-code">{p.country.code}</span> {p.country.name}</td>
+                <td>{p.provider.name} <span class="tag">{p.provider.type}</span></td>
+                <td class="mono">{p.version}</td>
+                <td><span class={`badge badge-${statusColor[p.status]}`}>{p.status.replace('_', ' ')}</span></td>
+                <td>
+                  {p.status === 'draft'
+                    ? <a href={`/admin/countries/${p.id}/setup`} class="tbl-link">Continue setup</a>
+                    : p.status === 'pending_approval' && p.analysis_id
+                    ? <a href={`/admin/analyses/${p.analysis_id}`} class="tbl-link">Review analysis</a>
+                    : <a href={`/countries`} class="tbl-link">View</a>
+                  }
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </section>
 
     <!-- Recent uploaded documents -->
@@ -378,22 +388,26 @@ const statusColor: Record<string, string> = {
           <h2 class="section-title" style="margin-bottom:0">Recent Documents</h2>
           <a href="/countries" class="link-more">View all →</a>
         </div>
-        <ul class="doc-list">
-          {recentDocs.map(doc => (
-            <li class="doc-item">
-              <div class={`doc-icon doc-${doc.copyright_status}`}>
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                  <polyline points="14 2 14 8 20 8"/>
-                </svg>
-              </div>
-              <div class="doc-info">
-                <p class="doc-name">{doc.filename}</p>
-                <p class="doc-meta">{formatDocUploadedAt(doc.uploaded_at)} · <span class={`doc-copyright doc-${doc.copyright_status}`}>{doc.copyright_status}</span></p>
-              </div>
-            </li>
-          ))}
-        </ul>
+        {recentDocs.length === 0 ? (
+          <div class="empty-state">No documents uploaded yet</div>
+        ) : (
+          <ul class="doc-list">
+            {recentDocs.map(doc => (
+              <li class="doc-item">
+                <div class={`doc-icon doc-${doc.copyright_status}`}>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                  </svg>
+                </div>
+                <div class="doc-info">
+                  <p class="doc-name">{doc.filename}</p>
+                  <p class="doc-meta">{formatDocUploadedAt(doc.uploaded_at)} · <span class={`doc-copyright doc-${doc.copyright_status}`}>{doc.copyright_status}</span></p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       <!-- AI Analyses pending -->
@@ -402,22 +416,26 @@ const statusColor: Record<string, string> = {
           <h2 class="section-title" style="margin-bottom:0">AI Analyses</h2>
           <a href="/admin/analyses" class="link-more">View all →</a>
         </div>
-        <ul class="analysis-list">
-          {mockAnalysesList.map(a => (
-            <li class="analysis-item">
-              <div class="analysis-info">
-                <p class="analysis-name">{a.country} / {a.provider}</p>
-                <p class="analysis-meta">{a.rules_proposed} rules · {a.plans_proposed} plans · {a.created_at}</p>
-              </div>
-              <div class="analysis-right">
-                {a.status === 'pending_review'
-                  ? <a href={`/admin/analyses/${a.id}`} class="badge badge-amber" style="cursor:pointer">Review</a>
-                  : <span class="badge badge-green">Done</span>
-                }
-              </div>
-            </li>
-          ))}
-        </ul>
+        {mockAnalysesList.length === 0 ? (
+          <div class="empty-state">No AI analyses created yet</div>
+        ) : (
+          <ul class="analysis-list">
+            {mockAnalysesList.map(a => (
+              <li class="analysis-item">
+                <div class="analysis-info">
+                  <p class="analysis-name">{a.country} / {a.provider}</p>
+                  <p class="analysis-meta">{a.rules_proposed} rules · {a.plans_proposed} plans · {a.created_at}</p>
+                </div>
+                <div class="analysis-right">
+                  {a.status === 'pending_review'
+                    ? <a href={`/admin/analyses/${a.id}`} class="badge badge-amber" style="cursor:pointer">Review</a>
+                    : <span class="badge badge-green">Done</span>
+                  }
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
     </div>
   </div>
@@ -428,32 +446,36 @@ const statusColor: Record<string, string> = {
       <h2 class="section-title" style="margin-bottom:0">Recent Scenarios</h2>
       <a href="/scenarios" class="link-more">View all →</a>
     </div>
-    <table class="table">
-      <thead>
-        <tr>
-          <th>Client</th>
-          <th>Country / Provider</th>
-          <th>Recommended Plan</th>
-          <th>Total Cost</th>
-          <th>AI Summary</th>
-          <th>Date</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {recentScenarios.map(s => (
+    {recentScenarios.length === 0 ? (
+      <div class="empty-state">No scenarios created yet</div>
+    ) : (
+      <table class="table">
+        <thead>
           <tr>
-            <td class="bold">{s.client_name}</td>
-            <td>{s.country} / {s.provider}</td>
-            <td>{s.recommended_plan}</td>
-            <td class="mono">€{s.total_cost.toLocaleString()}</td>
-            <td>{s.has_summary ? <span class="badge badge-green">Generated</span> : <span class="badge badge-gray">—</span>}</td>
-            <td class="muted">{formatScenarioDate(s.created_at)}</td>
-            <td><a href={`/scenarios/${s.id}`} class="tbl-link">View</a></td>
+            <th>Client</th>
+            <th>Country / Provider</th>
+            <th>Recommended Plan</th>
+            <th>Total Cost</th>
+            <th>AI Summary</th>
+            <th>Date</th>
+            <th></th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {recentScenarios.map(s => (
+            <tr>
+              <td class="bold">{s.client_name}</td>
+              <td>{s.country} / {s.provider}</td>
+              <td>{s.recommended_plan}</td>
+              <td class="mono">€{s.total_cost.toLocaleString()}</td>
+              <td>{s.has_summary ? <span class="badge badge-green">Generated</span> : <span class="badge badge-gray">—</span>}</td>
+              <td class="muted">{formatScenarioDate(s.created_at)}</td>
+              <td><a href={`/scenarios/${s.id}`} class="tbl-link">View</a></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    )}
   </section>
   </div>
 </AdminLayout>

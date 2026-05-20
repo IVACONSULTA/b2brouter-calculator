@@ -4,7 +4,6 @@ import UserLayout from '../../layouts/UserLayout.astro';
 import { getSession } from '../../lib/session';
 import { paFetchJson } from '../../lib/pa-api';
 import { getFreshSupabaseAccessToken } from '../../lib/supabase-session';
-import { DUMMY_PROFILES, DUMMY_ACTIVE_PROFILES } from '../../lib/dummy-data';
 import '../../styles/pages/countries.css';
 
 const session = getSession(Astro.cookies);
@@ -44,6 +43,20 @@ type ProviderApiRow = { id: string; name: string; type: string };
 
 const PROFILE_STATUSES = new Set(['draft', 'pending_approval', 'active', 'archived']);
 
+type ProfileRow = {
+  id: string;
+  country: { code: string; name: string };
+  provider: { name: string; type: string };
+  version: string;
+  currency: string;
+  status: 'active' | 'draft' | 'pending_approval' | 'archived';
+  active_from: string | null;
+  created_at: string;
+  rules_count: number;
+  plans_count: number;
+  analysis_id: string | null;
+};
+
 function isoDateOnly(v: unknown): string | null {
   if (v == null) return null;
   if (typeof v === 'string' && v.length) {
@@ -52,13 +65,13 @@ function isoDateOnly(v: unknown): string | null {
   return null;
 }
 
-function mapAdminProfileRow(row: AdminProfileApiRow): (typeof DUMMY_PROFILES)[number] {
+function mapAdminProfileRow(row: AdminProfileApiRow): ProfileRow {
   const st = row.status;
   const status = PROFILE_STATUSES.has(st)
-    ? (st as (typeof DUMMY_PROFILES)[number]['status'])
+    ? (st as ProfileRow['status'])
     : 'draft';
 
-  const mapped = {
+  return {
     id: String(row.id),
     country: {
       code: row.country_code ?? '—',
@@ -77,12 +90,11 @@ function mapAdminProfileRow(row: AdminProfileApiRow): (typeof DUMMY_PROFILES)[nu
     plans_count: Number(row.plans_count ?? 0),
     analysis_id: null,
   };
-  return mapped as (typeof DUMMY_PROFILES)[number];
 }
 
-let activeProfiles = DUMMY_ACTIVE_PROFILES;
+let activeProfiles: ProfileRow[] = [];
 
-let profiles = DUMMY_PROFILES;
+let profiles: ProfileRow[] = [];
 /** When true, active profiles are loaded in the browser via `GET /api/pa/available-countries` (visible in DevTools) which proxies to Plan Advisor. */
 let loadActiveProfilesInBrowser = false;
 
@@ -115,7 +127,7 @@ if (isAdmin) {
     if (!pRes.ok) failed.push(`providers (HTTP ${pRes.status})`);
 
     if (failed.length) {
-      adminNotice = `Plan Advisor: could not load ${failed.join(', ')}. Showing demo or partial data.`;
+      adminNotice = `Plan Advisor: could not load ${failed.join(', ')}.`;
     }
   }
 }
@@ -192,6 +204,9 @@ if (!isAdmin) {
 
     <!-- Table -->
     <div class="table-wrap">
+      {profiles.length === 0 ? (
+        <div class="empty-state">No profiles created yet</div>
+      ) : (
       <table class="table" id="profiles-table">
         <thead>
           <tr>
@@ -270,6 +285,7 @@ if (!isAdmin) {
           ))}
         </tbody>
       </table>
+      )}
     </div>
     </div>
   </AdminLayout>
@@ -329,6 +345,10 @@ if (!isAdmin) {
           {loadActiveProfilesInBrowser ? (
             <tr>
               <td colspan="7" class="u-muted">Loading active profiles…</td>
+            </tr>
+          ) : activeProfiles.length === 0 ? (
+            <tr>
+              <td colspan="7" class="u-muted">No active profiles available</td>
             </tr>
           ) : (
             activeProfiles.map(p => (

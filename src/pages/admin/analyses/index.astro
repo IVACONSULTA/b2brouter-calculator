@@ -6,7 +6,6 @@ import {
   paFetchJson,
 } from '../../../lib/pa-api';
 import { getFreshSupabaseAccessToken } from '../../../lib/supabase-session';
-import { DUMMY_ANALYSES } from '../../../lib/dummy-data';
 import '../../../styles/pages/admin-analyses-index.css';
 
 const session = getSession(Astro.cookies);
@@ -21,14 +20,31 @@ if (session.supabaseAccessToken?.trim()) {
 
 const apiReady = canUsePlanAdvisorApi(session);
 
+type AI_ANALYSIS = {
+  id: string;
+  profile_id: string;
+  country: string;
+  country_code?: string;
+  provider: string;
+  provider_type?: string;
+  created_by: string;
+  created_at: string;
+  status: 'completed' | 'pending_review' | 'running' | 'failed';
+  rules_proposed?: number;
+  rules_approved?: number;
+  plans_proposed?: number;
+  plans_approved?: number;
+  pending_review?: number;
+};
+
 type DocAnalysisListApi = {
   success?: boolean;
   mock?: boolean;
-  items?: typeof DUMMY_ANALYSES;
+  items?: AI_ANALYSIS[];
 };
 
 let adminNotice: string | null = null;
-let analyses = DUMMY_ANALYSES;
+let analyses: AI_ANALYSIS[] = [];
 
 if (!session.supabaseAccessToken) {
   adminNotice =
@@ -42,14 +58,10 @@ if (!session.supabaseAccessToken) {
 
 if (apiReady && paToken && (import.meta.env.API_BASE_URL ?? '').trim().length > 0) {
   const res = await paFetchJson<DocAnalysisListApi>('/admin/document-analyses', paToken);
-  if (res.ok && res.data.items?.length) {
-    analyses = res.data.items as typeof DUMMY_ANALYSES;
-    if (res.data.mock && !adminNotice) {
-      adminNotice =
-        'Document analysis data is mock/fixture until the Documents Agent is connected to the API.';
-    }
-  } else if (!res.ok) {
-    const suffix = ` Plan Advisor unreachable (HTTP ${res.status}). Showing demo placeholders.`;
+  if (res.ok) {
+    analyses = res.data.items ?? [];
+  } else {
+    const suffix = ` Plan Advisor unreachable (HTTP ${res.status}).`;
     adminNotice = (adminNotice ? adminNotice.trim() + suffix : suffix.trim());
   }
 }
@@ -61,49 +73,62 @@ const pendingCount = analyses.filter((a) => a.status === 'pending_review').lengt
   title="AI Analyses"
   breadcrumbs={[{ label: 'Admin' }, { label: 'AI Analyses' }]}
   notice={adminNotice}
-  analysesPendingCount={pendingCount}
+  analysesCount={analyses.length}
 >
   <div class="page-admin-analyses-index panel">
-    <table class="table">
-      <thead>
-        <tr>
-          <th>Country / Provider</th>
-          <th>Date</th>
-          <th>Rules</th>
-          <th>Plans</th>
-          <th>Pending Review</th>
-          <th>Status</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {analyses.map(a => (
+    {analyses.length === 0 ? (
+      <div class="empty-state">No AI Analysis created yet</div>
+    ) : (
+      <table class="table">
+        <thead>
           <tr>
-            <td class="bold">{a.country} / {a.provider}</td>
-            <td class="muted">{a.created_at}</td>
-            <td>{a.rules_proposed} proposed · <span class="green">{a.rules_approved} approved</span></td>
-            <td>{a.plans_proposed} proposed · <span class="green">{a.plans_approved} approved</span></td>
-            <td>
-              {a.pending_review > 0
-                ? <span class="badge badge-amber">{a.pending_review} pending</span>
-                : <span class="badge badge-green">All reviewed</span>
-              }
-            </td>
-            <td>
-              {a.status === 'pending_review'
-                ? <span class="badge badge-amber">Needs review</span>
-                : <span class="badge badge-green">Completed</span>
-              }
-            </td>
-            <td>
-              <a href={`/admin/analyses/${a.id}`} class="btn-action">
-                {a.status === 'pending_review' ? 'Review →' : 'View →'}
-              </a>
-            </td>
+            <th>Country</th>
+            <th>Provider</th>
+            <th>Created By</th>
+            <th>Created At</th>
+            <th>Status</th>
+            <th></th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {analyses.map(a => (
+            <tr>
+              <td>
+                <span class="flag-code">{a.country_code || '—'}</span>
+                <span class="bold">{a.country}</span>
+              </td>
+              <td>
+                <span class="bold">{a.provider}</span>
+                {a.provider_type && <span class="tag">{a.provider_type}</span>}
+              </td>
+              <td class="muted">{a.created_by}</td>
+              <td class="muted">{new Date(a.created_at).toLocaleString('en-GB', {
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+              })}</td>
+              <td>
+                {a.status === 'pending_review'
+                  ? <span class="badge badge-amber">Needs review</span>
+                  : a.status === 'running'
+                  ? <span class="badge badge-blue">Running</span>
+                  : a.status === 'failed'
+                  ? <span class="badge badge-red">Failed</span>
+                  : <span class="badge badge-green">Completed</span>
+                }
+              </td>
+              <td>
+                <a href={`/admin/analyses/${a.id}`} class="btn-action">
+                  {a.status === 'pending_review' ? 'Review →' : 'View →'}
+                </a>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    )}
   </div>
 </AdminLayout>
 

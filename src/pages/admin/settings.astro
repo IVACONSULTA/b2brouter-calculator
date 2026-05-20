@@ -6,7 +6,6 @@ import {
   paFetchJson,
 } from '../../lib/pa-api';
 import { getFreshSupabaseAccessToken } from '../../lib/supabase-session';
-import { DUMMY_USERS } from '../../lib/dummy-data';
 import '../../styles/pages/admin-settings.css';
 
 const session = getSession(Astro.cookies);
@@ -48,7 +47,7 @@ type AdminUsersTableRow = {
 };
 
 let adminNotice: string | null = null;
-let users: AdminUsersTableRow[] = DUMMY_USERS as unknown as AdminUsersTableRow[];
+let users: AdminUsersTableRow[] = [];
 
 function formatUserCreatedAt(raw: string): string {
   const d = new Date(raw);
@@ -89,12 +88,10 @@ if (!session.supabaseAccessToken) {
 
 if (apiReady && paToken && (import.meta.env.API_BASE_URL ?? '').trim().length > 0) {
   const res = await paFetchJson<ApiUserRow[]>('/admin/users', paToken);
-  if (res.ok && Array.isArray(res.data) && res.data.length > 0) {
+  if (res.ok && Array.isArray(res.data)) {
     users = res.data.map(mapApiUser);
-  } else if (res.ok && Array.isArray(res.data) && res.data.length === 0) {
-    users = [];
   } else if (!res.ok) {
-    const suffix = ` Plan Advisor unreachable (HTTP ${res.status}). Showing demo placeholders.`;
+    const suffix = ` Plan Advisor unreachable (HTTP ${res.status}).`;
     adminNotice = (adminNotice ? adminNotice.trim() + suffix : suffix.trim());
   }
 }
@@ -130,13 +127,15 @@ const roleMeta: Record<string, { label: string; cls: string }> = {
           </button>
         </div>
 
+        {users.length === 0 ? (
+          <div class="empty-state">No users created yet</div>
+        ) : (
         <table class="table">
           <thead>
             <tr>
               <th>User</th>
               <th>Role</th>
               <th>Company</th>
-              <th>AI Usage</th>
               <th>Status</th>
               <th>Created</th>
               <th></th>
@@ -162,19 +161,6 @@ const roleMeta: Record<string, { label: string; cls: string }> = {
                   <span class={`company-type ct-${user.company_type}`}>{user.company_type}</span>
                 </td>
                 <td>
-                  {user.ai_limit === null
-                    ? <span class="ai-unlimited">Unlimited</span>
-                    : (
-                      <div class="ai-usage">
-                        <div class="ai-bar-wrap">
-                          <div class="ai-bar" style={`width: ${Math.min(100, (user.ai_calls_used / user.ai_limit) * 100)}%`}></div>
-                        </div>
-                        <span class="ai-label">{user.ai_calls_used}/{user.ai_limit}</span>
-                      </div>
-                    )
-                  }
-                </td>
-                <td>
                   {user.active
                     ? <span class="status-dot active">Active</span>
                     : <span class="status-dot inactive">Inactive</span>
@@ -190,30 +176,13 @@ const roleMeta: Record<string, { label: string; cls: string }> = {
                         <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
                       </svg>
                     </button>
-                    {user.active
-                      ? (
-                        <!-- TODO: PATCH /admin/users/{user.id} { active: false } via App 2 API -->
-                        <button class="btn-icon btn-warn" title="Deactivate" onclick={`handleDeactivate('${user.id}')`}>
-                          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
-                          </svg>
-                        </button>
-                      )
-                      : (
-                        <!-- TODO: PATCH /admin/users/{user.id} { active: true } via App 2 API -->
-                        <button class="btn-icon btn-ok" title="Reactivate" onclick={`handleReactivate('${user.id}')`}>
-                          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <polyline points="20 6 9 17 4 12"/>
-                          </svg>
-                        </button>
-                      )
-                    }
                   </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
+        )}
       </div>
 
       <!-- New user form (hidden) -->
@@ -268,7 +237,8 @@ const roleMeta: Record<string, { label: string; cls: string }> = {
 
     <!-- Right: AI limits + permissions config -->
     <aside class="side-col">
-      <div class="panel">
+      <!-- AI Usage Limits -->
+      <!-- <div class="panel">
         <h3 class="side-title">AI Usage Limits</h3>
         <p class="side-desc">Monthly limits per role for AI calls (document analysis + summaries).</p>
 
@@ -284,7 +254,6 @@ const roleMeta: Record<string, { label: string; cls: string }> = {
                 <p class="limit-value">{item.limit}</p>
                 <p class="limit-desc">{item.desc}</p>
               </div>
-              <!-- TODO: PATCH /admin/settings/ai-limits via App 2 API -->
               <button class="btn-edit-limit" title="Edit limit" onclick={`alert('TODO: PATCH API_BASE_URL/admin/settings/ai-limits for role ${item.role}')`}>
                 <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
@@ -294,9 +263,10 @@ const roleMeta: Record<string, { label: string; cls: string }> = {
             </div>
           ))}
         </div>
-      </div>
+      </div> -->
 
-      <div class="panel">
+      <!-- AI Summary for Clients -->
+      <!-- <div class="panel">
         <h3 class="side-title">AI Summary for Clients</h3>
         <p class="side-desc">Configure whether client users can generate AI summaries.</p>
 
@@ -308,7 +278,6 @@ const roleMeta: Record<string, { label: string; cls: string }> = {
           ].map(item => (
             <div class="toggle-item">
               <span class="company-label">{item.company}</span>
-              <!-- TODO: PATCH /admin/settings/company-permissions via App 2 API -->
               <button
                 class={`toggle-btn ${item.enabled ? 'on' : 'off'}`}
                 onclick={`alert('TODO: PATCH API_BASE_URL/admin/settings/company-permissions\\n${item.company}: toggle summary access')`}
@@ -318,9 +287,10 @@ const roleMeta: Record<string, { label: string; cls: string }> = {
             </div>
           ))}
         </div>
-      </div>
+      </div> -->
 
-      <div class="panel">
+      <!-- AI Models -->
+      <!-- <div class="panel">
         <h3 class="side-title">AI Models</h3>
         <p class="side-desc">Models used for document analysis (App 3) and summaries (App 4).</p>
         <div class="model-list">
@@ -333,7 +303,6 @@ const roleMeta: Record<string, { label: string; cls: string }> = {
                 <p class="model-agent">{m.agent}</p>
                 <code class="model-name">{m.model}</code>
               </div>
-              <!-- TODO: PATCH /admin/settings/models via App 2 API -->
               <button class="btn-edit-limit" onclick={`alert('TODO: PATCH API_BASE_URL/admin/settings/models\\nChange model for ${m.agent}')`}>
                 <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
@@ -343,7 +312,7 @@ const roleMeta: Record<string, { label: string; cls: string }> = {
             </div>
           ))}
         </div>
-      </div>
+      </div> -->
     </aside>
   </div>
 </AdminLayout>
@@ -358,17 +327,7 @@ const roleMeta: Record<string, { label: string; cls: string }> = {
   }
 
   function handleEditUser(userId: string) {
-    alert(`TODO: PATCH API_BASE_URL/admin/users/${userId}\nOpen edit modal`);
-  }
-
-  function handleDeactivate(userId: string) {
-    if (confirm('Deactivate this user? They will not be able to log in.')) {
-      alert(`TODO: PATCH API_BASE_URL/admin/users/${userId} { "active": false }`);
-    }
-  }
-
-  function handleReactivate(userId: string) {
-    alert(`TODO: PATCH API_BASE_URL/admin/users/${userId} { "active": true }`);
+    window.location.href = `/admin/users/${userId}`;
   }
 
   document.getElementById('create-user-form')?.addEventListener('submit', e => {
@@ -376,6 +335,6 @@ const roleMeta: Record<string, { label: string; cls: string }> = {
     alert('TODO: POST API_BASE_URL/admin/users\n→ INSERT INTO users_profile (Railway PostgreSQL)');
   });
 
-  Object.assign(window, { showNewUserForm, hideNewUserForm, handleEditUser, handleDeactivate, handleReactivate });
+  Object.assign(window, { showNewUserForm, hideNewUserForm, handleEditUser });
 </script>
 
