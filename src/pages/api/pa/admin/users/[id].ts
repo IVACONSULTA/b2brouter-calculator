@@ -1,6 +1,6 @@
 import type { APIRoute } from 'astro';
-import { paFetchJson } from '../../../../lib/pa-api';
-import { getFreshSupabaseAccessToken } from '../../../../lib/supabase-session';
+import { paFetchJson } from '../../../../../lib/pa-api';
+import { getFreshSupabaseAccessToken } from '../../../../../lib/supabase-session';
 
 /**
  * GET /api/pa/admin/users/:id
