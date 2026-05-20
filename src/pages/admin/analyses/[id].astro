@@ -1,8 +1,6 @@
 ---
 import AdminLayout from '../../../layouts/AdminLayout.astro';
 import { getSession, isAdminRole } from '../../../lib/session';
-import { canUsePlanAdvisorApi } from '../../../lib/pa-api';
-import { getFreshSupabaseAccessToken } from '../../../lib/supabase-session';
 import AnalysisDetail from '../../../components/admin/AnalysisDetail';
 import '../../../styles/pages/admin-analysis-detail.css';
 
@@ -13,23 +11,10 @@ if (!isAdminRole(session.role)) return Astro.redirect('/dashboard');
 const { id } = Astro.params;
 const safeId = id ?? '';
 
-let paToken: string | null = null;
-if (session.supabaseAccessToken?.trim()) {
-  const fresh = await getFreshSupabaseAccessToken(Astro.cookies);
-  if (fresh.ok) paToken = fresh.accessToken;
-}
-
-const apiReady = canUsePlanAdvisorApi(session);
-const apiBaseUrl = (import.meta.env.API_BASE_URL ?? '').trim();
-
 let adminNotice: string | null = null;
 
 if (!session.supabaseAccessToken) {
-  adminNotice = 'Demo session (no JWT). Configure Supabase sign-in + API_BASE_URL for live analysis detail.';
-} else if (!apiBaseUrl) {
-  adminNotice = 'Set API_BASE_URL to reach Plan Advisor from this app.';
-} else if (!paToken) {
-  adminNotice = 'Session expired. Please sign out and sign in again so a fresh Supabase token is stored.';
+  adminNotice = 'Demo session (no JWT). Configure Supabase sign-in for live analysis detail.';
 }
 ---
 
@@ -42,25 +27,23 @@ if (!session.supabaseAccessToken) {
   notice={adminNotice}
 >
   <div class="page-admin-analyses-index panel">
-    {!apiReady || !paToken ? (
+    {!session.supabaseAccessToken ? (
       <div class="empty-state" style="padding: 2rem; text-align: center;">
         <h2>Cannot Load Analysis</h2>
         <p style="margin-top: 1rem; color: #6b7280;">
-          {adminNotice || 'Please check your connection and try again.'}
+          {adminNotice || 'Please sign in to view analysis details.'}
         </p>
         <a 
-          href="/admin/analyses"
+          href="/admin/login"
           style="display: inline-block; margin-top: 1.5rem; padding: 0.5rem 1rem; background: #4f46e5; color: white; text-decoration: none; border-radius: 0.375rem;"
         >
-          ← Back to Analyses
+          Sign In
         </a>
       </div>
     ) : (
       <AnalysisDetail 
         client:load
         analysisId={safeId}
-        apiBaseUrl={apiBaseUrl}
-        paToken={paToken}
       />
     )}
   </div>

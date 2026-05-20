@@ -80,8 +80,6 @@ interface AnalysisDetail {
 
 interface AnalysisDetailProps {
   analysisId: string;
-  apiBaseUrl: string;
-  paToken: string;
 }
 
 const confidenceMeta = {
@@ -107,12 +105,13 @@ export default function AnalysisDetail({ analysisId, apiBaseUrl, paToken }: Anal
     setError(null);
 
     try {
-      const url = `${apiBaseUrl}/api/admin/document-analyses/${encodeURIComponent(analysisId)}`;
-      console.log('[AnalysisDetail] Fetching from:', url);
+      // Use same-origin proxy to keep API key server-side
+      const url = `/api/pa/admin/document-analyses/${encodeURIComponent(analysisId)}`;
+      console.log('[AnalysisDetail] Fetching from proxy:', url);
 
       const response = await fetch(url, {
+        credentials: 'same-origin', // Send cookies for session
         headers: {
-          'Authorization': `Bearer ${paToken}`,
           'Accept': 'application/json',
         },
       });
