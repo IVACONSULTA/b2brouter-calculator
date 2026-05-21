@@ -184,6 +184,8 @@ const pendingItems = analysis
 
 const canActivate = approvedRules.length >= 1 && approvedPlans.length >= 1 && (analysis?.conflicts.length ?? 0) === 0;
 
+console.log('canActivate', canActivate);
+
 const isAlreadyActive = profile?.status === 'active';
 ---
 
