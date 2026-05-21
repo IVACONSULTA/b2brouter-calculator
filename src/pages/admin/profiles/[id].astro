@@ -93,22 +93,84 @@ if (!session.supabaseAccessToken) {
     'Session expired. Please sign out and sign in again so a fresh Supabase token is stored.';
 }
 
-if (apiReady && paToken && safeId && (import.meta.env.API_BASE_URL ?? '').trim().length > 0) {
-  // Fetch profile
-  const profileRes = await paFetchJson<ProfileApiRow>(`/admin/profiles/${encodeURIComponent(safeId)}`, paToken);
-  if (profileRes.ok && profileRes.data) {
-    profile = profileRes.data;
-    
-    // Fetch analysis if there's an analysis_id
-    if (profile.analysis_id) {
-      const analysisRes = await paFetchJson<AnalysisDetail>(`/admin/document-analyses/${encodeURIComponent(profile.analysis_id)}`, paToken);
-      if (analysisRes.ok && analysisRes.data) {
-        analysis = analysisRes.data;
+if (apiReady && paToken && safeId) {
+  try {
+    // Fetch profile via proxy
+    const profileResponse = await fetch(
+      new URL(`/api/pa/admin/profiles/${encodeURIComponent(safeId)}`, Astro.url.origin).toString(),
+      {
+        headers: {
+          'Cookie': Astro.request.headers.get('cookie') || '',
+        },
       }
+    );
+
+    if (profileResponse.ok) {
+      const profileData = await profileResponse.json();
+      if (profileData && !profileData.error) {
+        // Transform backend response to match frontend types
+        profile = {
+          id: profileData.id,
+          country: {
+            code: profileData.country_code,
+            name: profileData.country_name,
+          },
+          provider: {
+            name: profileData.provider_name,
+            type: profileData.provider_type || 'PA',
+          },
+          version: profileData.version,
+          currency: profileData.currency,
+          status: profileData.status,
+          active_from: profileData.active_from,
+          created_at: profileData.created_at,
+          rules_count: profileData.rules?.length || 0,
+          plans_count: profileData.plans?.length || 0,
+          analysis_id: profileData.analysis_id || null,
+        };
+
+        // Transform rules, plans, assumptions from the profile response
+        if (profileData.rules && Array.isArray(profileData.rules)) {
+          analysis = {
+            id: profileData.analysis_id || '',
+            profile_id: profileData.id,
+            rules: profileData.rules.map((r: any) => ({
+              id: r.id,
+              input_key: r.input_key,
+              label: r.label,
+              direction: r.direction,
+              obligation: r.obligation,
+              pa_transactions_per_item: r.pa_transactions_per_item || 1,
+              source_document: r.source_document || '',
+              status: r.status || 'proposed',
+            })),
+            plans: profileData.plans?.map((p: any) => ({
+              id: p.id,
+              plan_name: p.name,
+              annual_fee: p.annual_fee,
+              included_pa_transactions: p.included_transactions || 0,
+              extra_transaction_cost: p.extra_cost || 0,
+              status: p.status || 'proposed',
+            })) || [],
+            assumptions: profileData.assumptions?.map((a: any) => ({
+              id: a.id,
+              key: a.key,
+              value: a.value,
+              status: a.status || 'proposed',
+            })) || [],
+            conflicts: [], // Backend doesn't return conflicts yet
+          };
+        }
+      }
+    } else if (profileResponse.status === 404) {
+      adminNotice = 'Profile not found.';
+    } else {
+      const suffix = ` Plan Advisor unreachable (HTTP ${profileResponse.status}).`;
+      adminNotice = (adminNotice ? adminNotice.trim() + suffix : suffix.trim());
     }
-  } else if (!profileRes.ok) {
-    const suffix = ` Plan Advisor unreachable (HTTP ${profileRes.status}).`;
-    adminNotice = (adminNotice ? adminNotice.trim() + suffix : suffix.trim());
+  } catch (err) {
+    console.error('[Profile Detail] Error fetching profile:', err);
+    adminNotice = 'Failed to load profile data. Please try again.';
   }
 }
 
@@ -120,7 +182,7 @@ const pendingItems = analysis
     analysis.plans.filter((p) => !['approved', 'rejected'].includes(p.status)).length
   : 0;
 
-const canActivate = analysis ? approvedRules.length >= 1 && approvedPlans.length >= 1 && analysis.conflicts.length === 0 : false;
+const canActivate = approvedRules.length >= 1 && approvedPlans.length >= 1 && (analysis?.conflicts.length ?? 0) === 0;
 
 const isAlreadyActive = profile?.status === 'active';
 ---
