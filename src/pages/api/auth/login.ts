@@ -11,6 +11,7 @@ import {
   sessionRoleFromProfileOrMeta,
   type Session,
 } from '../../../lib/session';
+import { paFetchJson } from '../../../lib/pa-api';
 
 const DUMMY_USERS: Record<string, { name: string; role: Session['role'] }> = {
   'admin@b2brouter.com': { name: 'Admin User', role: 'admin' },
@@ -126,9 +127,37 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
     const userSb = createSupabaseWithUserJwt(data.session.access_token);
     const { data: profile } = await userSb
       .from('profiles')
-      .select('role, full_name')
+      .select('role, full_name, active')
       .eq('id', data.user.id)
       .maybeSingle();
+
+    // Check if user is active - fetch from Railway database via PlanAdvisorAPI for authoritative check
+    let isActive = profile?.active as boolean | undefined;
+    
+    // If active status not in Supabase profile, check Railway database
+    if (isActive === undefined && import.meta.env.API_BASE_URL) {
+      try {
+        const paCheck = await paFetchJson(
+          `/admin/users/${encodeURIComponent(data.user.id)}`,
+          data.session.access_token,
+        );
+        if (paCheck.ok && paCheck.data) {
+          isActive = (paCheck.data as { active?: boolean }).active ?? true;
+        }
+      } catch (e) {
+        // If API check fails, fall back to assuming active (fail-open for reliability)
+        console.warn('[api/auth/login] Failed to check active status from Railway:', e);
+        isActive = true;
+      }
+    }
+
+    // Default to active if no source available
+    isActive = isActive ?? true;
+
+    if (!isActive) {
+      console.log('[api/auth/login] User is inactive:', data.user.id);
+      return redirect(loginErrorUrl(from, 'account_inactive'));
+    }
 
     const role = sessionRoleFromProfileOrMeta(
       profile?.role as string | undefined,
