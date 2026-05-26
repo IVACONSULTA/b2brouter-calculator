@@ -100,10 +100,10 @@ const roleMeta: Record<string, { label: string; cls: string }> = {
         </div>
 
         <form id="edit-user-form" class="form-grid" data-user-id={user.id}>
-          <div class="field">
-            <label>User ID</label>
-            <input type="text" value={user.id} disabled style="background: #f3f4f6; cursor: not-allowed;" />
-            <small style="color: #6b7280;">User ID cannot be changed</small>
+          <div class="field field-readonly">
+            <label>User ID <span class="readonly-badge">Read-only</span></label>
+            <input type="text" value={user.id} disabled class="readonly-input" />
+            <small class="hint">User ID is system-generated and cannot be changed</small>
           </div>
 
           <div class="field">
@@ -173,16 +173,41 @@ const roleMeta: Record<string, { label: string; cls: string }> = {
   </div>
 </AdminLayout>
 
+<style>
+  .field-readonly {
+    opacity: 0.8;
+  }
+  .readonly-badge {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: #6b7280;
+    background: #f3f4f6;
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    margin-left: 0.5rem;
+  }
+  .readonly-input {
+    background: #f3f4f6 !important;
+    cursor: not-allowed !important;
+    color: #6b7280 !important;
+  }
+  .hint {
+    color: #6b7280;
+    font-size: 0.75rem;
+  }
+</style>
+
 <script>
-  const form = document.getElementById('edit-user-form') as HTMLFormElement | null;
+  const form = document.getElementById('edit-user-form');
   const resultDiv = document.getElementById('save-result');
+  const submitBtn = form?.querySelector('button[type="submit"]') as HTMLButtonElement | null;
 
   if (form && resultDiv) {
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       
       const userId = form.dataset.userId;
-      const formData = new FormData(form);
+      const formData = new FormData(form as HTMLFormElement);
       
       const data = {
         email: formData.get('email'),
@@ -191,6 +216,12 @@ const roleMeta: Record<string, { label: string; cls: string }> = {
         company_id: formData.get('company_id') || null,
         active: formData.get('active') === 'true',
       };
+
+      // Disable submit button during request
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Saving…';
+      }
 
       try {
         const response = await fetch(`/api/pa/admin/users/${userId}`, {
@@ -202,27 +233,57 @@ const roleMeta: Record<string, { label: string; cls: string }> = {
           body: JSON.stringify(data),
         });
 
+        const result = await response.json().catch(() => ({}));
+
         if (response.ok) {
           resultDiv.style.display = 'block';
           resultDiv.style.background = '#d1fae5';
           resultDiv.style.color = '#065f46';
-          resultDiv.textContent = 'User updated successfully!';
+          resultDiv.innerHTML = `
+            <strong>✓ User updated successfully!</strong><br>
+            <small>Synced to Supabase Auth and Railway database</small>
+          `;
           
+          // Re-enable button
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Save Changes';
+          }
+          
+          // Redirect after short delay
           setTimeout(() => {
             window.location.href = '/admin/settings';
           }, 1500);
         } else {
-          const error = await response.json();
+          // Error response
           resultDiv.style.display = 'block';
           resultDiv.style.background = '#fee2e2';
           resultDiv.style.color = '#991b1b';
-          resultDiv.textContent = `Error: ${error.message || 'Failed to update user'}`;
+          resultDiv.innerHTML = `
+            <strong>✗ Update failed</strong><br>
+            <small>${result.message || result.error || `HTTP ${response.status}`}</small>
+          `;
+          
+          // Re-enable button
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Save Changes';
+          }
         }
       } catch (err) {
         resultDiv.style.display = 'block';
         resultDiv.style.background = '#fee2e2';
         resultDiv.style.color = '#991b1b';
-        resultDiv.textContent = `Error: ${err instanceof Error ? err.message : 'Unknown error'}`;
+        resultDiv.innerHTML = `
+          <strong>✗ Network error</strong><br>
+          <small>${err instanceof Error ? err.message : 'Please try again'}</small>
+        `;
+        
+        // Re-enable button
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Save Changes';
+        }
       }
     });
   }
