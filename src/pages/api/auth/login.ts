@@ -131,31 +131,42 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
       .eq('id', data.user.id)
       .maybeSingle();
 
-    // Check if user is active - fetch from Railway database via PlanAdvisorAPI for authoritative check
-    let isActive = profile?.active as boolean | undefined;
+    // Check if user is active - Railway database is the authoritative source of truth
+    let isActive: boolean | undefined;
     
-    // If active status not in Supabase profile, check Railway database
-    if (isActive === undefined && import.meta.env.API_BASE_URL) {
+    // Always check Railway database for authoritative active status (if API is available)
+    if (import.meta.env.API_BASE_URL) {
       try {
         const paCheck = await paFetchJson(
           `/admin/users/${encodeURIComponent(data.user.id)}`,
           data.session.access_token,
         );
         if (paCheck.ok && paCheck.data) {
-          isActive = (paCheck.data as { active?: boolean }).active ?? true;
+          // Explicitly check for boolean false - don't use ?? which converts false to true
+          const railwayActive = (paCheck.data as { active?: boolean }).active;
+          isActive = railwayActive === false ? false : (railwayActive === true ? true : undefined);
+          console.log('[api/auth/login] Railway active status:', { userId: data.user.id, active: isActive });
         }
       } catch (e) {
-        // If API check fails, fall back to assuming active (fail-open for reliability)
-        console.warn('[api/auth/login] Failed to check active status from Railway:', e);
-        isActive = true;
+        // If API check fails, fall back to Supabase value (or assume active if neither available)
+        console.warn('[api/auth/login] Failed to check active status from Railway, using Supabase fallback:', e);
+        isActive = profile?.active as boolean | undefined;
       }
     }
+    
+    // If Railway check didn't work or API not available, use Supabase
+    if (isActive === undefined) {
+      isActive = profile?.active as boolean | undefined;
+    }
 
-    // Default to active if no source available
-    isActive = isActive ?? true;
+    // Default to active only if no source available at all (new users, etc.)
+    if (isActive === undefined) {
+      console.log('[api/auth/login] No active status found, defaulting to true for user:', data.user.id);
+      isActive = true;
+    }
 
     if (!isActive) {
-      console.log('[api/auth/login] User is inactive:', data.user.id);
+      console.log('[api/auth/login] BLOCKING login - User is inactive:', data.user.id, data.user.email);
       return redirect(loginErrorUrl(from, 'account_inactive'));
     }
 
