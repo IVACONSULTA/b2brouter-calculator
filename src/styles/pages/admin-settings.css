@@ -45,9 +45,14 @@
       cursor: pointer;
       font-family: inherit;
       transition: all 0.13s;
+      text-decoration: none;
     }
 
-    .btn-new-user:hover { background: var(--color-admin-hover); transform: translateY(-1px); }
+    .btn-new-user:hover {
+      background: var(--color-admin-hover);
+      transform: translateY(-1px);
+      color: #fff;
+    }
 
     /* Table */
     .table {

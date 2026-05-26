@@ -118,13 +118,12 @@ const roleMeta: Record<string, { label: string; cls: string }> = {
             <h2 class="panel-title">User Accounts</h2>
             <p class="panel-subtitle">{users.length} users · {users.filter(u => u.active).length} active</p>
           </div>
-          <!-- TODO: POST /admin/users via App 2 API (after creating user in Supabase Auth) -->
-          <button class="btn-new-user" onclick="showNewUserForm()">
+          <a href="/admin/settings/new-user" class="btn-new-user">
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
             </svg>
             New User
-          </button>
+          </a>
         </div>
 
         {users.length === 0 ? (
@@ -185,54 +184,6 @@ const roleMeta: Record<string, { label: string; cls: string }> = {
         )}
       </div>
 
-      <!-- New user form (hidden) -->
-      <div id="new-user-form-panel" class="panel" style="display:none; margin-top: 1rem">
-        <h2 class="panel-title" style="margin-bottom:1rem">Create New User</h2>
-        <p class="panel-subtitle" style="margin-bottom:1.25rem">
-          First create the user in Supabase Auth (email/password), then register their profile here.
-        </p>
-
-        <!-- TODO: POST /admin/users via App 2 API → INSERT INTO users_profile (Railway PostgreSQL) -->
-        <form id="create-user-form" class="form-grid" action="#" method="POST">
-          <div class="field">
-            <label>Supabase User ID (UUID) <span class="req">*</span></label>
-            <input type="text" name="supabase_id" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" required />
-          </div>
-          <div class="field">
-            <label>Full Name <span class="req">*</span></label>
-            <input type="text" name="full_name" placeholder="Jane Doe" required />
-          </div>
-          <div class="field">
-            <label>Email <span class="req">*</span></label>
-            <input type="email" name="email" placeholder="user@company.com" required />
-          </div>
-          <div class="field">
-            <label>Role <span class="req">*</span></label>
-            <select name="role" required>
-              <option value="" disabled selected>Select role…</option>
-              <option value="admin">Admin</option>
-              <option value="internal">Internal</option>
-              <option value="client">Client</option>
-            </select>
-          </div>
-          <div class="field">
-            <label>Company</label>
-            <select name="company_id">
-              <option value="">Select company…</option>
-              <option value="comp-internal">B2Brouter Internal</option>
-              <option value="comp-acme">Acme Corp</option>
-              <option value="comp-global">Global Trade Ltd</option>
-              <option value="comp-tech">Tech Solutions SL</option>
-            </select>
-          </div>
-          <div class="field full">
-            <div class="form-actions">
-              <button type="button" class="btn-cancel" onclick="hideNewUserForm()">Cancel</button>
-              <button type="submit" class="btn-primary">Create User Profile</button>
-            </div>
-          </div>
-        </form>
-      </div>
     </div>
 
     <!-- Right: AI limits + permissions config -->
@@ -318,23 +269,10 @@ const roleMeta: Record<string, { label: string; cls: string }> = {
 </AdminLayout>
 
 <script>
-  function showNewUserForm() {
-    document.getElementById('new-user-form-panel')!.style.display = '';
-  }
-
-  function hideNewUserForm() {
-    document.getElementById('new-user-form-panel')!.style.display = 'none';
-  }
-
   function handleEditUser(userId: string) {
     window.location.href = `/admin/users/${userId}`;
   }
 
-  document.getElementById('create-user-form')?.addEventListener('submit', e => {
-    e.preventDefault();
-    alert('TODO: POST API_BASE_URL/admin/users\n→ INSERT INTO users_profile (Railway PostgreSQL)');
-  });
-
-  Object.assign(window, { showNewUserForm, hideNewUserForm, handleEditUser });
+  Object.assign(window, { handleEditUser });
 </script>
 

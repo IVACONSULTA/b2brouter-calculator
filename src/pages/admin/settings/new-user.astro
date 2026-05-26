@@ -1,0 +1,330 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { getSession, isAdminRole } from '../../../lib/session';
+import {
+  canUsePlanAdvisorApi,
+  paFetchJson,
+} from '../../../lib/pa-api';
+import { getFreshSupabaseAccessToken } from '../../../lib/supabase-session';
+import '../../../styles/pages/admin-settings.css';
+
+const session = getSession(Astro.cookies);
+if (!session) return Astro.redirect('/admin/login');
+if (!isAdminRole(session.role)) return Astro.redirect('/dashboard');
+
+let paToken: string | null = null;
+if (session.supabaseAccessToken?.trim()) {
+  const fresh = await getFreshSupabaseAccessToken(Astro.cookies);
+  if (fresh.ok) paToken = fresh.accessToken;
+}
+
+const apiReady = canUsePlanAdvisorApi(session);
+
+type Company = {
+  id: string;
+  name: string;
+  type: 'internal' | 'client';
+};
+
+let companies: Company[] = [];
+let adminNotice: string | null = null;
+
+if (!session.supabaseAccessToken) {
+  adminNotice = 'Demo session (no JWT). Configure Supabase sign-in + API_BASE_URL for live data.';
+} else if (!(import.meta.env.API_BASE_URL ?? '').trim()) {
+  adminNotice = 'Set API_BASE_URL to reach Plan Advisor from this app.';
+} else if (!paToken) {
+  adminNotice = 'Session expired. Please sign out and sign in again.';
+}
+
+// Fetch companies for the dropdown
+if (apiReady && paToken) {
+  const res = await paFetchJson<Company[]>('/admin/companies', paToken);
+  if (res.ok && Array.isArray(res.data) && res.data.length > 0) {
+    companies = res.data;
+  }
+}
+
+// If no companies from API, use fallback
+if (companies.length === 0) {
+  companies = [
+    { id: 'comp-internal', name: 'B2Brouter Internal', type: 'internal' },
+    { id: 'comp-client-1', name: 'Demo Client Company', type: 'client' },
+  ];
+}
+---
+
+<AdminLayout
+  title="Create New User"
+  breadcrumbs={[
+    { label: 'Admin' },
+    { label: 'Settings & Users', href: '/admin/settings' },
+    { label: 'New User' }
+  ]}
+  notice={adminNotice}
+>
+  <div class="page-admin-settings settings-layout">
+    <div class="main-col">
+      <div class="panel">
+        <div class="panel-head">
+          <div>
+            <h2 class="panel-title">Create New User</h2>
+            <p class="panel-subtitle">Create a new user with Supabase Auth and Railway profile</p>
+          </div>
+          <a href="/admin/settings" class="btn-cancel">← Back to Users</a>
+        </div>
+
+        <form id="create-user-form" class="form-grid">
+          <div class="field">
+            <label for="full_name">Full Name <span class="req">*</span></label>
+            <input 
+              type="text" 
+              id="full_name" 
+              name="full_name" 
+              placeholder="Jane Doe" 
+              required 
+            />
+          </div>
+
+          <div class="field">
+            <label for="email">Email <span class="req">*</span></label>
+            <input 
+              type="email" 
+              id="email" 
+              name="email" 
+              placeholder="user@company.com" 
+              required 
+            />
+          </div>
+
+          <div class="field">
+            <label for="password">Password <span class="req">*</span></label>
+            <input 
+              type="password" 
+              id="password" 
+              name="password" 
+              placeholder="Min 6 characters" 
+              minlength="6"
+              required 
+            />
+            <small class="field-hint">Password must be at least 6 characters</small>
+          </div>
+
+          <div class="field">
+            <label for="role">Role <span class="req">*</span></label>
+            <select id="role" name="role" required>
+              <option value="" disabled selected>Select role…</option>
+              <option value="admin">Admin</option>
+              <option value="internal">Internal</option>
+              <option value="client">Client</option>
+            </select>
+          </div>
+
+          <div class="field" id="company-field">
+            <label for="company_id">Company <span class="req" id="company-required" style="display:none">*</span></label>
+            <select id="company_id" name="company_id">
+              <option value="">Select company…</option>
+              {companies.map(company => (
+                <option value={company.id} data-type={company.type}>
+                  {company.name} ({company.type})
+                </option>
+              ))}
+            </select>
+            <small class="field-hint" id="company-hint">Required for Client users</small>
+          </div>
+
+          <div class="field full">
+            <div class="form-actions">
+              <a href="/admin/settings" class="btn-cancel">Cancel</a>
+              <button type="submit" class="btn-primary" id="submit-btn">
+                Create User
+              </button>
+            </div>
+          </div>
+        </form>
+
+        <div id="result-message" style="margin-top: 1rem;"></div>
+      </div>
+    </div>
+  </div>
+</AdminLayout>
+
+<script define:vars={{ companies: companies }}>
+  const form = document.getElementById('create-user-form');
+  const roleSelect = document.getElementById('role');
+  const companySelect = document.getElementById('company_id');
+  const companyRequired = document.getElementById('company-required');
+  const companyHint = document.getElementById('company-hint');
+  const submitBtn = document.getElementById('submit-btn');
+  const resultMessage = document.getElementById('result-message');
+
+  // Show/hide company required indicator based on role
+  roleSelect?.addEventListener('change', () => {
+    const isClient = roleSelect.value === 'client';
+    if (companyRequired) {
+      companyRequired.style.display = isClient ? 'inline' : 'none';
+    }
+    if (companyHint) {
+      companyHint.textContent = isClient ? 'Required for Client users' : 'Optional for Admin/Internal users';
+    }
+    if (companySelect) {
+      companySelect.required = isClient;
+    }
+  });
+
+  form?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    
+    if (!form) return;
+    
+    const formData = new FormData(form);
+    const data = {
+      full_name: formData.get('full_name')?.toString().trim(),
+      email: formData.get('email')?.toString().trim(),
+      password: formData.get('password')?.toString(),
+      role: formData.get('role')?.toString(),
+      company_id: formData.get('company_id')?.toString() || undefined,
+    };
+
+    // Validation
+    if (!data.full_name || !data.email || !data.password || !data.role) {
+      showError('Please fill in all required fields');
+      return;
+    }
+
+    if (data.password.length < 6) {
+      showError('Password must be at least 6 characters');
+      return;
+    }
+
+    if (data.role === 'client' && !data.company_id) {
+      showError('Company is required for Client users');
+      return;
+    }
+
+    // Disable submit button
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Creating…';
+    }
+
+    try {
+      const res = await fetch('/api/pa/admin/users/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify(data),
+      });
+
+      const result = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        const message = result.message || result.error || `Failed to create user (HTTP ${res.status})`;
+        showError(message);
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Create User';
+        }
+        return;
+      }
+
+      // Success
+      showSuccess(
+        `User created successfully!\n\n` +
+        `Name: ${result.full_name || result.email}\n` +
+        `Email: ${result.email}\n` +
+        `Role: ${result.role}\n` +
+        `ID: ${result.id}`
+      );
+
+      // Reset form
+      form.reset();
+
+      // Redirect after short delay
+      setTimeout(() => {
+        window.location.href = '/admin/settings';
+      }, 2000);
+
+    } catch (err) {
+      console.error('Create user error:', err);
+      showError('Network error while creating user. Please try again.');
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Create User';
+      }
+    }
+  });
+
+  function showError(message) {
+    if (!resultMessage) return;
+    resultMessage.innerHTML = `<div class="alert alert-error">${escapeHtml(message)}</div>`;
+    resultMessage.style.display = 'block';
+  }
+
+  function showSuccess(message) {
+    if (!resultMessage) return;
+    resultMessage.innerHTML = `<div class="alert alert-success">${escapeHtml(message).replace(/\n/g, '<br>')}</div>`;
+    resultMessage.style.display = 'block';
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+</script>
+
+<style>
+  .field-hint {
+    display: block;
+    margin-top: 0.25rem;
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+  }
+
+  .alert {
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    font-size: 0.9rem;
+  }
+
+  .alert-error {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #ef4444;
+  }
+
+  .alert-success {
+    background: rgba(34, 197, 94, 0.1);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    color: #22c55e;
+  }
+
+  .btn-cancel {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.55rem 1rem;
+    border: 1px solid var(--color-border);
+    background: var(--color-surface);
+    color: var(--color-text);
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.13s;
+  }
+
+  .btn-cancel:hover {
+    background: var(--color-surface-2);
+  }
+
+  #submit-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+</style>
