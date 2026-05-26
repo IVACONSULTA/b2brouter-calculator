@@ -269,6 +269,9 @@ const roleMeta: Record<string, { label: string; cls: string }> = {
 </AdminLayout>
 
 <script>
+  // New User button is now a link to /admin/settings/new-user
+  // No JavaScript handler needed - it's a standard anchor tag
+
   function handleEditUser(userId: string) {
     window.location.href = `/admin/users/${userId}`;
   }
