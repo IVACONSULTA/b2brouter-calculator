@@ -36,8 +36,15 @@ interface UserData {
   ai_calls_this_month?: number | null;
 }
 
+interface Company {
+  id: string;
+  name: string;
+  type: 'internal' | 'client';
+}
+
 let adminNotice: string | null = null;
 let user: UserData | null = null;
+let companies: Company[] = [];
 
 function formatUserCreatedAt(raw: string): string {
   const d = new Date(raw);
@@ -54,11 +61,20 @@ if (!session.supabaseAccessToken) {
 }
 
 if (apiReady && paToken && userId) {
-  const userRes = await paFetchJson<UserData>(`/admin/users/${encodeURIComponent(userId)}`, paToken);
+  // Fetch user and companies in parallel
+  const [userRes, companiesRes] = await Promise.all([
+    paFetchJson<UserData>(`/admin/users/${encodeURIComponent(userId)}`, paToken),
+    paFetchJson<Company[]>('/admin/companies', paToken),
+  ]);
+
   if (userRes.ok && userRes.data) {
     user = userRes.data;
   } else if (!userRes.ok) {
     adminNotice = `Could not load user (HTTP ${userRes.status}).`;
+  }
+
+  if (companiesRes.ok && Array.isArray(companiesRes.data)) {
+    companies = companiesRes.data;
   }
 }
 
@@ -118,7 +134,7 @@ const roleMeta: Record<string, { label: string; cls: string }> = {
 
           <div class="field">
             <label>Role <span class="req">*</span></label>
-            <select name="role" required>
+            <select name="role" id="role" required>
               <option value="admin" selected={user.role === 'admin'}>Admin</option>
               <option value="internal" selected={user.role === 'internal'}>Internal</option>
               <option value="client" selected={user.role === 'client'}>Client</option>
@@ -126,14 +142,18 @@ const roleMeta: Record<string, { label: string; cls: string }> = {
           </div>
 
           <div class="field">
-            <label>Company</label>
-            <select name="company_id">
+            <label>Company <span class="req" id="company-required" style={user.role === 'client' ? '' : 'display:none'}>*</span></label>
+            <select name="company_id" id="company-select" required={user.role === 'client'}>
               <option value="" selected={!user.company_id}>Select company…</option>
-              <option value="comp-internal" selected={user.company_id === 'comp-internal'}>B2Brouter Internal (internal)</option>
-              <option value="comp-acme" selected={user.company_id === 'comp-acme'}>Acme Corp (client)</option>
-              <option value="comp-global" selected={user.company_id === 'comp-global'}>Global Trade Ltd (client)</option>
-              <option value="comp-tech" selected={user.company_id === 'comp-tech'}>Tech Solutions SL (client)</option>
+              {companies.map(company => (
+                <option value={company.id} selected={user.company_id === company.id}>
+                  {company.name} ({company.type})
+                </option>
+              ))}
             </select>
+            {companies.length === 0 && (
+              <small class="hint" style="color: #ef4444;">No companies available. Please create companies first.</small>
+            )}
           </div>
 
           <div class="field">
@@ -201,6 +221,18 @@ const roleMeta: Record<string, { label: string; cls: string }> = {
   const form = document.getElementById('edit-user-form');
   const resultDiv = document.getElementById('save-result');
   const submitBtn = form?.querySelector('button[type="submit"]') as HTMLButtonElement | null;
+  const roleSelect = document.getElementById('role') as HTMLSelectElement | null;
+  const companySelect = document.getElementById('company-select') as HTMLSelectElement | null;
+  const companyRequired = document.getElementById('company-required');
+
+  // Handle company field requirement based on role
+  if (roleSelect && companySelect && companyRequired) {
+    roleSelect.addEventListener('change', () => {
+      const isClient = roleSelect.value === 'client';
+      companySelect.required = isClient;
+      companyRequired.style.display = isClient ? '' : 'none';
+    });
+  }
 
   if (form && resultDiv) {
     form.addEventListener('submit', async (e) => {
@@ -208,12 +240,23 @@ const roleMeta: Record<string, { label: string; cls: string }> = {
       
       const userId = form.dataset.userId;
       const formData = new FormData(form as HTMLFormElement);
+      const role = formData.get('role')?.toString();
+      const companyId = formData.get('company_id')?.toString();
+      
+      // Validation
+      if (role === 'client' && !companyId) {
+        resultDiv.style.display = 'block';
+        resultDiv.style.background = '#fee2e2';
+        resultDiv.style.color = '#991b1b';
+        resultDiv.innerHTML = '<strong>Validation error</strong><br><small>Company is required for Client users</small>';
+        return;
+      }
       
       const data = {
         email: formData.get('email'),
         full_name: formData.get('full_name'),
         role: formData.get('role'),
-        company_id: formData.get('company_id') || null,
+        company_id: companyId || null,
         active: formData.get('active') === 'true',
       };
 
