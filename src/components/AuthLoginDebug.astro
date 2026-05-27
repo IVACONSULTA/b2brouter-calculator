@@ -1,0 +1,39 @@
+---
+/** Browser-console auth logs — use `?debug_auth=1` or set PUBLIC_AUTH_DEBUG=1 on Netlify. */
+const fromUrl = Astro.url.searchParams.get('debug_auth') === '1';
+const fromEnv =
+  import.meta.env.PUBLIC_AUTH_DEBUG === '1' ||
+  import.meta.env.PUBLIC_AUTH_DEBUG === 'true';
+const enabled = fromUrl || fromEnv;
+---
+
+{enabled && (
+  <div class="auth-debug-banner" role="status">
+    <strong>Auth debug on</strong> — open DevTools → Console after sign-in. Remove
+    <code>?debug_auth=1</code> or <code>PUBLIC_AUTH_DEBUG</code> when done.
+  </div>
+)}
+
+<script define:vars={{ enabled }}>
+  if (enabled) document.documentElement.dataset.authDebug = '1';
+</script>
+
+<script>
+  import '../scripts/auth-login-debug.client.ts';
+</script>
+
+<style>
+  .auth-debug-banner {
+    margin-bottom: 1rem;
+    padding: 0.65rem 0.85rem;
+    border-radius: 8px;
+    font-size: 0.8125rem;
+    line-height: 1.45;
+    background: rgba(124, 58, 237, 0.12);
+    border: 1px solid rgba(124, 58, 237, 0.35);
+    color: inherit;
+  }
+  .auth-debug-banner code {
+    font-size: 0.75rem;
+  }
+</style>

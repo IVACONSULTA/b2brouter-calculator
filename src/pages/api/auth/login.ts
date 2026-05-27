@@ -131,76 +131,61 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
       .eq('id', data.user.id)
       .maybeSingle();
 
-    console.log('[api/auth/login] User authenticated:', { 
-      email: data.user.email, 
+    console.log('[api/auth/login] User authenticated:', {
+      email: data.user.email,
       userId: data.user.id,
-      supabaseActive: profile?.active,
-      apiBaseUrl: import.meta.env.API_BASE_URL ? 'SET' : 'NOT SET'
+      apiBaseUrl: import.meta.env.API_BASE_URL ? 'SET' : 'NOT SET',
     });
 
-    // Check if user is active - Railway database is the authoritative source of truth
-    let isActive: boolean | undefined;
-    
-    // Always check Railway database for authoritative active status (if API is available)
+    // ── Active check: Railway is the single source of truth ──────────────
+    // Use GET /api/me — works for ANY role (requireAuth only, no requireAdmin).
+    // DO NOT use /admin/users/:id — that requires admin role and causes
+    // active customers to get 403 "Admin role required", which the old code
+    // misinterpreted as "check failed → allow login".
+    //
+    // requireAuth on the API already blocks deactivated users with:
+    //   403 { error: 'Forbidden', message: 'Account is deactivated.' }
+    // So a 403 with "deactivated" IS a definitive block, not a fallback case.
+
     if (import.meta.env.API_BASE_URL) {
-      console.log('[api/auth/login] Checking Railway API for active status...');
-      try {
-        const paCheck = await paFetchJson(
-          `/admin/users/${encodeURIComponent(data.user.id)}`,
-          data.session.access_token,
-        );
-        console.log('[api/auth/login] Railway API response:', { 
-          ok: paCheck.ok, 
-          status: paCheck.status,
-          hasData: !!paCheck.data,
-          rawData: paCheck.data 
-        });
-        
-        if (paCheck.ok && paCheck.data) {
-          const railwayData = paCheck.data as { active?: boolean; email?: string; id?: string };
-          console.log('[api/auth/login] Railway user data:', { 
-            id: railwayData.id, 
-            email: railwayData.email, 
-            active: railwayData.active,
-            activeType: typeof railwayData.active
-          });
-          
-          // Explicitly check for boolean false - don't use ?? which converts false to true
-          const railwayActive = railwayData.active;
-          isActive = railwayActive === false ? false : (railwayActive === true ? true : undefined);
-          console.log('[api/auth/login] Parsed Railway active status:', { active: isActive, fromValue: railwayActive });
-        } else {
-          console.log('[api/auth/login] Railway API returned no data or not ok, falling back to Supabase');
+      console.log('[api/auth/login] Checking active via GET /api/me ...');
+
+      const meCheck = await paFetchJson<{ active?: boolean; email?: string }>(
+        '/me',
+        data.session.access_token,
+      );
+
+      console.log('[api/auth/login] /api/me response:', {
+        ok: meCheck.ok,
+        status: meCheck.status,
+        data: meCheck.ok ? meCheck.data : undefined,
+        error: !meCheck.ok ? meCheck.error : undefined,
+      });
+
+      if (meCheck.ok && meCheck.data) {
+        // requireAuth passed → user exists in Railway and active=true.
+        // Double-check the field just in case.
+        if (meCheck.data.active === false) {
+          console.log('[api/auth/login] >>> BLOCKING — /api/me returned active=false');
+          return redirect(loginErrorUrl(from, 'account_inactive'));
         }
-      } catch (e) {
-        // If API check fails, fall back to Supabase value (or assume active if neither available)
-        console.warn('[api/auth/login] Failed to check active status from Railway, using Supabase fallback:', e);
-        isActive = profile?.active as boolean | undefined;
+        console.log('[api/auth/login] Railway confirmed active=true');
+      } else if (meCheck.status === 403) {
+        // requireAuth rejected — either deactivated or no profile row.
+        // Both are a definitive block: do NOT fall back to Supabase.
+        const msg = String(
+          (meCheck.error as { message?: string })?.message ?? '',
+        ).toLowerCase();
+        console.log('[api/auth/login] >>> BLOCKING — /api/me returned 403:', msg);
+        return redirect(loginErrorUrl(from, 'account_inactive'));
+      } else {
+        // Network error, 500, etc. — block for safety (don't guess).
+        console.warn('[api/auth/login] /api/me unexpected status:', meCheck.status, '— blocking login');
+        return redirect(loginErrorUrl(from, 'server_error'));
       }
     } else {
-      console.log('[api/auth/login] API_BASE_URL not set, skipping Railway check');
+      console.warn('[api/auth/login] API_BASE_URL not set — skipping Railway active check');
     }
-    
-    // If Railway check didn't work or API not available, use Supabase
-    if (isActive === undefined) {
-      console.log('[api/auth/login] Using Supabase active status fallback:', profile?.active);
-      isActive = profile?.active as boolean | undefined;
-    }
-
-    // Default to active only if no source available at all (new users, etc.)
-    if (isActive === undefined) {
-      console.log('[api/auth/login] No active status found, defaulting to true for user:', data.user.id);
-      isActive = true;
-    }
-
-    console.log('[api/auth/login] Final active status:', { email: data.user.email, isActive, willBlock: !isActive });
-
-    if (!isActive) {
-      console.log('[api/auth/login] >>> BLOCKING LOGIN - User is inactive:', data.user.id, data.user.email);
-      return redirect(loginErrorUrl(from, 'account_inactive'));
-    }
-    
-    console.log('[api/auth/login] Login allowed - user is active');
 
     const role = sessionRoleFromProfileOrMeta(
       profile?.role as string | undefined,
