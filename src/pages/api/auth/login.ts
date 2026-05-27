@@ -1,6 +1,5 @@
 import type { APIRoute } from 'astro';
 import {
-  createSupabaseWithUserJwt,
   getSupabaseAnon,
   isDemoAuthMode,
   isSupabaseConfigured,
@@ -41,6 +40,16 @@ function resolveRedirect(role: Session['role'], from: string): string {
   return isAdminRole(role) ? '/admin/dashboard' : '/dashboard';
 }
 
+interface RailwayMe {
+  id: string;
+  email: string;
+  full_name: string | null;
+  role: string;
+  active: boolean;
+  company_id: string | null;
+  company_name: string | null;
+}
+
 export const POST: APIRoute = async ({ request, cookies, redirect }) => {
   const url = new URL(request.url);
   const from = url.searchParams.get('from') ?? '';
@@ -54,7 +63,6 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
       return redirect(loginErrorUrl(from, 'missing_fields'));
     }
 
-    // Supabase expected but credentials incomplete (common Netlify misconfiguration).
     if (!isDemoAuthMode() && !isSupabaseConfigured()) {
       console.error(
         '[api/auth/login] SUPABASE_URL is set but SUPABASE_ANON_KEY is missing (check Netlify env + deploy context).',
@@ -62,7 +70,7 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
       return redirect(loginErrorUrl(from, 'server_config'));
     }
 
-    // ── Local dev: password-less dummy session when Supabase is not configured ─
+    // ── Demo mode: password-less dummy session (Supabase not configured) ──
     if (isDemoAuthMode()) {
       const dummy = DUMMY_USERS[email];
       if (!dummy || password.length < 1) {
@@ -92,7 +100,7 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
       return redirect(resolveRedirect(dummy.role, from));
     }
 
-    // ── Supabase: role from public.profiles (see DB triggers + migrations) ───
+    // ── Step 1: Supabase sign-in (validates password, gives us a JWT) ────
     const supabase = getSupabaseAnon();
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
@@ -101,119 +109,94 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
         error && typeof error === 'object' && 'code' in error
           ? String((error as { code?: string }).code ?? '')
           : '';
-      const errMsg = (error && typeof error === 'object' && 'message' in error
-        ? String((error as { message?: string }).message ?? '')
-        : ''
+      const errMsg = (
+        error && typeof error === 'object' && 'message' in error
+          ? String((error as { message?: string }).message ?? '')
+          : ''
       ).toLowerCase();
 
       console.error('[api/auth/login] signInWithPassword failed', {
         email,
         code: errCode || undefined,
         message: error?.message,
-        status: (error as { status?: number })?.status,
       });
 
-      if (
-        errCode === 'email_not_confirmed' ||
-        errMsg.includes('email not confirmed')
-      ) {
+      if (errCode === 'email_not_confirmed' || errMsg.includes('email not confirmed')) {
         return redirect(loginErrorUrl(from, 'email_not_confirmed'));
       }
 
       return redirect(loginErrorUrl(from, 'invalid_credentials'));
     }
 
-    const userMeta = data.user.user_metadata ?? {};
-    const userSb = createSupabaseWithUserJwt(data.session.access_token);
-    const { data: profile } = await userSb
-      .from('profiles')
-      .select('role, full_name, active')
-      .eq('id', data.user.id)
-      .maybeSingle();
+    const accessToken = data.session.access_token;
 
-    console.log('[api/auth/login] User authenticated:', { 
-      email: data.user.email, 
-      userId: data.user.id,
-      supabaseActive: profile?.active,
-      apiBaseUrl: import.meta.env.API_BASE_URL ? 'SET' : 'NOT SET'
-    });
+    // ── Step 2: Railway GET /api/me — source of truth for active + role ──
+    // Uses requireAuth only (works for ANY role: admin, internal, client).
+    // requireAuth itself blocks deactivated users with 403.
 
-    // Check if user is active - Railway database is the authoritative source of truth
-    let isActive: boolean | undefined;
-    
-    // Always check Railway database for authoritative active status (if API is available)
+    let railwayUser: RailwayMe | null = null;
+
     if (import.meta.env.API_BASE_URL) {
-      console.log('[api/auth/login] Checking Railway API for active status...');
-      try {
-        const paCheck = await paFetchJson(
-          `/admin/users/${encodeURIComponent(data.user.id)}`,
-          data.session.access_token,
-        );
-        console.log('[api/auth/login] Railway API response:', { 
-          ok: paCheck.ok, 
-          status: paCheck.status,
-          hasData: !!paCheck.data,
-          rawData: paCheck.data 
-        });
-        
-        if (paCheck.ok && paCheck.data) {
-          const railwayData = paCheck.data as { active?: boolean; email?: string; id?: string };
-          console.log('[api/auth/login] Railway user data:', { 
-            id: railwayData.id, 
-            email: railwayData.email, 
-            active: railwayData.active,
-            activeType: typeof railwayData.active
-          });
-          
-          // Explicitly check for boolean false - don't use ?? which converts false to true
-          const railwayActive = railwayData.active;
-          isActive = railwayActive === false ? false : (railwayActive === true ? true : undefined);
-          console.log('[api/auth/login] Parsed Railway active status:', { active: isActive, fromValue: railwayActive });
-        } else {
-          console.log('[api/auth/login] Railway API returned no data or not ok, falling back to Supabase');
-        }
-      } catch (e) {
-        // If API check fails, fall back to Supabase value (or assume active if neither available)
-        console.warn('[api/auth/login] Failed to check active status from Railway, using Supabase fallback:', e);
-        isActive = profile?.active as boolean | undefined;
+      console.log('[api/auth/login] calling GET /api/me ...');
+
+      const meCheck = await paFetchJson<RailwayMe>('/me', accessToken);
+
+      console.log('[api/auth/login] /api/me response:', {
+        ok: meCheck.ok,
+        status: meCheck.status,
+        role: meCheck.ok ? (meCheck.data as RailwayMe)?.role : undefined,
+        active: meCheck.ok ? (meCheck.data as RailwayMe)?.active : undefined,
+        error: !meCheck.ok ? meCheck.error : undefined,
+      });
+
+      if (meCheck.ok && meCheck.data) {
+        railwayUser = meCheck.data;
+      } else if (meCheck.status === 403) {
+        // requireAuth rejected: deactivated or no profile row. Block login.
+        const msg = String((meCheck.error as { message?: string })?.message ?? '');
+        console.log('[api/auth/login] >>> BLOCKED by Railway 403:', msg);
+        return redirect(loginErrorUrl(from, 'account_inactive'));
+      } else {
+        console.warn('[api/auth/login] /api/me failed, status:', meCheck.status);
+        return redirect(loginErrorUrl(from, 'server_error'));
       }
     } else {
-      console.log('[api/auth/login] API_BASE_URL not set, skipping Railway check');
-    }
-    
-    // If Railway check didn't work or API not available, use Supabase
-    if (isActive === undefined) {
-      console.log('[api/auth/login] Using Supabase active status fallback:', profile?.active);
-      isActive = profile?.active as boolean | undefined;
+      console.warn('[api/auth/login] API_BASE_URL not set — cannot verify user in Railway');
     }
 
-    // Default to active only if no source available at all (new users, etc.)
-    if (isActive === undefined) {
-      console.log('[api/auth/login] No active status found, defaulting to true for user:', data.user.id);
-      isActive = true;
-    }
-
-    console.log('[api/auth/login] Final active status:', { email: data.user.email, isActive, willBlock: !isActive });
-
-    if (!isActive) {
-      console.log('[api/auth/login] >>> BLOCKING LOGIN - User is inactive:', data.user.id, data.user.email);
+    // ── Step 3: Check deactivated ────────────────────────────────────────
+    // requireAuth already blocks deactivated users (403 above), but double-check
+    // the active field in case the response somehow got through.
+    if (railwayUser && railwayUser.active === false) {
+      console.log('[api/auth/login] >>> BLOCKED — Railway active=false:', email);
       return redirect(loginErrorUrl(from, 'account_inactive'));
     }
-    
-    console.log('[api/auth/login] Login allowed - user is active');
 
-    const role = sessionRoleFromProfileOrMeta(
-      profile?.role as string | undefined,
-      userMeta.role as string | undefined,
-    );
+    // ── Step 4: Determine role (Railway is primary, Supabase is fallback) ─
+    const userMeta = data.user.user_metadata ?? {};
+    const role = railwayUser
+      ? sessionRoleFromProfileOrMeta(railwayUser.role, null)
+      : sessionRoleFromProfileOrMeta(
+          userMeta.role as string | undefined,
+          null,
+        );
 
+    console.log('[api/auth/login] resolved role:', {
+      railwayRole: railwayUser?.role,
+      metaRole: userMeta.role,
+      finalRole: role,
+    });
+
+    // ── Step 5: Portal match ─────────────────────────────────────────────
     const portalErr = assertPortalMatchesRole(from, role);
     if (portalErr) {
+      console.log('[api/auth/login] wrong portal:', { from, role });
       return redirect(portalErr);
     }
 
+    // ── Step 6: Create session and redirect ──────────────────────────────
     const name =
-      (profile?.full_name as string | undefined)?.trim() ||
+      railwayUser?.full_name?.trim() ||
       (userMeta.full_name as string | undefined) ||
       (userMeta.name as string | undefined) ||
       email.split('@')[0];
@@ -224,7 +207,7 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
         role,
         email: data.user.email ?? email,
         name,
-        supabaseAccessToken: data.session.access_token,
+        supabaseAccessToken: accessToken,
         supabaseRefreshToken: data.session.refresh_token,
         loggedInAt: new Date().toISOString(),
       }),
@@ -237,6 +220,7 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
       },
     );
 
+    console.log('[api/auth/login] login success:', { email, role, from });
     return redirect(resolveRedirect(role, from));
   } catch (err) {
     console.error('[api/auth/login]', err);

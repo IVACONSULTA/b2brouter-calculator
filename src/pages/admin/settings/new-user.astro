@@ -45,12 +45,14 @@ if (apiReady && paToken) {
   }
 }
 
-// If no companies from API, use fallback
+// If no companies from API, show warning (don't use fake IDs that will fail)
+let companiesWarning: string | null = null;
 if (companies.length === 0) {
-  companies = [
-    { id: 'comp-internal', name: 'B2Brouter Internal', type: 'internal' },
-    { id: 'comp-client-1', name: 'Demo Client Company', type: 'client' },
-  ];
+  if (apiReady && paToken) {
+    companiesWarning = 'Could not load companies from Railway API. Check server logs.';
+  } else {
+    companiesWarning = 'Demo mode: Configure API_BASE_URL and sign in to load real companies.';
+  }
 }
 ---
 
@@ -121,15 +123,27 @@ if (companies.length === 0) {
           </div>
 
           <div class="field" id="company-field">
-            <label for="company_id">Company <span class="req" id="company-required" style="display:none">*</span></label>
-            <select id="company_id" name="company_id">
-              <option value="">Select company…</option>
-              {companies.map(company => (
-                <option value={company.id} data-type={company.type}>
-                  {company.name} ({company.type})
-                </option>
-              ))}
-            </select>
+            <label for="company_id">
+              Company
+              <span class="req" id="company-required" style="display:none">*</span>
+            </label>
+            {companies.length > 0 ? (
+              <select id="company_id" name="company_id">
+                <option value="">Select company…</option>
+                {companies.map(company => (
+                  <option value={company.id} data-type={company.type}>
+                    {company.name} ({company.type})
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <select id="company_id" name="company_id" disabled>
+                <option value="">No companies available</option>
+              </select>
+            )}
+            {companiesWarning && (
+              <small class="field-hint warning">{companiesWarning}</small>
+            )}
             <small class="field-hint" id="company-hint">Required for Client users</small>
           </div>
 
@@ -282,6 +296,10 @@ if (companies.length === 0) {
     margin-top: 0.25rem;
     font-size: 0.75rem;
     color: var(--color-text-muted);
+  }
+  .field-hint.warning {
+    color: #f59e0b;
+    font-weight: 500;
   }
 
   .alert {
