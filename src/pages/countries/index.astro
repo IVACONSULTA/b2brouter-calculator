@@ -248,6 +248,9 @@ if (!isAdmin) {
                       <a href={`/admin/countries/${p.id}/documents`} class="btn-action">Docs</a>
                     </>
                   )}
+                  {p.status === 'pending_approval' && (
+                    <a href={`/admin/countries/${p.id}/documents`} class="btn-action">Docs</a>
+                  )}
                   {p.status === 'pending_approval' && p.analysis_id && (
                     <a href={`/admin/analyses/${p.analysis_id}`} class="btn-action btn-amber">Review AI</a>
                   )}

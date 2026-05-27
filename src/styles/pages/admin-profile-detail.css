@@ -85,6 +85,29 @@
       cursor: not-allowed;
     }
 
+    .btn-modify {
+      padding: 0.45rem 0.9rem;
+      border: 1px solid rgba(37,99,235,.35);
+      background: rgba(37,99,235,.08);
+      color: #2563eb;
+      border-radius: 7px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.13s;
+    }
+
+    .btn-modify:hover:not(:disabled) {
+      background: rgba(37,99,235,.14);
+      border-color: rgba(37,99,235,.5);
+    }
+
+    .btn-modify:disabled {
+      opacity: 0.55;
+      cursor: wait;
+    }
+
     .btn-archive {
       padding: 0.45rem 0.9rem;
       border: 1px solid rgba(239,68,68,.3);

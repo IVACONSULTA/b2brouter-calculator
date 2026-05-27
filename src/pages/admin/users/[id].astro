@@ -36,8 +36,15 @@ interface UserData {
   ai_calls_this_month?: number | null;
 }
 
+interface Company {
+  id: string;
+  name: string;
+  type: 'internal' | 'client';
+}
+
 let adminNotice: string | null = null;
 let user: UserData | null = null;
+let companies: Company[] = [];
 
 function formatUserCreatedAt(raw: string): string {
   const d = new Date(raw);
@@ -54,11 +61,20 @@ if (!session.supabaseAccessToken) {
 }
 
 if (apiReady && paToken && userId) {
-  const userRes = await paFetchJson<UserData>(`/admin/users/${encodeURIComponent(userId)}`, paToken);
+  // Fetch user and companies in parallel
+  const [userRes, companiesRes] = await Promise.all([
+    paFetchJson<UserData>(`/admin/users/${encodeURIComponent(userId)}`, paToken),
+    paFetchJson<Company[]>('/admin/companies', paToken),
+  ]);
+
   if (userRes.ok && userRes.data) {
     user = userRes.data;
   } else if (!userRes.ok) {
     adminNotice = `Could not load user (HTTP ${userRes.status}).`;
+  }
+
+  if (companiesRes.ok && Array.isArray(companiesRes.data)) {
+    companies = companiesRes.data;
   }
 }
 
@@ -100,10 +116,10 @@ const roleMeta: Record<string, { label: string; cls: string }> = {
         </div>
 
         <form id="edit-user-form" class="form-grid" data-user-id={user.id}>
-          <div class="field">
-            <label>User ID</label>
-            <input type="text" value={user.id} disabled style="background: #f3f4f6; cursor: not-allowed;" />
-            <small style="color: #6b7280;">User ID cannot be changed</small>
+          <div class="field field-readonly">
+            <label>User ID <span class="readonly-badge">Read-only</span></label>
+            <input type="text" value={user.id} disabled class="readonly-input" />
+            <small class="hint">User ID is system-generated and cannot be changed</small>
           </div>
 
           <div class="field">
@@ -118,7 +134,7 @@ const roleMeta: Record<string, { label: string; cls: string }> = {
 
           <div class="field">
             <label>Role <span class="req">*</span></label>
-            <select name="role" required>
+            <select name="role" id="role" required>
               <option value="admin" selected={user.role === 'admin'}>Admin</option>
               <option value="internal" selected={user.role === 'internal'}>Internal</option>
               <option value="client" selected={user.role === 'client'}>Client</option>
@@ -126,14 +142,18 @@ const roleMeta: Record<string, { label: string; cls: string }> = {
           </div>
 
           <div class="field">
-            <label>Company</label>
-            <select name="company_id">
+            <label>Company <span class="req" id="company-required" style={user.role === 'client' ? '' : 'display:none'}>*</span></label>
+            <select name="company_id" id="company-select" required={user.role === 'client'}>
               <option value="" selected={!user.company_id}>Select company…</option>
-              <option value="comp-internal" selected={user.company_id === 'comp-internal'}>B2Brouter Internal (internal)</option>
-              <option value="comp-acme" selected={user.company_id === 'comp-acme'}>Acme Corp (client)</option>
-              <option value="comp-global" selected={user.company_id === 'comp-global'}>Global Trade Ltd (client)</option>
-              <option value="comp-tech" selected={user.company_id === 'comp-tech'}>Tech Solutions SL (client)</option>
+              {companies.map(company => (
+                <option value={company.id} selected={user.company_id === company.id}>
+                  {company.name} ({company.type})
+                </option>
+              ))}
             </select>
+            {companies.length === 0 && (
+              <small class="hint" style="color: #ef4444;">No companies available. Please create companies first.</small>
+            )}
           </div>
 
           <div class="field">
@@ -173,24 +193,78 @@ const roleMeta: Record<string, { label: string; cls: string }> = {
   </div>
 </AdminLayout>
 
+<style>
+  .field-readonly {
+    opacity: 0.8;
+  }
+  .readonly-badge {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: #6b7280;
+    background: #f3f4f6;
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    margin-left: 0.5rem;
+  }
+  .readonly-input {
+    background: #f3f4f6 !important;
+    cursor: not-allowed !important;
+    color: #6b7280 !important;
+  }
+  .hint {
+    color: #6b7280;
+    font-size: 0.75rem;
+  }
+</style>
+
 <script>
-  const form = document.getElementById('edit-user-form') as HTMLFormElement | null;
+  const form = document.getElementById('edit-user-form');
   const resultDiv = document.getElementById('save-result');
+  const submitBtn = form?.querySelector('button[type="submit"]') as HTMLButtonElement | null;
+  const roleSelect = document.getElementById('role') as HTMLSelectElement | null;
+  const companySelect = document.getElementById('company-select') as HTMLSelectElement | null;
+  const companyRequired = document.getElementById('company-required');
+
+  // Handle company field requirement based on role
+  if (roleSelect && companySelect && companyRequired) {
+    roleSelect.addEventListener('change', () => {
+      const isClient = roleSelect.value === 'client';
+      companySelect.required = isClient;
+      companyRequired.style.display = isClient ? '' : 'none';
+    });
+  }
 
   if (form && resultDiv) {
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       
       const userId = form.dataset.userId;
-      const formData = new FormData(form);
+      const formData = new FormData(form as HTMLFormElement);
+      const role = formData.get('role')?.toString();
+      const companyId = formData.get('company_id')?.toString();
+      
+      // Validation
+      if (role === 'client' && !companyId) {
+        resultDiv.style.display = 'block';
+        resultDiv.style.background = '#fee2e2';
+        resultDiv.style.color = '#991b1b';
+        resultDiv.innerHTML = '<strong>Validation error</strong><br><small>Company is required for Client users</small>';
+        return;
+      }
       
       const data = {
         email: formData.get('email'),
         full_name: formData.get('full_name'),
         role: formData.get('role'),
-        company_id: formData.get('company_id') || null,
+        company_id: companyId || null,
         active: formData.get('active') === 'true',
       };
+
+      // Disable submit button during request
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Saving…';
+      }
 
       try {
         const response = await fetch(`/api/pa/admin/users/${userId}`, {
@@ -202,27 +276,57 @@ const roleMeta: Record<string, { label: string; cls: string }> = {
           body: JSON.stringify(data),
         });
 
+        const result = await response.json().catch(() => ({}));
+
         if (response.ok) {
           resultDiv.style.display = 'block';
           resultDiv.style.background = '#d1fae5';
           resultDiv.style.color = '#065f46';
-          resultDiv.textContent = 'User updated successfully!';
+          resultDiv.innerHTML = `
+            <strong>✓ User updated successfully!</strong><br>
+            <small>Synced to Supabase Auth and Railway database</small>
+          `;
           
+          // Re-enable button
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Save Changes';
+          }
+          
+          // Redirect after short delay
           setTimeout(() => {
             window.location.href = '/admin/settings';
           }, 1500);
         } else {
-          const error = await response.json();
+          // Error response
           resultDiv.style.display = 'block';
           resultDiv.style.background = '#fee2e2';
           resultDiv.style.color = '#991b1b';
-          resultDiv.textContent = `Error: ${error.message || 'Failed to update user'}`;
+          resultDiv.innerHTML = `
+            <strong>✗ Update failed</strong><br>
+            <small>${result.message || result.error || `HTTP ${response.status}`}</small>
+          `;
+          
+          // Re-enable button
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Save Changes';
+          }
         }
       } catch (err) {
         resultDiv.style.display = 'block';
         resultDiv.style.background = '#fee2e2';
         resultDiv.style.color = '#991b1b';
-        resultDiv.textContent = `Error: ${err instanceof Error ? err.message : 'Unknown error'}`;
+        resultDiv.innerHTML = `
+          <strong>✗ Network error</strong><br>
+          <small>${err instanceof Error ? err.message : 'Please try again'}</small>
+        `;
+        
+        // Re-enable button
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Save Changes';
+        }
       }
     });
   }

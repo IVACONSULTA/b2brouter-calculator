@@ -218,8 +218,18 @@ const isAlreadyActive = profile?.status === 'active';
       <span class={`status-badge s-${profile.status}`}>{profile.status.replace('_', ' ')}</span>
       {isAlreadyActive
         ? (
+          <>
+          <button
+            type="button"
+            class="btn-modify"
+            onclick="handleModifyProfile()"
+            title="Upload documents and re-run AI analysis for this profile"
+          >
+            Modify profile
+          </button>
           <!-- TODO: POST /admin/profiles/{profile.id}/archive via App 2 API -->
-          <button class="btn-archive" onclick="handleArchive()">Archive version</button>
+          <button type="button" class="btn-archive" onclick="handleArchive()">Archive version</button>
+          </>
         )
         : (
           <!-- TODO: POST /admin/profiles/{profile.id}/activate via App 2 API -->
@@ -402,14 +412,62 @@ const isAlreadyActive = profile?.status === 'active';
   </div>
 </AdminLayout>
 
-<script>
+<script define:vars={{ profileId: safeId }}>
+  async function handleModifyProfile() {
+    if (!profileId) return;
+    if (
+      !confirm(
+        'Modify this profile?\n\nIt will be set to Pending approval (no longer active for customers). You can upload documents and re-run AI analysis to update rules and plans.',
+      )
+    ) {
+      return;
+    }
+
+    const btn = document.querySelector('.btn-modify');
+    if (btn instanceof HTMLButtonElement) {
+      btn.disabled = true;
+      btn.textContent = 'Opening…';
+    }
+
+    try {
+      const res = await fetch(`/api/pa/admin/profiles/${encodeURIComponent(profileId)}/modify`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg =
+          (data && (data.reason || data.error || data.message)) ||
+          `Could not modify profile (HTTP ${res.status}).`;
+        alert(msg);
+        if (btn instanceof HTMLButtonElement) {
+          btn.disabled = false;
+          btn.textContent = 'Modify profile';
+        }
+        return;
+      }
+      window.location.href = `/admin/countries/${encodeURIComponent(profileId)}/documents`;
+    } catch (err) {
+      console.error('[handleModifyProfile]', err);
+      alert('Network error while modifying profile. Please try again.');
+      if (btn instanceof HTMLButtonElement) {
+        btn.disabled = false;
+        btn.textContent = 'Modify profile';
+      }
+    }
+  }
+
   function handleActivate() {
-    const modal = document.getElementById('activate-modal')!;
+    const modal = document.getElementById('activate-modal');
+    if (!modal) return;
     modal.style.display = 'flex';
   }
 
   function closeModal() {
-    const modal = document.getElementById('activate-modal')!;
+    const modal = document.getElementById('activate-modal');
+    if (!modal) return;
     modal.style.display = 'none';
   }
 
@@ -426,6 +484,12 @@ const isAlreadyActive = profile?.status === 'active';
     }
   }
 
-  Object.assign(window, { handleActivate, closeModal, confirmActivate, handleArchive });
+  Object.assign(window, {
+    handleModifyProfile,
+    handleActivate,
+    closeModal,
+    confirmActivate,
+    handleArchive,
+  });
 </script>
 

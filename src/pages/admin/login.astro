@@ -21,6 +21,7 @@ const errorMessages: Record<string, string> = {
   server_config:
     'Server misconfiguration: SUPABASE_ANON_KEY is missing while SUPABASE_URL is set. In Netlify → Site configuration → Environment variables, add SUPABASE_ANON_KEY (same value as in Supabase → Project Settings → API → anon public). Ensure variables apply to Branch deploys / All deploy contexts.',
   server_error: 'Something went wrong while signing in. Please try again or contact support.',
+  account_inactive: 'Your account has been deactivated. Please contact an administrator for assistance.',
 };
 
 const errorKey = Astro.url.searchParams.get('error') ?? '';

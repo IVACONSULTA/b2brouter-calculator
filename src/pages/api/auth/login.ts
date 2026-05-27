@@ -11,6 +11,7 @@ import {
   sessionRoleFromProfileOrMeta,
   type Session,
 } from '../../../lib/session';
+import { paFetchJson } from '../../../lib/pa-api';
 
 const DUMMY_USERS: Record<string, { name: string; role: Session['role'] }> = {
   'admin@b2brouter.com': { name: 'Admin User', role: 'admin' },
@@ -126,9 +127,80 @@ export const POST: APIRoute = async ({ request, cookies, redirect }) => {
     const userSb = createSupabaseWithUserJwt(data.session.access_token);
     const { data: profile } = await userSb
       .from('profiles')
-      .select('role, full_name')
+      .select('role, full_name, active')
       .eq('id', data.user.id)
       .maybeSingle();
+
+    console.log('[api/auth/login] User authenticated:', { 
+      email: data.user.email, 
+      userId: data.user.id,
+      supabaseActive: profile?.active,
+      apiBaseUrl: import.meta.env.API_BASE_URL ? 'SET' : 'NOT SET'
+    });
+
+    // Check if user is active - Railway database is the authoritative source of truth
+    let isActive: boolean | undefined;
+    
+    // Always check Railway database for authoritative active status (if API is available)
+    if (import.meta.env.API_BASE_URL) {
+      console.log('[api/auth/login] Checking Railway API for active status...');
+      try {
+        const paCheck = await paFetchJson(
+          `/admin/users/${encodeURIComponent(data.user.id)}`,
+          data.session.access_token,
+        );
+        console.log('[api/auth/login] Railway API response:', { 
+          ok: paCheck.ok, 
+          status: paCheck.status,
+          hasData: !!paCheck.data,
+          rawData: paCheck.data 
+        });
+        
+        if (paCheck.ok && paCheck.data) {
+          const railwayData = paCheck.data as { active?: boolean; email?: string; id?: string };
+          console.log('[api/auth/login] Railway user data:', { 
+            id: railwayData.id, 
+            email: railwayData.email, 
+            active: railwayData.active,
+            activeType: typeof railwayData.active
+          });
+          
+          // Explicitly check for boolean false - don't use ?? which converts false to true
+          const railwayActive = railwayData.active;
+          isActive = railwayActive === false ? false : (railwayActive === true ? true : undefined);
+          console.log('[api/auth/login] Parsed Railway active status:', { active: isActive, fromValue: railwayActive });
+        } else {
+          console.log('[api/auth/login] Railway API returned no data or not ok, falling back to Supabase');
+        }
+      } catch (e) {
+        // If API check fails, fall back to Supabase value (or assume active if neither available)
+        console.warn('[api/auth/login] Failed to check active status from Railway, using Supabase fallback:', e);
+        isActive = profile?.active as boolean | undefined;
+      }
+    } else {
+      console.log('[api/auth/login] API_BASE_URL not set, skipping Railway check');
+    }
+    
+    // If Railway check didn't work or API not available, use Supabase
+    if (isActive === undefined) {
+      console.log('[api/auth/login] Using Supabase active status fallback:', profile?.active);
+      isActive = profile?.active as boolean | undefined;
+    }
+
+    // Default to active only if no source available at all (new users, etc.)
+    if (isActive === undefined) {
+      console.log('[api/auth/login] No active status found, defaulting to true for user:', data.user.id);
+      isActive = true;
+    }
+
+    console.log('[api/auth/login] Final active status:', { email: data.user.email, isActive, willBlock: !isActive });
+
+    if (!isActive) {
+      console.log('[api/auth/login] >>> BLOCKING LOGIN - User is inactive:', data.user.id, data.user.email);
+      return redirect(loginErrorUrl(from, 'account_inactive'));
+    }
+    
+    console.log('[api/auth/login] Login allowed - user is active');
 
     const role = sessionRoleFromProfileOrMeta(
       profile?.role as string | undefined,
