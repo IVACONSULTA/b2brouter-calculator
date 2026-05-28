@@ -288,9 +288,26 @@
     white-space: nowrap;
   }
 
-  .rule-confidence-dot {
+  .rule-label-display {
     font-size: 0.72rem;
+    font-weight: 500;
+    color: var(--color-text-muted);
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .rule-direction-badge {
+    font-size: 0.65rem;
     font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 0.15rem 0.45rem;
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--color-admin, #6366f1) 12%, transparent);
+    color: var(--color-admin, #6366f1);
   }
 
   .rule-dirty-badge {
