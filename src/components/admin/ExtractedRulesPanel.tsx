@@ -22,7 +22,6 @@ type EditableFields = {
   operation_group: string;
   pa_transactions_per_item: string;
   source_excerpt: string;
-  confidence: string;
 };
 
 type RuleState = {
@@ -43,7 +42,6 @@ type DeleteConfirm = {
   error: string | null;
 };
 
-const CONFIDENCE_OPTIONS = ['high', 'medium', 'low'];
 const DIRECTION_OPTIONS = ['Issued', 'Received', ''];
 const OBLIGATION_OPTIONS = ['E-invoicing', 'E-reporting', 'Payment e-reporting', ''];
 
@@ -56,7 +54,6 @@ function toEditable(r: TransactionRule): EditableFields {
     operation_group: r.operation_group ?? '',
     pa_transactions_per_item: String(r.pa_transactions_per_item ?? 0),
     source_excerpt: r.source_excerpt ?? '',
-    confidence: r.confidence ?? 'medium',
   };
 }
 
@@ -65,11 +62,6 @@ function formatInputKey(key: string): string {
   return key
     .replace(/_/g, ' ')
     .replace(/^(.)/, (ch) => ch.toUpperCase());
-}
-
-function confidenceBadge(c: string) {
-  const map: Record<string, string> = { high: '#22c55e', medium: '#f59e0b', low: '#ef4444' };
-  return map[c] ?? map.medium;
 }
 
 function statusBadgeClass(s: string) {
@@ -126,8 +118,7 @@ export default function ExtractedRulesPanel({ initialRules, profileId }: Props) 
           edits.obligation !== (r.original.obligation ?? '') ||
           edits.operation_group !== (r.original.operation_group ?? '') ||
           edits.pa_transactions_per_item !== String(r.original.pa_transactions_per_item ?? 0) ||
-          edits.source_excerpt !== (r.original.source_excerpt ?? '') ||
-          edits.confidence !== (r.original.confidence ?? 'medium');
+          edits.source_excerpt !== (r.original.source_excerpt ?? '');
         return { ...r, edits, dirty };
       })
     );
@@ -143,7 +134,6 @@ export default function ExtractedRulesPanel({ initialRules, profileId }: Props) 
       operation_group: ruleState.edits.operation_group || null,
       pa_transactions_per_item: parseFloat(ruleState.edits.pa_transactions_per_item) || 0,
       source_excerpt: ruleState.edits.source_excerpt || null,
-      confidence: ruleState.edits.confidence || 'medium',
     };
     const res = await fetch(`/api/pa/admin/rules/${encodeURIComponent(id)}`, {
       method: 'PATCH',
@@ -283,12 +273,14 @@ export default function ExtractedRulesPanel({ initialRules, profileId }: Props) 
                 <span className="rule-input-key-display" title={original.input_key}>
                   {formatInputKey(edits.input_key || original.input_key)}
                 </span>
+                <span className="rule-label-display" title={edits.label || original.label}>
+                  {edits.label || original.label}
+                </span>
                 <span
-                  className="rule-confidence-dot"
-                  style={{ color: confidenceBadge(edits.confidence) }}
-                  title={`${edits.confidence} confidence`}
+                  className="rule-direction-badge"
+                  title={`Direction: ${edits.direction || 'none'}`}
                 >
-                  ● {edits.confidence}
+                  {edits.direction || '—'}
                 </span>
                 {dirty && <span className="rule-dirty-badge">unsaved</span>}
                 {saving === 'saved' && <span className="rule-saved-badge">✓ saved</span>}
@@ -381,20 +373,15 @@ export default function ExtractedRulesPanel({ initialRules, profileId }: Props) 
                   />
                 </div>
 
-                {/* confidence */}
+                {/* label */}
                 <div className="rule-field">
-                  <label htmlFor={`conf-${original.id}`}>Confidence</label>
-                  <select
-                    id={`conf-${original.id}`}
-                    value={edits.confidence}
-                    onChange={(e) => update(idx, 'confidence', e.target.value)}
-                  >
-                    {CONFIDENCE_OPTIONS.map((o) => (
-                      <option key={o} value={o}>
-                        {o}
-                      </option>
-                    ))}
-                  </select>
+                  <label htmlFor={`lbl-${original.id}`}>Label</label>
+                  <input
+                    id={`lbl-${original.id}`}
+                    type="text"
+                    value={edits.label}
+                    onChange={(e) => update(idx, 'label', e.target.value)}
+                  />
                 </div>
 
                 {/* source_excerpt — full width */}
