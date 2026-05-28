@@ -317,14 +317,14 @@ export default function ExtractedRulesPanel({ initialRules, profileId }: Props) 
                   />
                 </div>
 
-                {/* operation_group — replaces label in the top-right slot */}
+                {/* label */}
                 <div className="rule-field">
-                  <label htmlFor={`og-${original.id}`}>Operation group</label>
+                  <label htmlFor={`lbl-${original.id}`}>Label</label>
                   <input
-                    id={`og-${original.id}`}
+                    id={`lbl-${original.id}`}
                     type="text"
-                    value={edits.operation_group}
-                    onChange={(e) => update(idx, 'operation_group', e.target.value)}
+                    value={edits.label}
+                    onChange={(e) => update(idx, 'label', e.target.value)}
                   />
                 </div>
 
@@ -360,6 +360,17 @@ export default function ExtractedRulesPanel({ initialRules, profileId }: Props) 
                   </select>
                 </div>
 
+                {/* operation_group */}
+                <div className="rule-field">
+                  <label htmlFor={`og-${original.id}`}>Operation group</label>
+                  <input
+                    id={`og-${original.id}`}
+                    type="text"
+                    value={edits.operation_group}
+                    onChange={(e) => update(idx, 'operation_group', e.target.value)}
+                  />
+                </div>
+
                 {/* pa_transactions_per_item */}
                 <div className="rule-field">
                   <label htmlFor={`pa-${original.id}`}>PA transactions / item</label>
@@ -370,17 +381,6 @@ export default function ExtractedRulesPanel({ initialRules, profileId }: Props) 
                     min="0"
                     value={edits.pa_transactions_per_item}
                     onChange={(e) => update(idx, 'pa_transactions_per_item', e.target.value)}
-                  />
-                </div>
-
-                {/* label */}
-                <div className="rule-field">
-                  <label htmlFor={`lbl-${original.id}`}>Label</label>
-                  <input
-                    id={`lbl-${original.id}`}
-                    type="text"
-                    value={edits.label}
-                    onChange={(e) => update(idx, 'label', e.target.value)}
                   />
                 </div>
 
