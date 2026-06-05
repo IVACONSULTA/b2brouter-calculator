@@ -5,12 +5,16 @@
   "main": "index.js",
   "scripts": {
     "dev": "cross-env NETLIFY_DEV=1 astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro",
     "seed:users": "node --env-file=.env scripts/seed-local-users.mjs",
     "sync:auth:prod-to-local": "node --env-file=.env scripts/sync-prod-auth-to-local.mjs",
     "auth:set-local-passwords": "node --env-file=.env scripts/set-local-user-passwords.mjs",
-    "build": "astro build",
-    "preview": "astro preview",
-    "astro": "astro"
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:debug": "playwright test --debug"
   },
   "repository": {
     "type": "git",
@@ -39,6 +43,8 @@
     "typescript": "^5.9.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
+    "@types/node": "^25.9.1",
     "@types/pdfkit": "^0.17.6",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",

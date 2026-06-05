@@ -25,3 +25,10 @@ docs/uploads/*
 # Editor / OS
 .DS_Store
 *.pem
+
+# Playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/
