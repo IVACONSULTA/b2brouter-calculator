@@ -202,6 +202,13 @@ npx playwright test --project=chromium
 - Breadcrumb and sidebar navigation
 - Data persistence across pages
 
+### Test Status Notes
+
+- Tests gracefully skip when **demo mode is not enabled** (no valid demo credentials available)
+- Tests use flexible selectors to handle both old and new UI layouts
+- Helper functions in `e2e/customer/helpers.ts` provide reusable authentication flows
+- Screenshots are captured on test failures for debugging
+
 ### Configuration
 
 Playwright configuration is in `playwright.config.ts`:

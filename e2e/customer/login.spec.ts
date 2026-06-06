@@ -1,8 +1,10 @@
 import { test, expect } from '@playwright/test';
+import { loginCustomer } from './helpers';
 
 test.describe('Customer Site - Login', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/customer/login');
+    await page.waitForLoadState('networkidle');
   });
 
   test('should display login form', async ({ page }) => {
@@ -41,21 +43,41 @@ test.describe('Customer Site - Login', () => {
   });
 
   test('should autofill demo credentials when demo button clicked', async ({ page }) => {
-    // Check if demo mode banner exists
+    // Check if demo mode is available
     const demoBanner = page.locator('.demo-banner');
+    const demoButtons = page.locator('.demo-btn');
+    const isDemoMode = await demoBanner.isVisible().catch(() => false) || 
+                       await demoButtons.first().isVisible().catch(() => false);
 
-    if (await demoBanner.isVisible().catch(() => false)) {
-      // Click on a demo account button
-      const demoButton = page.locator('.demo-btn').first();
-      await demoButton.click();
+    test.skip(!isDemoMode, 'Demo mode not enabled - skipping test');
 
-      // Verify email was filled
-      const emailInput = page.locator('input#email');
-      await expect(emailInput).toHaveValue(/@/);
+    // Click on a demo account button
+    const demoButton = demoButtons.first();
+    await demoButton.click();
 
-      // Verify password was filled
-      const passwordInput = page.locator('input#password');
-      await expect(passwordInput).toHaveValue('demo1234');
+    // Verify email was filled
+    const emailInput = page.locator('input#email');
+    await expect(emailInput).toHaveValue(/@/);
+
+    // Verify password was filled
+    const passwordInput = page.locator('input#password');
+    await expect(passwordInput).toHaveValue('demo1234');
+  });
+
+  test('should login successfully', async ({ page }) => {
+    // Check if demo mode is available
+    const demoButtons = page.locator('.demo-btn');
+    const isDemoMode = await demoButtons.first().isVisible().catch(() => false);
+
+    if (isDemoMode) {
+      await loginCustomer(page);
+    } else {
+      // Skip this test if not in demo mode and no valid credentials available
+      test.skip(true, 'No valid credentials available for login test');
     }
+
+    // Should be redirected to dashboard
+    await expect(page).toHaveURL(/.*dashboard/);
+    await expect(page.getByRole('heading', { name: /welcome back/i })).toBeVisible();
   });
 });
